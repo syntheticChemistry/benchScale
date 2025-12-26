@@ -1,7 +1,6 @@
 //! benchScale CLI
 
-use benchscale::{Lab, DockerBackend, Topology, init};
-use std::path::PathBuf;
+use benchscale::{Lab, DockerBackend, Topology, Backend, init};
 use tracing::{error, info};
 
 #[tokio::main]
@@ -80,7 +79,7 @@ async fn create_lab(lab_name: &str, topology_file: &str) -> anyhow::Result<()> {
     info!("Lab ID: {}", lab.id());
     info!("Nodes:");
     for node in lab.nodes().await {
-        info!("  - {} ({}): {}", node.name, node.ip_address, node.status);
+        info!("  - {} ({}): {:?}", node.name, node.ip_address, node.status);
     }
 
     Ok(())
