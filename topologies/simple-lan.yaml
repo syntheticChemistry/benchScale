@@ -1,0 +1,81 @@
+# benchScale Topology: Simple LAN
+#
+# This topology creates 2 VM nodes simulating a local network:
+# - Node 1: Songbird + BearDog (Discovery + Security)
+# - Node 2: ToadStool + NestGate (Compute + Storage)
+#
+# Use for testing: Basic integration, low-latency scenarios, BTSP tunnels
+
+apiVersion: benchscale.biomeos.io/v1
+kind: LabTopology
+metadata:
+  name: simple-lan
+  description: "2-node LAN test environment"
+  tags: ["lan", "basic", "integration"]
+
+spec:
+  nodes:
+    - name: node-1
+      role: primary
+      
+      vm:
+        cpu: 2
+        memory: 2GB
+        disk: 20GB
+        os: ubuntu-22.04
+      
+      network:
+        ip: 192.168.100.10
+        hostname: node-1.benchscale.local
+      
+      primals:
+        - name: songbird
+          version: latest
+          port: 3000
+        
+        - name: beardog
+          version: latest
+          port: 9000
+    
+    - name: node-2
+      role: secondary
+      
+      vm:
+        cpu: 2
+        memory: 2GB
+        disk: 20GB
+        os: ubuntu-22.04
+      
+      network:
+        ip: 192.168.100.20
+        hostname: node-2.benchscale.local
+      
+      primals:
+        - name: toadstool
+          version: latest
+          port: 8080
+        
+        - name: nestgate
+          version: latest
+          port: 5000
+  
+  network:
+    topology: simple
+    subnet: 192.168.100.0/24
+    
+    links:
+      - from: node-1
+        to: node-2
+        latency: 1ms
+        bandwidth: 1Gbps
+        packet_loss: 0%
+  
+  tests:
+    - name: basic-discovery
+      type: integration
+      duration: 2m
+    
+    - name: btsp-tunnel
+      type: security
+      duration: 3m
+
