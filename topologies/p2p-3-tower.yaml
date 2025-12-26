@@ -1,180 +1,43 @@
-# benchScale Topology: 3-Tower P2P Federation
-#
-# This topology creates 3 VM nodes simulating a global P2P network:
-# - San Francisco Tower (West Coast US)
-# - New York Tower (East Coast US)
-# - London Tower (UK)
-#
-# Use for testing: Multi-tower federation, cross-geography P2P, latency handling
-
-apiVersion: benchscale.biomeos.io/v1
-kind: LabTopology
 metadata:
   name: p2p-3-tower
-  description: "3-node multi-tower P2P federation test"
-  tags: ["p2p", "federation", "multi-tower", "geographic"]
+  description: "3-node P2P federation topology simulating SF, NY, and London"
+  version: "2.0"
+  tags: ["p2p", "federation", "wan", "multi-region"]
 
-spec:
-  # VM Nodes
-  nodes:
-    - name: sf-tower
-      role: tower
-      location:
-        region: us-west
-        city: "San Francisco"
-        lat: 37.7749
-        lon: -122.4194
-      
-      vm:
-        cpu: 2
-        memory: 2GB
-        disk: 20GB
-        os: ubuntu-22.04
-      
-      network:
-        ip: 192.168.100.10
-        hostname: sf-tower.benchscale.local
-      
-      primals:
-        - name: songbird
-          version: latest
-          port: 3000
-          config:
-            tower_id: "sf-tower"
-            region: "us-west"
-        
-        - name: beardog
-          version: latest
-          port: 9000
-          config:
-            security_level: high
-    
-    - name: ny-tower
-      role: tower
-      location:
-        region: us-east
-        city: "New York"
-        lat: 40.7128
-        lon: -74.0060
-      
-      vm:
-        cpu: 2
-        memory: 2GB
-        disk: 20GB
-        os: ubuntu-22.04
-      
-      network:
-        ip: 192.168.100.20
-        hostname: ny-tower.benchscale.local
-      
-      primals:
-        - name: songbird
-          version: latest
-          port: 3000
-          config:
-            tower_id: "ny-tower"
-            region: "us-east"
-        
-        - name: toadstool
-          version: latest
-          port: 8080
-          config:
-            compute_pool: small
-    
-    - name: london-tower
-      role: tower
-      location:
-        region: eu-west
-        city: "London"
-        lat: 51.5074
-        lon: -0.1278
-      
-      vm:
-        cpu: 2
-        memory: 2GB
-        disk: 20GB
-        os: ubuntu-22.04
-      
-      network:
-        ip: 192.168.100.30
-        hostname: london-tower.benchscale.local
-      
-      primals:
-        - name: songbird
-          version: latest
-          port: 3000
-          config:
-            tower_id: "london-tower"
-            region: "eu-west"
-        
-        - name: nestgate
-          version: latest
-          port: 5000
-          config:
-            storage_pool: 10GB
-  
-  # Network Topology
-  network:
-    topology: mesh
-    subnet: 192.168.100.0/24
-    gateway: 192.168.100.1
-    dns: 8.8.8.8
-    
-    # Realistic latency based on geographic distance
-    links:
-      # SF <-> NY: ~2,500 miles, ~40ms
-      - from: sf-tower
-        to: ny-tower
-        latency: 40ms
-        jitter: 5ms
-        bandwidth: 100Mbps
-        packet_loss: 0.5%
-      
-      # SF <-> London: ~5,300 miles, ~140ms
-      - from: sf-tower
-        to: london-tower
-        latency: 140ms
-        jitter: 10ms
-        bandwidth: 50Mbps
-        packet_loss: 1%
-      
-      # NY <-> London: ~3,400 miles, ~80ms
-      - from: ny-tower
-        to: london-tower
-        latency: 80ms
-        jitter: 8ms
-        bandwidth: 100Mbps
-        packet_loss: 0.5%
-  
-  # Test Scenarios
-  tests:
-    - name: multi-tower-discovery
-      type: integration
-      description: "Verify cross-tower service discovery"
-      duration: 5m
-      expected_result: "All towers discover each other"
-    
-    - name: p2p-coordination
-      type: integration
-      description: "Test P2P coordination across towers"
-      duration: 10m
-      expected_result: "P2P mesh forms successfully"
-    
-    - name: btsp-tunnels
-      type: security
-      description: "Verify BTSP tunnel establishment"
-      duration: 5m
-      expected_result: "Secure tunnels between all towers"
-    
-    - name: latency-handling
-      type: performance
-      description: "Test high-latency link handling"
-      duration: 10m
-      expected_result: "System remains stable with 140ms latency"
-    
-    - name: failure-recovery
-      type: resilience
-      description: "Test tower failure and recovery"
-      duration: 15m
-      expected_result: "Automatic failover and recovery"
+network:
+  name: benchscale-p2p-3-tower
+  subnet: "10.200.0.0/24"
 
+nodes:
+  - name: tower-sf
+    image: ubuntu
+    env:
+      ROLE: tower
+      REGION: san-francisco
+      TOWER_ID: "1"
+    network_conditions:
+      latency_ms: 5
+      packet_loss_percent: 0.1
+      bandwidth_kbps: 100000  # 100 Mbps
+
+  - name: tower-ny
+    image: ubuntu
+    env:
+      ROLE: tower
+      REGION: new-york
+      TOWER_ID: "2"
+    network_conditions:
+      latency_ms: 50
+      packet_loss_percent: 0.2
+      bandwidth_kbps: 100000  # 100 Mbps
+
+  - name: tower-london
+    image: ubuntu
+    env:
+      ROLE: tower
+      REGION: london
+      TOWER_ID: "3"
+    network_conditions:
+      latency_ms: 100
+      packet_loss_percent: 0.5
+      bandwidth_kbps: 50000  # 50 Mbps

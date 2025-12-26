@@ -1,243 +1,361 @@
-# benchScale - BiomeOS Lab Environment System
+# benchScale v2.0.0
 
-**Version:** 1.0.0  
-**Type:** Primal Tool (not a Primal)  
-**Repository:** git@github.com:ecoPrimals/benchScale.git  
-**Status:** 🚀 Active Development (Local Phase)
+**A Pure Rust Laboratory Substrate for Distributed System Testing**
 
----
-
-## 🎯 What is benchScale?
-
-**benchScale** is a **primal tool** - infrastructure for testing and verifying BiomeOS deployments with real VMs and network simulation. Unlike primals (which maintain strict sovereignty), primal tools can have code sovereignty violations as they serve the ecosystem.
-
-### Primal Tool vs Primal
-
-**Primals** (e.g., Songbird, BearDog, ToadStool):
-- ✅ Maintain strict sovereignty
-- ✅ Own their own interface and lifecycle
-- ✅ No hardcoded dependencies
-- ✅ API-first design
-
-**Primal Tools** (e.g., benchScale, bingoCube):
-- ✅ Pure Rust (as much as possible)
-- ⚠️ Can have code sovereignty violations
-- ⚠️ Can depend on primals directly
-- ⚠️ Can have hardcoded endpoints for testing
-- 🎯 Serve the ecosystem, not end-users
+benchScale provides a type-safe, declarative framework for creating reproducible test environments for distributed systems, P2P networks, and multi-node applications. Built on Docker with first-class support for hardened images.
 
 ---
 
-## 🌱 Philosophy
+## 🎯 Purpose
 
-**"Test like production, before production."**
+benchScale elevates from an ecoPrimals development tool to a **universal laboratory substrate**, enabling:
 
-benchScale provides:
-- 🖥️ **VM Management** - Create, configure, destroy test labs
-- 🌐 **Network Simulation** - Realistic latency, packet loss, NAT
-- 🔐 **Security Testing** - Verify BTSP, BirdSong, lineage
-- 📊 **Performance Testing** - Measure real-world performance
-- ✅ **Deployment Verification** - Test before production
-
----
-
-## 📦 Current Location
-
-**Local Development**: `biomeOS/benchscale/`  
-**Future Location**: `ecoPrimals/benchScale/` (parallel to biomeOS)
-
-We're building benchScale locally within biomeOS for rapid iteration. Once stable, it will move to its own repository parallel to biomeOS.
-
-```
-ecoPrimals/
-├── biomeOS/           - Core orchestration substrate
-├── benchScale/        - Lab environment system (future)
-├── bingoCube/         - [Another primal tool]
-├── songbird/          - Primal: Service mesh
-├── beardog/           - Primal: Security
-├── toadstool/         - Primal: Compute
-├── nestgate/          - Primal: Storage
-└── squirrel/          - Primal: AI
-```
+- **Reproducible Testing**: Declarative YAML topologies ensure consistent environments
+- **Network Simulation**: Real-world conditions (latency, packet loss, bandwidth, NAT)
+- **Security-First**: Native support for Docker hardened images
+- **Pure Rust**: No shell scripts, full type safety, better error handling
+- **Cross-Platform**: Works on Linux, macOS, and Windows with Docker
 
 ---
 
 ## 🚀 Quick Start
 
+### Prerequisites
+
 ```bash
-# Install LXD (one-time setup)
-sudo snap install lxd
-sudo lxd init --minimal
-sudo usermod -aG lxd $USER
-newgrp lxd
+# Install Docker
+curl -fsSL https://get.docker.com | sh
 
-# Create a lab
-cd scripts/
-./create-lab.sh --topology p2p-3-tower --name demo-lab
+# Verify Docker is running
+docker ps
+```
 
-# Deploy primals
-./deploy-to-lab.sh --lab demo-lab --manifest ../biome-templates/multi-tower-federation.biome.yaml
+### Installation
 
-# Run tests
-./run-tests.sh --lab demo-lab --test p2p-coordination
+```bash
+# Clone repository
+git clone git@github.com:ecoPrimals/benchScale.git
+cd benchScale
 
-# Clean up
-./destroy-lab.sh --lab demo-lab --force
+# Build
+cargo build --release
+
+# Run
+./target/release/benchscale --version
+```
+
+### Your First Lab
+
+Create a simple 2-node LAN topology:
+
+```bash
+# Create lab from topology
+./target/release/benchscale create my-lab topologies/simple-lan.yaml
+
+# Verify nodes are running
+docker ps | grep my-lab
+
+# Destroy lab
+./target/release/benchscale destroy my-lab
 ```
 
 ---
 
-## 🏗️ Architecture
+## 📖 Features
 
-### Network Topologies
+### Pure Rust Architecture
 
-1. **simple-lan** (2 nodes)
-   - Purpose: Basic integration testing
-   - Network: LAN (1ms latency, 1Gbps)
+- **No Shell Scripts**: Direct Docker API integration via `bollard`
+- **Type-Safe**: Comprehensive type system for lab management
+- **Async/Await**: Modern async Rust throughout
+- **Error Handling**: Rich error types with context
 
-2. **p2p-3-tower** (3 nodes)
-   - Purpose: Multi-tower P2P federation
-   - Network: WAN (40-140ms latency, 50-100Mbps)
-   - Geography: SF, NY, London
+### Network Simulation
 
-3. **nat-traversal** (4 nodes)
-   - Purpose: NAT traversal and relay testing
-   - Network: Mixed (public relay + NAT'd clients)
+- **Latency Injection**: Simulate WAN/LAN latencies
+- **Packet Loss**: Configure realistic packet drop rates
+- **Bandwidth Limiting**: Constrain network throughput
+- **NAT Simulation**: Test P2P traversal scenarios
+
+### Docker Hardened Images 🔒
+
+```rust
+use benchscale::{Lab, DockerBackend, Topology};
+
+// Use hardened images automatically
+let backend = DockerBackend::new_hardened()?;
+let lab = Lab::create("secure-lab", topology, backend).await?;
+```
+
+Hardened images provide:
+- Minimal attack surface
+- Regular security updates
+- Best practices baked in
+- Official Docker support
+
+### Declarative Topologies
+
+Define complex network topologies in YAML:
+
+```yaml
+metadata:
+  name: p2p-3-tower
+  description: "3-node P2P federation"
+  version: "2.0"
+  tags: ["p2p", "federation", "multi-region"]
+
+network:
+  name: p2p-federation
+  subnet: "10.200.0.0/24"
+
+nodes:
+  - name: tower-sf
+    image: ubuntu
+    env:
+      REGION: san-francisco
+    network_conditions:
+      latency_ms: 5
+      packet_loss_percent: 0.1
+      bandwidth_kbps: 100000
+
+  - name: tower-ny
+    image: ubuntu
+    env:
+      REGION: new-york
+    network_conditions:
+      latency_ms: 50
+      packet_loss_percent: 0.2
+      bandwidth_kbps: 100000
+
+  - name: tower-london
+    image: ubuntu
+    env:
+      REGION: london
+    network_conditions:
+      latency_ms: 100
+      packet_loss_percent: 0.5
+      bandwidth_kbps: 50000
+```
+
+---
+
+## 🦀 Rust API
+
+### Basic Usage
+
+```rust
+use benchscale::{Lab, DockerBackend, Topology};
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    // Load topology
+    let topology = Topology::from_file("topologies/simple-lan.yaml").await?;
+    
+    // Create Docker backend
+    let backend = DockerBackend::new()?;
+    
+    // Create lab
+    let lab = Lab::create("my-lab", topology, backend).await?;
+    
+    // Deploy binary to a node
+    lab.deploy_to_node("node-1", "/path/to/binary").await?;
+    
+    // Execute command
+    let result = lab.exec_on_node(
+        "node-1",
+        vec!["./binary".to_string(), "arg1".to_string()],
+    ).await?;
+    
+    println!("Exit code: {}", result.exit_code);
+    println!("Output: {}", result.stdout);
+    
+    // Run test scenarios
+    let scenarios = vec![/* ... */];
+    let results = lab.run_tests(scenarios).await?;
+    
+    // Cleanup
+    lab.destroy().await?;
+    
+    Ok(())
+}
+```
 
 ### Test Scenarios
 
-- **p2p-coordination** - Test P2P mesh formation
-- **btsp-tunnels** - Verify BTSP tunnel establishment
-- **birdsong-encryption** - Test encrypted discovery
-- **multi-tower-discovery** - Verify cross-tower communication
-- **nat-traversal** - Test NAT hole punching
-- **lineage-gated-relay** - Verify family-based access control
-- **failure-recovery** - Test automatic failover
+```rust
+use benchscale::TestScenario;
+
+let scenario = TestScenario {
+    name: "connectivity-test".to_string(),
+    description: Some("Verify network connectivity".to_string()),
+    steps: vec![
+        TestStep {
+            name: "ping-node-2".to_string(),
+            node: "node-1".to_string(),
+            command: vec!["ping".to_string(), "-c".to_string(), "3".to_string(), "node-2".to_string()],
+            expected_exit_code: 0,
+            timeout: Some(Duration::from_secs(10)),
+        },
+    ],
+    timeout: Some(Duration::from_secs(30)),
+};
+```
 
 ---
 
-## 🧪 Network Simulation
+## 📊 Architecture
 
-Realistic network conditions:
-- **Latency**: 1ms (LAN) to 140ms (WAN)
-- **Jitter**: 5-10ms variance
-- **Packet Loss**: 0% (LAN) to 1% (WAN)
-- **Bandwidth**: 50Mbps to 1Gbps
-- **NAT**: Multiple isolated subnets
-- **Geography**: US West, US East, EU West
+```
+BiomeOS (or any Rust application)
+└── benchscale (Rust crate)
+    └── bollard (Docker API client)
+        └── Docker daemon
+            └── Containers (standard or hardened)
+```
 
----
+### Core Components
 
-## 📊 Use Cases
-
-### 1. Development Testing
-Test new BiomeOS features before production deployment.
-
-### 2. Integration Verification
-Verify P2P coordination with real network conditions:
-- BTSP tunnels across simulated WAN
-- BirdSong encryption with realistic latency
-- Multi-tower federation with geographic distribution
-
-### 3. Performance Benchmarking
-Measure real-world performance:
-- Throughput under various conditions
-- Latency with realistic delays
-- Resource utilization
-
-### 4. Security Auditing
-Test security features:
-- BTSP tunnel establishment
-- BirdSong privacy-preserving discovery
-- Lineage-gated relay access control
-
-### 5. Training & Demos
-Safe environment for learning and demonstrations.
+- **`backend/`**: Docker backend implementation using bollard
+- **`topology/`**: YAML topology parsing and validation
+- **`lab/`**: High-level lab management API
+- **`network/`**: Network simulation (tc - traffic control)
+- **`tests/`**: Test scenario runner
 
 ---
 
-## 🔧 Supported Hypervisors
+## 🔧 CLI Commands
 
-- **LXD** (Primary) - Fast, native Linux containers
-- **Docker** (Alternative) - Cross-platform containers
-- **QEMU/KVM** (Future) - Full virtualization
+```bash
+# Create a lab
+benchscale create <name> <topology-file>
+
+# Destroy a lab
+benchscale destroy <name>
+
+# List active labs
+benchscale list
+
+# Show version
+benchscale version
+```
+
+---
+
+## 📐 Topology Examples
+
+### Simple LAN (2 nodes)
+- **File**: `topologies/simple-lan.yaml`
+- **Use Case**: Basic connectivity testing
+- **Network**: Low latency, high bandwidth
+
+### P2P 3-Tower Federation
+- **File**: `topologies/p2p-3-tower.yaml`
+- **Use Case**: Multi-region P2P testing
+- **Network**: Varying latencies (SF, NY, London)
+
+### NAT Traversal (4 nodes)
+- **File**: `topologies/nat-traversal.yaml`
+- **Use Case**: P2P relay and NAT hole-punching
+- **Network**: Relay server + 3 clients behind NAT
+
+---
+
+## 🔐 Security
+
+### Hardened Images
+
+Enable hardened image support:
+
+```toml
+# Cargo.toml
+[dependencies]
+benchscale = { version = "2.0", features = ["hardened"] }
+```
+
+```rust
+// Use hardened backend
+let backend = DockerBackend::new_hardened()?;
+```
+
+Supported hardened images:
+- `ubuntu` → `docker.io/dockerhardened/ubuntu:latest`
+- `alpine` → `docker.io/dockerhardened/alpine:latest`
+- `debian` → `docker.io/dockerhardened/debian:latest`
+
+---
+
+## 🛠️ Development
+
+### Build from Source
+
+```bash
+git clone git@github.com:ecoPrimals/benchScale.git
+cd benchScale
+cargo build --release
+cargo test
+```
+
+### Run Tests
+
+```bash
+# Unit tests
+cargo test --lib
+
+# Integration tests (requires Docker)
+cargo test --test '*'
+```
 
 ---
 
 ## 📚 Documentation
 
-- **[README.md](README.md)** - This file
-- **[QUICKSTART.md](QUICKSTART.md)** - 5-minute getting started
-- **[topologies/](topologies/)** - Network topology manifests
-- **[scripts/](scripts/)** - VM management scripts
-
----
-
-## 🎯 Roadmap
-
-### Phase 1: Foundation (✅ COMPLETE)
-- ✅ Architecture design
-- ✅ Manifest format
-- ✅ VM management scripts
-- ✅ Network simulation design
-- ✅ Documentation
-
-### Phase 2: Core Features (NEXT)
-- ⏳ Automated primal startup
-- ⏳ Real test execution
-- ⏳ Monitoring and metrics
-- ⏳ Result reporting
-
-### Phase 3: Advanced (FUTURE)
-- ⏳ Chaos engineering
-- ⏳ Performance profiling
-- ⏳ Security auditing
-- ⏳ CI/CD integration
-
-### Phase 4: Extraction (FUTURE)
-- ⏳ Move to parallel repository
-- ⏳ Independent versioning
-- ⏳ Standalone documentation
+- **[API Documentation](https://docs.rs/benchscale)**: Full Rust API docs
+- **[BIOMEOS_INTEGRATION.md](BIOMEOS_INTEGRATION.md)**: BiomeOS integration guide
+- **[PRIMAL_TOOLS_ARCHITECTURE.md](PRIMAL_TOOLS_ARCHITECTURE.md)**: Architecture philosophy
+- **[QUICKSTART.md](QUICKSTART.md)**: Detailed getting started guide
 
 ---
 
 ## 🤝 Contributing
 
-benchScale is a primal tool, which means:
-- ✅ Pure Rust preferred but not required
-- ✅ Shell scripts are acceptable for VM management
-- ✅ Can hardcode test endpoints
-- ✅ Can depend on primals directly
-- ✅ Focus on functionality over sovereignty
+benchScale is part of the ecoPrimals ecosystem. Contributions are welcome!
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests
+5. Submit a pull request
 
 ---
 
-## 📜 License
+## 📄 License
 
-Part of the ecoPrimals ecosystem.
-
----
-
-## 🔗 Related Projects
-
-- **[biomeOS](https://github.com/ecoPrimals/biomeOS)** - Core orchestration substrate
-- **[Songbird](https://github.com/ecoPrimals/songbird)** - Service mesh primal
-- **[BearDog](https://github.com/ecoPrimals/beardog)** - Security primal
-- **[ToadStool](https://github.com/ecoPrimals/toadstool)** - Compute primal
+MIT OR Apache-2.0
 
 ---
 
-## 📞 Support
+## 🌟 From ecoPrimals Tool to Laboratory Substrate
 
-For issues and questions:
-- Create an issue on GitHub
-- Check the [QUICKSTART.md](QUICKSTART.md) guide
-- Review topology examples in [topologies/](topologies/)
+benchScale v2.0 represents a significant evolution:
+
+**v1.0** (Shell Scripts + LXD):
+- ❌ Shell script dependencies
+- ❌ Ubuntu/LXD-specific
+- ❌ Manual process management
+- ❌ Limited error handling
+
+**v2.0** (Pure Rust + Docker):
+- ✅ Pure Rust implementation
+- ✅ Cross-platform (Docker everywhere)
+- ✅ Type-safe API
+- ✅ Hardened image support
+- ✅ Production-ready
+
+This transformation elevates benchScale from an ecoPrimals development tool to a **universal laboratory substrate** for distributed system testing.
 
 ---
 
-**benchScale** - *Test like production, before production.* 🧪🚀
+**Built with 🦀 Rust | Powered by 🐳 Docker | Secured by 🔒 Hardened Images**
 
-**Repository:** git@github.com:ecoPrimals/benchScale.git  
-**Type:** Primal Tool  
-**Status:** Local Development Phase
+For support: dev@ecoprimals.org  
+Repository: https://github.com/ecoPrimals/benchScale

@@ -1,154 +1,53 @@
-# benchScale Topology: NAT Traversal Test
-#
-# This topology creates 4 VM nodes to test NAT traversal:
-# - Relay Node: Public relay for NAT traversal (Songbird)
-# - Client 1: Behind NAT (BearDog)
-# - Client 2: Behind NAT (ToadStool)
-# - Client 3: Behind NAT (NestGate)
-#
-# Use for testing: Lineage-gated relay, NAT traversal, P2P hole punching
-
-apiVersion: benchscale.biomeos.io/v1
-kind: LabTopology
 metadata:
   name: nat-traversal
-  description: "4-node NAT traversal test environment"
+  description: "4-node NAT traversal topology with relay and clients behind NAT"
+  version: "2.0"
   tags: ["nat", "relay", "p2p", "traversal"]
 
-spec:
-  nodes:
-    - name: relay-node
-      role: relay
-      public: true
-      
-      vm:
-        cpu: 2
-        memory: 2GB
-        disk: 20GB
-        os: ubuntu-22.04
-      
-      network:
-        ip: 192.168.100.10
-        public_ip: true
-        hostname: relay.benchscale.local
-      
-      primals:
-        - name: songbird
-          version: latest
-          port: 3000
-          config:
-            relay_enabled: true
-            public: true
-    
-    - name: client-1
-      role: client
-      behind_nat: true
-      
-      vm:
-        cpu: 1
-        memory: 1GB
-        disk: 20GB
-        os: ubuntu-22.04
-      
-      network:
-        ip: 192.168.101.10  # Different subnet (NAT'd)
-        nat_gateway: 192.168.100.10
-        hostname: client-1.benchscale.local
-      
-      primals:
-        - name: beardog
-          version: latest
-          port: 9000
-          config:
-            relay_server: "relay-node:3000"
-    
-    - name: client-2
-      role: client
-      behind_nat: true
-      
-      vm:
-        cpu: 1
-        memory: 1GB
-        disk: 20GB
-        os: ubuntu-22.04
-      
-      network:
-        ip: 192.168.102.10  # Different subnet (NAT'd)
-        nat_gateway: 192.168.100.10
-        hostname: client-2.benchscale.local
-      
-      primals:
-        - name: toadstool
-          version: latest
-          port: 8080
-          config:
-            relay_server: "relay-node:3000"
-    
-    - name: client-3
-      role: client
-      behind_nat: true
-      
-      vm:
-        cpu: 1
-        memory: 1GB
-        disk: 20GB
-        os: ubuntu-22.04
-      
-      network:
-        ip: 192.168.103.10  # Different subnet (NAT'd)
-        nat_gateway: 192.168.100.10
-        hostname: client-3.benchscale.local
-      
-      primals:
-        - name: nestgate
-          version: latest
-          port: 5000
-          config:
-            relay_server: "relay-node:3000"
-  
-  network:
-    topology: star  # All clients connect through relay
-    subnet: 192.168.100.0/24
-    
-    links:
-      # Relay has public access
-      - from: relay-node
-        to: internet
-        latency: 10ms
-        bandwidth: 1Gbps
-      
-      # Clients are behind NAT
-      - from: client-1
-        to: relay-node
-        latency: 5ms
-        bandwidth: 100Mbps
-        nat: true
-      
-      - from: client-2
-        to: relay-node
-        latency: 5ms
-        bandwidth: 100Mbps
-        nat: true
-      
-      - from: client-3
-        to: relay-node
-        latency: 5ms
-        bandwidth: 100Mbps
-        nat: true
-  
-  tests:
-    - name: nat-discovery
-      type: integration
-      description: "Verify clients can discover each other through relay"
-      duration: 5m
-    
-    - name: lineage-gated-relay
-      type: security
-      description: "Test lineage-based relay access control"
-      duration: 5m
-    
-    - name: p2p-hole-punching
-      type: network
-      description: "Test P2P hole punching through NAT"
-      duration: 10m
+network:
+  name: benchscale-nat-traversal
+  subnet: "10.300.0.0/24"
 
+nodes:
+  - name: relay-server
+    image: ubuntu
+    env:
+      ROLE: relay
+      PUBLIC_IP: "true"
+    network_conditions:
+      latency_ms: 10
+      packet_loss_percent: 0.1
+      bandwidth_kbps: 500000  # 500 Mbps
+
+  - name: client-1-behind-nat
+    image: ubuntu
+    env:
+      ROLE: client
+      BEHIND_NAT: "true"
+      CLIENT_ID: "1"
+    network_conditions:
+      latency_ms: 30
+      packet_loss_percent: 0.5
+      bandwidth_kbps: 50000  # 50 Mbps
+
+  - name: client-2-behind-nat
+    image: ubuntu
+    env:
+      ROLE: client
+      BEHIND_NAT: "true"
+      CLIENT_ID: "2"
+    network_conditions:
+      latency_ms: 40
+      packet_loss_percent: 1.0
+      bandwidth_kbps: 30000  # 30 Mbps
+
+  - name: client-3-behind-nat
+    image: ubuntu
+    env:
+      ROLE: client
+      BEHIND_NAT: "true"
+      CLIENT_ID: "3"
+    network_conditions:
+      latency_ms: 50
+      packet_loss_percent: 2.0
+      bandwidth_kbps: 20000  # 20 Mbps

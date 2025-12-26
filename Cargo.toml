@@ -1,0 +1,59 @@
+[package]
+name = "benchscale"
+version = "2.0.0"
+edition = "2021"
+authors = ["ecoPrimals <dev@ecoprimals.org>"]
+license = "MIT OR Apache-2.0"
+description = "A pure Rust laboratory substrate for distributed system testing"
+repository = "https://github.com/ecoPrimals/benchScale"
+keywords = ["testing", "distributed", "docker", "containers", "laboratory"]
+categories = ["development-tools::testing", "network-programming"]
+
+[workspace]
+# This is a separate workspace from biomeOS
+
+[dependencies]
+# Docker API client (pure Rust)
+bollard = "0.17"
+
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+async-trait = "0.1"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
+serde_json = "1.0"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Network utilities
+ipnetwork = "0.20"
+
+# Utilities
+uuid = { version = "1.6", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+futures-util = "0.3"
+tar = "0.4"
+
+[dev-dependencies]
+tokio-test = "0.4"
+
+[lib]
+name = "benchscale"
+path = "src/lib.rs"
+
+[[bin]]
+name = "benchscale"
+path = "src/bin/main.rs"
+
+[features]
+default = ["docker"]
+docker = []
+hardened = []  # Use Docker hardened images
