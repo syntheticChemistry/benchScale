@@ -1,0 +1,222 @@
+# benchScale Topology: NUC Real Deployment Validation
+# Purpose: Test BiomeOS coordination across physical machines
+# NUC + VMs on different physical machines
+
+name: nuc-validation
+description: Real deployment validation with NUC + cross-machine VMs
+
+nodes:
+  # Node 1: Expects NUC physical hardware
+  # This node is NOT created by benchScale - it's your actual NUC
+  - name: nuc
+    role: physical-hardware
+    comment: |
+      This is your NUC booted from USB. benchScale won't create this.
+      Expected IP: 192.168.1.100 (or DHCP)
+      Boot: BiomeOS Alpine USB
+    services:
+      - beardog:9000
+      - songbird:8000
+    network:
+      expected_ip: "192.168.1.100"
+      discovery: mdns
+      
+  # Node 2: VM on workstation (different physical machine from NUC)
+  - name: workstation-vm
+    image: "biomeos/test:latest"
+    role: primal-node
+    comment: |
+      VM running on your workstation.
+      This MUST be on a different physical machine than where you run benchScale.
+      Expected: Same LAN as NUC (192.168.1.x)
+    services:
+      - beardog:9000
+      - songbird:8000
+    env:
+      BIOMEOS_NODE_NAME: "workstation-vm"
+      BIOMEOS_DISCOVERY_MODE: "mdns"
+    network_conditions:
+      latency: "5ms"  # Realistic LAN latency
+      
+  # Node 3: VM on laptop (optional third machine)
+  - name: laptop-vm
+    image: "biomeos/test:latest"
+    role: primal-node
+    comment: |
+      VM running on your laptop (optional).
+      Third physical machine for more realistic mesh testing.
+      Expected: Same LAN as NUC (192.168.1.x)
+    services:
+      - beardog:9000
+      - songbird:8000
+    env:
+      BIOMEOS_NODE_NAME: "laptop-vm"
+      BIOMEOS_DISCOVERY_MODE: "mdns"
+    network_conditions:
+      latency: "10ms"  # Slightly higher for WiFi
+
+network:
+  type: bridged
+  comment: |
+    Use bridged networking so VMs appear on same LAN as NUC.
+    This allows real mDNS discovery across physical machines.
+  subnet: "192.168.1.0/24"
+  gateway: "192.168.1.1"
+
+tests:
+  - name: "Discovery Across Physical Machines"
+    description: "Verify NUC can discover VMs on different machines via mDNS"
+    steps:
+      - action: wait_for_discovery
+        timeout: 30s
+        expected_nodes: 3
+        
+  - name: "BTSP Tunnel - NUC to Workstation VM"
+    description: "Establish encrypted tunnel across physical machines"
+    steps:
+      - action: create_tunnel
+        from: nuc
+        to: workstation-vm
+        protocol: btsp
+        expected_status: established
+        
+  - name: "BTSP Tunnel - NUC to Laptop VM"
+    description: "Establish second tunnel to third machine"
+    steps:
+      - action: create_tunnel
+        from: nuc
+        to: laptop-vm
+        protocol: btsp
+        expected_status: established
+        
+  - name: "P2P Mesh Health Check"
+    description: "Verify all nodes healthy across physical network"
+    steps:
+      - action: health_check
+        nodes: [nuc, workstation-vm, laptop-vm]
+        expected_status: healthy
+        
+  - name: "BirdSong Encrypted Discovery"
+    description: "Test encrypted service discovery across machines"
+    steps:
+      - action: broadcast_discovery
+        from: nuc
+        encryption: birdsong
+        expected_recipients: 2
+
+validation:
+  success_criteria:
+    - "NUC boots from USB"
+    - "NUC gets IP on LAN (DHCP or static)"
+    - "NUC discovers VMs on different physical machines"
+    - "BTSP tunnels work across real network"
+    - "P2P coordination succeeds (not localhost)"
+    - "Can wipe NUC and test different topology"
+    
+  failure_indicators:
+    - "NUC doesn't boot"
+    - "Network configuration fails"
+    - "mDNS doesn't work across machines"
+    - "BTSP tunnels fail to establish"
+    - "Only localhost connectivity works"
+
+deployment_instructions: |
+  # Real Deployment Validation - Step by Step
+  
+  ## Prerequisites
+  1. NUC with BiomeOS USB (created via create-alpine-biomeos-usb.sh)
+  2. Workstation on same LAN
+  3. Laptop on same LAN (optional)
+  4. All machines on same network (e.g., 192.168.1.x)
+  
+  ## Step 1: Create VMs on Workstation
+  ```bash
+  # On workstation (NOT where NUC is)
+  cd ../benchscale
+  cargo run -- create nuc-test topologies/nuc-validation.yaml
+  ```
+  
+  ## Step 2: Boot NUC from USB
+  ```bash
+  # Physical action: Insert USB into NUC, boot
+  # NUC should:
+  # 1. Boot Alpine Linux
+  # 2. Initialize BiomeOS
+  # 3. Get IP on LAN (check with: ip addr)
+  ```
+  
+  ## Step 3: Configure NUC Network (if needed)
+  ```bash
+  # On NUC console:
+  # DHCP (automatic):
+  setup-interfaces
+  
+  # Or static IP:
+  ifconfig eth0 192.168.1.100 netmask 255.255.255.0
+  route add default gw 192.168.1.1
+  echo "nameserver 8.8.8.8" > /etc/resolv.conf
+  ```
+  
+  ## Step 4: Start BiomeOS on NUC
+  ```bash
+  # On NUC:
+  cd /media/usb/biomeos
+  ./biomeos-init.sh
+  ```
+  
+  ## Step 5: Discover VMs from NUC
+  ```bash
+  # On NUC:
+  biomeos-cli discover --network
+  # Should show: workstation-vm, laptop-vm
+  ```
+  
+  ## Step 6: Test P2P Coordination
+  ```bash
+  # On NUC:
+  biomeos-cli p2p test --remote-nodes
+  # Should establish BTSP tunnels to VMs on other machines
+  ```
+  
+  ## Step 7: Validate Cross-Machine Mesh
+  ```bash
+  # On NUC:
+  biomeos-cli mesh status
+  # Should show: All nodes connected across physical network
+  ```
+  
+  ## Success Indicators
+  - ✅ NUC boots and gets IP
+  - ✅ NUC discovers VMs (not on localhost!)
+  - ✅ BTSP tunnels work across machines
+  - ✅ P2P mesh coordinates
+  - ✅ All health checks pass
+  
+  ## Failure Debugging
+  - ❌ NUC doesn't discover VMs: Check mDNS/firewall
+  - ❌ Tunnels fail: Check network connectivity, ping VMs
+  - ❌ Health checks fail: Check primal services running
+  
+  ## Wipe & Rebuild Test
+  ```bash
+  # Test 1: Home network (192.168.1.x)
+  # Record results
+  
+  # Reboot NUC (just power cycle!)
+  
+  # Test 2: Lab network (10.0.0.x)
+  # Reconfigure network, repeat tests
+  # Compare results
+  ```
+  
+  ## What This Proves
+  When NUC successfully coordinates with VMs on different physical machines,
+  you've proven BiomeOS is a REAL deployment platform, not just localhost code!
+
+notes:
+  - This topology is designed for REAL HARDWARE validation
+  - NUC is physical, VMs are on other machines
+  - Not localhost - actual cross-machine networking
+  - Wipe & rebuild testing is easy (just reboot NUC)
+  - Multiple network topologies can be tested quickly
+
