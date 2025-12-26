@@ -1,0 +1,50 @@
+metadata:
+  name: biomeos-p2p-test
+  description: "3-node topology for testing BiomeOS P2P coordination (BTSP tunnels)"
+  version: "2.0"
+  tags: ["biomeos", "p2p", "btsp", "test"]
+
+network:
+  name: biomeos-p2p-test
+  subnet: "10.50.0.0/24"
+
+nodes:
+  # Node 1: BearDog + Songbird (Security + Discovery)
+  - name: node-1-beardog-songbird
+    image: ubuntu
+    env:
+      ROLE: security-discovery
+      NODE_ID: "1"
+      BEARDOG_PORT: "9001"
+      SONGBIRD_PORT: "8001"
+    network_conditions:
+      latency_ms: 5
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 100000
+
+  # Node 2: BearDog + Songbird (Security + Discovery)
+  - name: node-2-beardog-songbird
+    image: ubuntu
+    env:
+      ROLE: security-discovery
+      NODE_ID: "2"
+      BEARDOG_PORT: "9002"
+      SONGBIRD_PORT: "8002"
+    network_conditions:
+      latency_ms: 50
+      packet_loss_percent: 0.5
+      bandwidth_kbps: 50000
+
+  # Node 3: BearDog + Songbird (Behind NAT simulation)
+  - name: node-3-behind-nat
+    image: ubuntu
+    env:
+      ROLE: security-discovery
+      NODE_ID: "3"
+      BEHIND_NAT: "true"
+      BEARDOG_PORT: "9003"
+      SONGBIRD_PORT: "8003"
+    network_conditions:
+      latency_ms: 100
+      packet_loss_percent: 1.0
+      bandwidth_kbps: 20000
