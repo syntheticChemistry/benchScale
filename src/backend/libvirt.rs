@@ -29,8 +29,9 @@ use crate::Result;
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::Mutex;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 
 #[cfg(feature = "libvirt")]
 use virt::connect::Connect;
@@ -282,29 +283,6 @@ impl Backend for LibvirtBackend {
         })
     }
 
-    /// Wait for VM to get an IP address from DHCP
-    async fn wait_for_ip(&self, vm_name: &str, timeout: Duration) -> Result<String> {
-        use tokio::time::interval;
-
-        let start = std::time::Instant::now();
-        let mut check_interval = interval(Duration::from_secs(2));
-
-        loop {
-            if start.elapsed() > timeout {
-                return Err(crate::Error::Backend(format!(
-                    "Timeout waiting for IP address for VM {}",
-                    vm_name
-                )));
-            }
-
-            check_interval.tick().await;
-
-            if let Ok(ip) = self.get_vm_ip_by_name(vm_name).await {
-                return Ok(ip);
-            }
-        }
-    }
-
     async fn start_node(&self, node_id: &str) -> Result<()> {
         info!("Starting VM: {}", node_id);
 
@@ -443,9 +421,9 @@ impl Backend for LibvirtBackend {
         // Connect via SSH
         let mut ssh = SshClient::connect(
             &ip,
-            22,
-            &self.ssh_user,
-            self.ssh_password.as_deref().unwrap_or(""),
+            self.config.ssh.port,
+            &self.config.ssh.default_user,
+            "", // Use key-based auth
         )
         .await?;
 
@@ -474,9 +452,9 @@ impl Backend for LibvirtBackend {
         // Connect via SSH
         let mut ssh = SshClient::connect(
             &ip,
-            22,
-            &self.ssh_user,
-            self.ssh_password.as_deref().unwrap_or(""),
+            self.config.ssh.port,
+            &self.config.ssh.default_user,
+            "", // Use key-based auth
         )
         .await?;
 
@@ -524,6 +502,32 @@ impl Backend for LibvirtBackend {
     async fn is_available(&self) -> Result<bool> {
         let conn = self.conn.lock().await;
         Ok(conn.is_alive().unwrap_or(false))
+    }
+}
+
+#[cfg(feature = "libvirt")]
+impl LibvirtBackend {
+    /// Wait for VM to get an IP address from DHCP
+    async fn wait_for_ip(&self, vm_name: &str, timeout: Duration) -> Result<String> {
+        use tokio::time::interval;
+
+        let start = std::time::Instant::now();
+        let mut check_interval = interval(Duration::from_secs(2));
+
+        loop {
+            if start.elapsed() > timeout {
+                return Err(crate::Error::Backend(format!(
+                    "Timeout waiting for IP address for VM {}",
+                    vm_name
+                )));
+            }
+
+            check_interval.tick().await;
+
+            if let Ok(ip) = self.get_vm_ip_by_name(vm_name).await {
+                return Ok(ip);
+            }
+        }
     }
 }
 
