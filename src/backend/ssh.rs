@@ -5,7 +5,6 @@
 use crate::{Error, Result};
 use russh::client::AuthResult;
 use russh::*;
-use russh_keys::*;
 use std::sync::Arc;
 use tracing::{debug, info};
 
@@ -32,12 +31,7 @@ impl client::Handler for ClientHandler {
 
 impl SshClient {
     /// Connect to a VM via SSH using password authentication
-    pub async fn connect(
-        ip: &str,
-        port: u16,
-        user: &str,
-        password: &str,
-    ) -> Result<Self> {
+    pub async fn connect(ip: &str, port: u16, user: &str, password: &str) -> Result<Self> {
         info!("Connecting to SSH: {}@{}:{}", user, ip, port);
 
         let config = client::Config {
@@ -45,15 +39,14 @@ impl SshClient {
             ..<client::Config as Default>::default()
         };
 
-        let mut session = client::connect(
-            Arc::new(config),
-            (ip, port),
-            ClientHandler,
-        ).await
+        let mut session = client::connect(Arc::new(config), (ip, port), ClientHandler)
+            .await
             .map_err(|e| Error::Backend(format!("SSH connection failed: {}", e)))?;
 
         // Authenticate with password
-        let auth_res = session.authenticate_password(user, password).await
+        let auth_res = session
+            .authenticate_password(user, password)
+            .await
             .map_err(|e| Error::Backend(format!("SSH authentication failed: {}", e)))?;
 
         // Check authentication result
@@ -62,7 +55,10 @@ impl SshClient {
                 info!("SSH authentication successful");
             }
             _ => {
-                return Err(Error::Backend(format!("SSH authentication failed: {:?}", auth_res)));
+                return Err(Error::Backend(format!(
+                    "SSH authentication failed: {:?}",
+                    auth_res
+                )));
             }
         }
 
@@ -79,10 +75,15 @@ impl SshClient {
         let cmd = command.join(" ");
         debug!("Executing SSH command: {}", cmd);
 
-        let mut channel = self.session.channel_open_session().await
+        let mut channel = self
+            .session
+            .channel_open_session()
+            .await
             .map_err(|e| Error::Backend(format!("Failed to open SSH channel: {}", e)))?;
 
-        channel.exec(true, cmd).await
+        channel
+            .exec(true, cmd)
+            .await
             .map_err(|e| Error::Backend(format!("Failed to execute command: {}", e)))?;
 
         let mut stdout = Vec::new();
@@ -91,7 +92,7 @@ impl SshClient {
 
         loop {
             let msg = channel.wait().await;
-            
+
             match msg {
                 Some(ChannelMsg::Data { ref data }) => {
                     stdout.extend_from_slice(data);
@@ -112,10 +113,14 @@ impl SshClient {
             }
         }
 
-        channel.eof().await
+        channel
+            .eof()
+            .await
             .map_err(|e| Error::Backend(format!("Failed to send EOF: {}", e)))?;
 
-        channel.close().await
+        channel
+            .close()
+            .await
             .map_err(|e| Error::Backend(format!("Failed to close channel: {}", e)))?;
 
         let stdout_str = String::from_utf8_lossy(&stdout).to_string();
@@ -137,14 +142,20 @@ impl SshClient {
         info!("Copying {} to {}:{}", local_path, self.ip, remote_path);
 
         // Open SFTP channel
-        let channel = self.session.channel_open_session().await
+        let channel = self
+            .session
+            .channel_open_session()
+            .await
             .map_err(|e| Error::Backend(format!("Failed to open SFTP channel: {}", e)))?;
 
-        channel.request_subsystem(true, "sftp").await
+        channel
+            .request_subsystem(true, "sftp")
+            .await
             .map_err(|e| Error::Backend(format!("Failed to request SFTP subsystem: {}", e)))?;
 
         // Read local file
-        let data = tokio::fs::read(local_path).await
+        let data = tokio::fs::read(local_path)
+            .await
             .map_err(|e| Error::Backend(format!("Failed to read local file: {}", e)))?;
 
         // For now, fall back to scp-like approach via shell
@@ -152,15 +163,18 @@ impl SshClient {
         drop(channel);
 
         // Use scp via ssh command as workaround
-        let temp_path = format!("/tmp/{}", std::path::Path::new(local_path)
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("file"));
+        let temp_path = format!(
+            "/tmp/{}",
+            std::path::Path::new(local_path)
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("file")
+        );
 
         // Create file with content via shell
         let base64_data = base64::encode(&data);
         let create_cmd = format!("echo '{}' | base64 -d > {}", base64_data, temp_path);
-        
+
         self.execute(&vec![create_cmd]).await?;
 
         // Move to final location (might need sudo)
@@ -173,7 +187,9 @@ impl SshClient {
 
     /// Disconnect SSH session
     pub async fn disconnect(self) -> Result<()> {
-        self.session.disconnect(Disconnect::ByApplication, "", "en").await
+        self.session
+            .disconnect(Disconnect::ByApplication, "", "en")
+            .await
             .map_err(|e| Error::Backend(format!("Failed to disconnect: {}", e)))?;
         Ok(())
     }
@@ -187,4 +203,3 @@ mod base64 {
         BASE64.encode(data)
     }
 }
-

@@ -41,6 +41,8 @@ uuid = { version = "1.6", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 futures-util = "0.3"
 tar = "0.4"
+toml = "0.8"
+dirs = "5.0"
 
 # SSH client (for libvirt backend)
 russh = { version = "0.56", optional = true }

@@ -60,4 +60,3 @@ impl From<&str> for Error {
         Error::Other(s.to_string())
     }
 }
-

@@ -1,5 +1,8 @@
 //! Lab management and high-level API
 
+pub mod registry;
+pub use registry::{LabMetadata, LabRegistry};
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -13,7 +16,7 @@ use crate::topology::Topology;
 use crate::{Error, Result};
 
 /// Lab status
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum LabStatus {
     /// Lab is being created
     Creating,
@@ -53,7 +56,7 @@ impl Lab {
     ) -> Result<Self> {
         let name = name.into();
         let id = Uuid::new_v4().to_string();
-        
+
         info!("Creating lab: {} (id: {})", name, id);
 
         // Validate topology
@@ -110,11 +113,11 @@ impl Lab {
     /// Create the lab network
     async fn create_network(&self) -> Result<()> {
         info!("Creating network: {}", self.topology.network.name);
-        
-        let network_info = self.backend.create_network(
-            &self.topology.network.name,
-            &self.topology.network.subnet,
-        ).await?;
+
+        let network_info = self
+            .backend
+            .create_network(&self.topology.network.name, &self.topology.network.subnet)
+            .await?;
 
         let mut state = self.state.write().await;
         state.network_id = Some(network_info.id);
@@ -125,16 +128,19 @@ impl Lab {
     /// Create all nodes in the topology
     async fn create_nodes(&self) -> Result<()> {
         let network_name = &self.topology.network.name;
-        
+
         for node_config in &self.topology.nodes {
             info!("Creating node: {}", node_config.name);
-            
-            let node_info = self.backend.create_node(
-                &node_config.name,
-                &node_config.image,
-                network_name,
-                node_config.env.clone(),
-            ).await?;
+
+            let node_info = self
+                .backend
+                .create_node(
+                    &node_config.name,
+                    &node_config.image,
+                    network_name,
+                    node_config.env.clone(),
+                )
+                .await?;
 
             let mut state = self.state.write().await;
             state.nodes.insert(node_config.name.clone(), node_info);
@@ -151,11 +157,9 @@ impl Lab {
         for (node_name, node_info) in &state.nodes {
             if let Some(conditions) = self.topology.get_node_conditions(node_name) {
                 info!("Applying network conditions to node: {}", node_name);
-                simulator.apply_conditions(
-                    self.backend.clone(),
-                    &node_info.container_id,
-                    &conditions,
-                ).await?;
+                simulator
+                    .apply_conditions(self.backend.clone(), &node_info.container_id, &conditions)
+                    .await?;
             }
         }
 
@@ -167,14 +171,14 @@ impl Lab {
         info!("Deploying {} to node {}", binary_path, node_name);
 
         let state = self.state.read().await;
-        let node_info = state.nodes.get(node_name)
+        let node_info = state
+            .nodes
+            .get(node_name)
             .ok_or_else(|| Error::Lab(format!("Node not found: {}", node_name)))?;
 
-        self.backend.copy_to_node(
-            &node_info.container_id,
-            binary_path,
-            "/usr/local/bin/",
-        ).await?;
+        self.backend
+            .copy_to_node(&node_info.container_id, binary_path, "/usr/local/bin/")
+            .await?;
 
         Ok(())
     }
@@ -186,10 +190,14 @@ impl Lab {
         command: Vec<String>,
     ) -> Result<crate::backend::ExecResult> {
         let state = self.state.read().await;
-        let node_info = state.nodes.get(node_name)
+        let node_info = state
+            .nodes
+            .get(node_name)
             .ok_or_else(|| Error::Lab(format!("Node not found: {}", node_name)))?;
 
-        self.backend.exec_command(&node_info.container_id, command).await
+        self.backend
+            .exec_command(&node_info.container_id, command)
+            .await
     }
 
     /// Run test scenarios in the lab
@@ -203,7 +211,9 @@ impl Lab {
 
         // Build node name -> container ID map
         let state = self.state.read().await;
-        let lab_nodes: HashMap<String, String> = state.nodes.iter()
+        let lab_nodes: HashMap<String, String> = state
+            .nodes
+            .iter()
             .map(|(name, info)| (name.clone(), info.container_id.clone()))
             .collect();
 
@@ -263,7 +273,11 @@ impl Lab {
         }
 
         // Delete network
-        if let Err(e) = self.backend.delete_network(&self.topology.network.name).await {
+        if let Err(e) = self
+            .backend
+            .delete_network(&self.topology.network.name)
+            .await
+        {
             warn!("Failed to delete network: {}", e);
         }
 
@@ -281,7 +295,9 @@ impl Lab {
     /// Get logs from a node
     pub async fn get_logs(&self, node_name: &str) -> Result<String> {
         let state = self.state.read().await;
-        let node_info = state.nodes.get(node_name)
+        let node_info = state
+            .nodes
+            .get(node_name)
             .ok_or_else(|| Error::Lab(format!("Node not found: {}", node_name)))?;
 
         self.backend.get_logs(&node_info.container_id).await
@@ -296,9 +312,7 @@ pub struct LabHandle {
 impl LabHandle {
     /// Create a new lab handle
     pub fn new(lab: Lab) -> Self {
-        Self {
-            lab: Arc::new(lab),
-        }
+        Self { lab: Arc::new(lab) }
     }
 
     /// Get the lab
@@ -330,4 +344,3 @@ mod tests {
         assert_ne!(LabStatus::Creating, LabStatus::Running);
     }
 }
-

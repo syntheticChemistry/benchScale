@@ -101,9 +101,11 @@ impl TestRunner {
         lab_nodes: &HashMap<String, String>, // node_name -> container_id
     ) -> Vec<TestResult> {
         let mut results = Vec::new();
-        
+
         for scenario in &self.scenarios {
-            let result = self.run_scenario(backend.clone(), lab_nodes, scenario).await;
+            let result = self
+                .run_scenario(backend.clone(), lab_nodes, scenario)
+                .await;
             results.push(result);
         }
 
@@ -124,7 +126,7 @@ impl TestRunner {
 
         for step in &scenario.steps {
             let step_start = std::time::Instant::now();
-            
+
             // Find node container ID
             let container_id = match lab_nodes.get(&step.node) {
                 Some(id) => id,
@@ -136,7 +138,10 @@ impl TestRunner {
             };
 
             // Execute command
-            match backend.exec_command(container_id, step.command.clone()).await {
+            match backend
+                .exec_command(container_id, step.command.clone())
+                .await
+            {
                 Ok(exec_result) => {
                     let step_success = exec_result.exit_code == step.expected_exit_code;
                     if !step_success {
@@ -228,15 +233,18 @@ mod tests {
         let scenario = TestScenario {
             name: "ping-test".to_string(),
             description: Some("Test network connectivity".to_string()),
-            steps: vec![
-                TestStep {
-                    name: "ping-node-2".to_string(),
-                    node: "node-1".to_string(),
-                    command: vec!["ping".to_string(), "-c".to_string(), "3".to_string(), "node-2".to_string()],
-                    expected_exit_code: 0,
-                    timeout: Some(Duration::from_secs(10)),
-                },
-            ],
+            steps: vec![TestStep {
+                name: "ping-node-2".to_string(),
+                node: "node-1".to_string(),
+                command: vec![
+                    "ping".to_string(),
+                    "-c".to_string(),
+                    "3".to_string(),
+                    "node-2".to_string(),
+                ],
+                expected_exit_code: 0,
+                timeout: Some(Duration::from_secs(10)),
+            }],
             timeout: Some(Duration::from_secs(30)),
         };
 
@@ -244,4 +252,3 @@ mod tests {
         assert_eq!(scenario.steps.len(), 1);
     }
 }
-

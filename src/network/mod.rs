@@ -18,12 +18,14 @@ impl NetworkSimulator {
         node_id: &str,
         conditions: &NetworkConditions,
     ) -> crate::Result<()> {
-        backend.apply_network_conditions(
-            node_id,
-            conditions.latency_ms,
-            conditions.packet_loss_percent,
-            conditions.bandwidth_kbps,
-        ).await
+        backend
+            .apply_network_conditions(
+                node_id,
+                conditions.latency_ms,
+                conditions.packet_loss_percent,
+                conditions.bandwidth_kbps,
+            )
+            .await
     }
 
     /// Simulate LAN conditions (low latency, no loss)
@@ -97,4 +99,3 @@ mod tests {
         assert!(slow.packet_loss_percent.unwrap() > 1.0);
     }
 }
-

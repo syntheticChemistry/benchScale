@@ -17,6 +17,18 @@ pub use libvirt::LibvirtBackend;
 #[cfg(feature = "libvirt")]
 pub mod ssh;
 
+#[cfg(feature = "libvirt")]
+pub mod vm_utils;
+
+#[cfg(feature = "libvirt")]
+pub mod serial_console;
+
+#[cfg(feature = "libvirt")]
+pub mod health;
+
+#[cfg(feature = "libvirt")]
+pub use health::{HealthCheck, HealthMonitor, HealthStatus};
+
 /// Information about a running container/node
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NodeInfo {
@@ -66,11 +78,7 @@ pub struct NetworkInfo {
 #[async_trait]
 pub trait Backend: Send + Sync {
     /// Create a new network
-    async fn create_network(
-        &self,
-        name: &str,
-        subnet: &str,
-    ) -> Result<NetworkInfo>;
+    async fn create_network(&self, name: &str, subnet: &str) -> Result<NetworkInfo>;
 
     /// Delete a network
     async fn delete_network(&self, name: &str) -> Result<()>;
@@ -100,19 +108,10 @@ pub trait Backend: Send + Sync {
     async fn list_nodes(&self, network: &str) -> Result<Vec<NodeInfo>>;
 
     /// Execute a command in a node
-    async fn exec_command(
-        &self,
-        node_id: &str,
-        command: Vec<String>,
-    ) -> Result<ExecResult>;
+    async fn exec_command(&self, node_id: &str, command: Vec<String>) -> Result<ExecResult>;
 
     /// Copy file to node
-    async fn copy_to_node(
-        &self,
-        node_id: &str,
-        src_path: &str,
-        dest_path: &str,
-    ) -> Result<()>;
+    async fn copy_to_node(&self, node_id: &str, src_path: &str, dest_path: &str) -> Result<()>;
 
     /// Get logs from a node
     async fn get_logs(&self, node_id: &str) -> Result<String>;
@@ -147,4 +146,3 @@ impl ExecResult {
         self.exit_code == 0
     }
 }
-

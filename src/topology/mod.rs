@@ -113,7 +113,8 @@ impl Topology {
 
     /// Parse topology from YAML string
     pub fn from_yaml(yaml: &str) -> Result<Self> {
-        serde_yaml::from_str(yaml).map_err(|e| Error::Topology(format!("Failed to parse topology: {}", e)))
+        serde_yaml::from_str(yaml)
+            .map_err(|e| Error::Topology(format!("Failed to parse topology: {}", e)))
     }
 
     /// Save topology to a YAML file
@@ -125,21 +126,28 @@ impl Topology {
 
     /// Convert topology to YAML string
     pub fn to_yaml(&self) -> Result<String> {
-        serde_yaml::to_string(self).map_err(|e| Error::Topology(format!("Failed to serialize topology: {}", e)))
+        serde_yaml::to_string(self)
+            .map_err(|e| Error::Topology(format!("Failed to serialize topology: {}", e)))
     }
 
     /// Validate topology configuration
     pub fn validate(&self) -> Result<()> {
         // Check network subnet is valid CIDR
         if !self.network.subnet.contains('/') {
-            return Err(Error::Topology(format!("Invalid subnet CIDR: {}", self.network.subnet)));
+            return Err(Error::Topology(format!(
+                "Invalid subnet CIDR: {}",
+                self.network.subnet
+            )));
         }
 
         // Check all nodes have unique names
         let mut names = std::collections::HashSet::new();
         for node in &self.nodes {
             if !names.insert(&node.name) {
-                return Err(Error::Topology(format!("Duplicate node name: {}", node.name)));
+                return Err(Error::Topology(format!(
+                    "Duplicate node name: {}",
+                    node.name
+                )));
             }
         }
 
@@ -165,12 +173,12 @@ impl Topology {
 
     /// Get effective network conditions for a node
     pub fn get_node_conditions(&self, node_name: &str) -> Option<NetworkConditions> {
-        self.get_node(node_name)
-            .and_then(|node| {
-                // Node-specific conditions override network-level
-                node.network_conditions.clone()
-                    .or_else(|| self.network.conditions.clone())
-            })
+        self.get_node(node_name).and_then(|node| {
+            // Node-specific conditions override network-level
+            node.network_conditions
+                .clone()
+                .or_else(|| self.network.conditions.clone())
+        })
     }
 }
 
@@ -189,19 +197,23 @@ impl TopologyConfig {
                 subnet: self.network_subnet,
                 conditions: None,
             },
-            nodes: self.nodes.iter().map(|node| NodeConfig {
-                name: node.name.clone(),
-                image: node.image.clone(),
-                env: HashMap::new(),
-                ports: vec![],
-                volumes: vec![],
-                network_conditions: Some(NetworkConditions {
-                    latency_ms: node.latency_ms,
-                    packet_loss_percent: node.packet_loss_percent,
-                    bandwidth_kbps: node.bandwidth_kbps,
-                }),
-                metadata: HashMap::new(),
-            }).collect(),
+            nodes: self
+                .nodes
+                .iter()
+                .map(|node| NodeConfig {
+                    name: node.name.clone(),
+                    image: node.image.clone(),
+                    env: HashMap::new(),
+                    ports: vec![],
+                    volumes: vec![],
+                    network_conditions: Some(NetworkConditions {
+                        latency_ms: node.latency_ms,
+                        packet_loss_percent: node.packet_loss_percent,
+                        bandwidth_kbps: node.bandwidth_kbps,
+                    }),
+                    metadata: HashMap::new(),
+                })
+                .collect(),
         }
     }
 }
@@ -210,13 +222,19 @@ impl TopologyConfig {
 fn validate_network_conditions(conditions: &NetworkConditions) -> Result<()> {
     if let Some(packet_loss) = conditions.packet_loss_percent {
         if !(0.0..=100.0).contains(&packet_loss) {
-            return Err(Error::Topology(format!("Packet loss must be between 0 and 100, got: {}", packet_loss)));
+            return Err(Error::Topology(format!(
+                "Packet loss must be between 0 and 100, got: {}",
+                packet_loss
+            )));
         }
     }
 
     if let Some(latency) = conditions.latency_ms {
         if latency > 10000 {
-            return Err(Error::Topology(format!("Latency must be <= 10000ms, got: {}", latency)));
+            return Err(Error::Topology(format!(
+                "Latency must be <= 10000ms, got: {}",
+                latency
+            )));
         }
     }
 
@@ -308,4 +326,3 @@ nodes:
         assert!(topology.validate().is_err());
     }
 }
-

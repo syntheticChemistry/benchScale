@@ -40,6 +40,7 @@
 #![warn(missing_docs)]
 
 pub mod backend;
+pub mod config;
 pub mod error;
 pub mod lab;
 pub mod network;
@@ -48,8 +49,9 @@ pub mod topology;
 
 // Re-exports
 pub use backend::{Backend, DockerBackend};
+pub use config::Config;
 pub use error::{Error, Result};
-pub use lab::{Lab, LabHandle, LabStatus};
+pub use lab::{Lab, LabHandle, LabMetadata, LabRegistry, LabStatus};
 pub use network::{NetworkConditions, NetworkSimulator};
 pub use tests::{TestResult, TestRunner, TestScenario};
 pub use topology::{NodeConfig, Topology, TopologyConfig};
@@ -66,4 +68,3 @@ pub fn init() {
         )
         .init();
 }
-
