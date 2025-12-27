@@ -12,6 +12,10 @@ pub enum Error {
     #[error("Docker error: {0}")]
     Docker(#[from] bollard::errors::Error),
 
+    /// Backend operation errors
+    #[error("Backend error: {0}")]
+    Backend(String),
+
     /// Topology parsing errors
     #[error("Topology error: {0}")]
     Topology(String),

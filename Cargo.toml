@@ -42,6 +42,11 @@ chrono = { version = "0.4", features = ["serde"] }
 futures-util = "0.3"
 tar = "0.4"
 
+# SSH client (for libvirt backend)
+russh = { version = "0.56", optional = true }
+russh-keys = { version = "0.46", optional = true }
+data-encoding = { version = "2.6", optional = true }
+
 [dev-dependencies]
 tokio-test = "0.4"
 
@@ -53,7 +58,15 @@ path = "src/lib.rs"
 name = "benchscale"
 path = "src/bin/main.rs"
 
+[build-dependencies]
+
 [features]
 default = ["docker"]
 docker = []
 hardened = []  # Use Docker hardened images
+libvirt = ["dep:virt", "dep:russh", "dep:russh-keys", "dep:data-encoding"]  # Libvirt/KVM backend for VM testing
+
+# Libvirt backend dependencies (optional feature)
+[dependencies.virt]
+version = "0.3"
+optional = true
