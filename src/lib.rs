@@ -15,20 +15,20 @@
 //! ## Example
 //!
 //! ```rust,no_run
-//! use benchscale::{Lab, Topology};
+//! use benchscale::{Lab, Topology, DockerBackend};
 //!
 //! # async fn example() -> anyhow::Result<()> {
 //! // Load topology from YAML
 //! let topology = Topology::from_file("topologies/simple-lan.yaml").await?;
 //!
-//! // Create lab
-//! let lab = Lab::create("my-lab", topology).await?;
+//! // Create backend
+//! let backend = DockerBackend::new()?;
+//!
+//! // Create lab with backend
+//! let lab = Lab::create("my-lab", topology, backend).await?;
 //!
 //! // Deploy applications
 //! lab.deploy_to_node("node-1", "/path/to/binary").await?;
-//!
-//! // Run tests
-//! let results = lab.run_tests().await?;
 //!
 //! // Cleanup
 //! lab.destroy().await?;
