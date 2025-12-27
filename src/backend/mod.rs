@@ -9,6 +9,14 @@ use crate::Result;
 pub mod docker;
 pub use docker::DockerBackend;
 
+#[cfg(feature = "libvirt")]
+pub mod libvirt;
+#[cfg(feature = "libvirt")]
+pub use libvirt::LibvirtBackend;
+
+#[cfg(feature = "libvirt")]
+pub mod ssh;
+
 /// Information about a running container/node
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NodeInfo {
