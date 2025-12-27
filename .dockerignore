@@ -1,0 +1,40 @@
+# Ignore build artifacts
+/target
+/dist
+
+# Ignore IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Ignore test artifacts
+*.profraw
+*.profdata
+/llvm-cov-target
+
+# Ignore temporary files
+*.tmp
+*.log
+.DS_Store
+
+# Ignore coverage reports
+lcov.info
+/coverage
+
+# Ignore cargo lock for libraries (keep for binaries)
+# Cargo.lock is kept since this is a binary crate
+
+# Ignore state directory
+/var/lib/benchscale
+
+# Ignore SSH keys
+*.pem
+*.key
+id_rsa*
+
+# Ignore local config
+config.local.toml
+.env
+

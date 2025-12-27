@@ -60,3 +60,97 @@ impl From<&str> for Error {
         Error::Other(s.to_string())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_error_backend() {
+        let err = Error::Backend("test error".to_string());
+        assert_eq!(err.to_string(), "Backend error: test error");
+    }
+
+    #[test]
+    fn test_error_topology() {
+        let err = Error::Topology("invalid topology".to_string());
+        assert_eq!(err.to_string(), "Topology error: invalid topology");
+    }
+
+    #[test]
+    fn test_error_network() {
+        let err = Error::Network("network failure".to_string());
+        assert_eq!(err.to_string(), "Network error: network failure");
+    }
+
+    #[test]
+    fn test_error_lab() {
+        let err = Error::Lab("lab creation failed".to_string());
+        assert_eq!(err.to_string(), "Lab error: lab creation failed");
+    }
+
+    #[test]
+    fn test_error_test() {
+        let err = Error::Test("test failed".to_string());
+        assert_eq!(err.to_string(), "Test error: test failed");
+    }
+
+    #[test]
+    fn test_error_other() {
+        let err = Error::Other("generic error".to_string());
+        assert_eq!(err.to_string(), "generic error");
+    }
+
+    #[test]
+    fn test_error_from_string() {
+        let err: Error = "string error".to_string().into();
+        assert_eq!(err.to_string(), "string error");
+    }
+
+    #[test]
+    fn test_error_from_str() {
+        let err: Error = "str error".into();
+        assert_eq!(err.to_string(), "str error");
+    }
+
+    #[test]
+    fn test_error_from_io() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
+        let err: Error = io_err.into();
+        assert!(err.to_string().contains("IO error"));
+        assert!(err.to_string().contains("file not found"));
+    }
+
+    #[test]
+    fn test_error_from_yaml() {
+        let yaml_str = "invalid: yaml: data:";
+        let yaml_err = serde_yaml::from_str::<serde_yaml::Value>(yaml_str).unwrap_err();
+        let err: Error = yaml_err.into();
+        assert!(err.to_string().contains("YAML error"));
+    }
+
+    #[test]
+    fn test_error_from_json() {
+        let json_str = "{invalid json}";
+        let json_err = serde_json::from_str::<serde_json::Value>(json_str).unwrap_err();
+        let err: Error = json_err.into();
+        assert!(err.to_string().contains("JSON error"));
+    }
+
+    #[test]
+    fn test_error_debug() {
+        let err = Error::Backend("debug test".to_string());
+        let debug_str = format!("{:?}", err);
+        assert!(debug_str.contains("Backend"));
+        assert!(debug_str.contains("debug test"));
+    }
+
+    #[test]
+    fn test_result_type() {
+        let success: Result<i32> = Ok(42);
+        assert_eq!(success.unwrap(), 42);
+
+        let failure: Result<i32> = Err(Error::Other("failed".to_string()));
+        assert!(failure.is_err());
+    }
+}

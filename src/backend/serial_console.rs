@@ -32,9 +32,13 @@ pub fn parse_boot_time_ms(log_content: &str) -> Option<u64> {
 
 /// Count log entries by severity
 pub struct LogStats {
+    /// Number of info-level messages
     pub info_count: usize,
+    /// Number of warning messages
     pub warn_count: usize,
+    /// Number of error messages
     pub error_count: usize,
+    /// Number of success messages
     pub success_count: usize,
 }
 

@@ -238,13 +238,9 @@ mod tests {
 
     #[test]
     fn test_monitor_timeouts() {
-        let monitor = HealthMonitor::with_timeouts(
-            Duration::from_secs(2),
-            Duration::from_secs(60),
-        );
+        let monitor = HealthMonitor::with_timeouts(Duration::from_secs(2), Duration::from_secs(60));
 
         assert_eq!(monitor.check_interval(), Duration::from_secs(2));
         assert_eq!(monitor.boot_timeout(), Duration::from_secs(60));
     }
 }
-

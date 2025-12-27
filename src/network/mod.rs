@@ -83,6 +83,84 @@ impl Default for NetworkSimulator {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::backend::Backend;
+    use async_trait::async_trait;
+    use std::sync::Arc;
+
+    struct MockBackend {
+        fail: bool,
+    }
+
+    #[async_trait]
+    impl Backend for MockBackend {
+        async fn create_network(
+            &self,
+            _: &str,
+            _: &str,
+        ) -> crate::Result<crate::backend::NetworkInfo> {
+            unimplemented!()
+        }
+        async fn delete_network(&self, _: &str) -> crate::Result<()> {
+            unimplemented!()
+        }
+        async fn create_node(
+            &self,
+            _: &str,
+            _: &str,
+            _: &str,
+            _: std::collections::HashMap<String, String>,
+        ) -> crate::Result<crate::backend::NodeInfo> {
+            unimplemented!()
+        }
+        async fn start_node(&self, _: &str) -> crate::Result<()> {
+            unimplemented!()
+        }
+        async fn stop_node(&self, _: &str) -> crate::Result<()> {
+            unimplemented!()
+        }
+        async fn delete_node(&self, _: &str) -> crate::Result<()> {
+            unimplemented!()
+        }
+        async fn get_node(&self, _: &str) -> crate::Result<crate::backend::NodeInfo> {
+            unimplemented!()
+        }
+        async fn list_nodes(&self, _: &str) -> crate::Result<Vec<crate::backend::NodeInfo>> {
+            unimplemented!()
+        }
+        async fn exec_command(
+            &self,
+            _: &str,
+            _: Vec<String>,
+        ) -> crate::Result<crate::backend::ExecResult> {
+            unimplemented!()
+        }
+        async fn copy_to_node(&self, _: &str, _: &str, _: &str) -> crate::Result<()> {
+            unimplemented!()
+        }
+        async fn get_logs(&self, _: &str) -> crate::Result<String> {
+            unimplemented!()
+        }
+
+        async fn apply_network_conditions(
+            &self,
+            _node_id: &str,
+            _latency_ms: Option<u32>,
+            _packet_loss_percent: Option<f32>,
+            _bandwidth_kbps: Option<u32>,
+        ) -> crate::Result<()> {
+            if self.fail {
+                Err(crate::Error::Network(
+                    "Mock network condition failure".to_string(),
+                ))
+            } else {
+                Ok(())
+            }
+        }
+
+        async fn is_available(&self) -> crate::Result<bool> {
+            Ok(true)
+        }
+    }
 
     #[test]
     fn test_preset_conditions() {
@@ -97,5 +175,100 @@ mod tests {
         let slow = NetworkSimulator::slow_network_conditions();
         assert!(slow.latency_ms.unwrap() > 100);
         assert!(slow.packet_loss_percent.unwrap() > 1.0);
+    }
+
+    #[test]
+    fn test_lan_conditions() {
+        let conditions = NetworkSimulator::lan_conditions();
+        assert_eq!(conditions.latency_ms, Some(1));
+        assert_eq!(conditions.packet_loss_percent, Some(0.0));
+        assert_eq!(conditions.bandwidth_kbps, Some(1_000_000));
+    }
+
+    #[test]
+    fn test_wan_conditions() {
+        let conditions = NetworkSimulator::wan_conditions();
+        assert_eq!(conditions.latency_ms, Some(50));
+        assert_eq!(conditions.packet_loss_percent, Some(0.1));
+        assert_eq!(conditions.bandwidth_kbps, Some(100_000));
+    }
+
+    #[test]
+    fn test_slow_network_conditions() {
+        let conditions = NetworkSimulator::slow_network_conditions();
+        assert_eq!(conditions.latency_ms, Some(200));
+        assert_eq!(conditions.packet_loss_percent, Some(5.0));
+        assert_eq!(conditions.bandwidth_kbps, Some(10_000));
+    }
+
+    #[test]
+    fn test_cellular_conditions() {
+        let conditions = NetworkSimulator::cellular_conditions();
+        assert_eq!(conditions.latency_ms, Some(100));
+        assert_eq!(conditions.packet_loss_percent, Some(2.0));
+        assert_eq!(conditions.bandwidth_kbps, Some(50_000));
+    }
+
+    #[test]
+    fn test_nat_conditions() {
+        let conditions = NetworkSimulator::nat_conditions();
+        assert!(conditions.latency_ms.is_none());
+        assert!(conditions.packet_loss_percent.is_none());
+        assert!(conditions.bandwidth_kbps.is_none());
+    }
+
+    #[test]
+    fn test_simulator_creation() {
+        let _simulator = NetworkSimulator::new();
+        let _default = NetworkSimulator::default();
+    }
+
+    #[tokio::test]
+    async fn test_apply_conditions_success() {
+        let simulator = NetworkSimulator::new();
+        let backend: Arc<dyn Backend> = Arc::new(MockBackend { fail: false });
+        let conditions = NetworkSimulator::lan_conditions();
+
+        let result = simulator
+            .apply_conditions(backend, "test-node", &conditions)
+            .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_apply_conditions_failure() {
+        let simulator = NetworkSimulator::new();
+        let backend: Arc<dyn Backend> = Arc::new(MockBackend { fail: true });
+        let conditions = NetworkSimulator::wan_conditions();
+
+        let result = simulator
+            .apply_conditions(backend, "test-node", &conditions)
+            .await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_apply_all_preset_conditions() {
+        let simulator = NetworkSimulator::new();
+        let backend: Arc<dyn Backend> = Arc::new(MockBackend { fail: false });
+
+        let presets = vec![
+            NetworkSimulator::lan_conditions(),
+            NetworkSimulator::wan_conditions(),
+            NetworkSimulator::slow_network_conditions(),
+            NetworkSimulator::cellular_conditions(),
+            NetworkSimulator::nat_conditions(),
+        ];
+
+        for conditions in presets {
+            let result = simulator
+                .apply_conditions(backend.clone(), "test-node", &conditions)
+                .await;
+            assert!(
+                result.is_ok(),
+                "Failed to apply conditions: {:?}",
+                conditions
+            );
+        }
     }
 }

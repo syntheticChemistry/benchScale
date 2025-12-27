@@ -8,8 +8,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 /// Global configuration for benchScale
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
     /// Docker configuration
     pub docker: DockerConfig,
@@ -191,7 +190,6 @@ mod defaults {
     }
 }
 
-
 impl Default for DockerConfig {
     fn default() -> Self {
         Self {
@@ -288,10 +286,22 @@ impl Config {
 mod tests {
     use super::*;
 
+    /// Helper to clear all BENCHSCALE environment variables
+    fn clear_benchscale_env() {
+        for (key, _) in std::env::vars() {
+            if key.starts_with("BENCHSCALE_") {
+                std::env::remove_var(&key);
+            }
+        }
+    }
+
     #[test]
     fn test_default_config() {
-        // Clear any environment variables that might interfere
-        std::env::remove_var("BENCHSCALE_SSH_PORT");
+        // Clear all environment variables that might interfere
+        clear_benchscale_env();
+
+        // Small delay to ensure cleanup from other tests
+        std::thread::sleep(std::time::Duration::from_millis(10));
 
         let config = Config::default();
         assert_eq!(config.libvirt.ssh.port, 22);
@@ -301,23 +311,171 @@ mod tests {
     #[test]
     fn test_config_from_env() {
         // Clear environment first
-        for (key, _) in std::env::vars() {
-            if key.starts_with("BENCHSCALE_") {
-                std::env::remove_var(&key);
-            }
-        }
+        clear_benchscale_env();
 
         std::env::set_var("BENCHSCALE_SSH_PORT", "2222");
         let config = Config::from_env();
         assert_eq!(config.libvirt.ssh.port, 2222);
 
-        // Cleanup
-        std::env::remove_var("BENCHSCALE_SSH_PORT");
+        // Cleanup after test
+        clear_benchscale_env();
     }
 
     #[test]
     fn test_ssh_timeout_conversion() {
+        // Clear environment first to ensure clean state
+        clear_benchscale_env();
+
         let config = Config::default();
         assert_eq!(config.ssh_timeout(), Duration::from_secs(30));
+    }
+
+    #[test]
+    fn test_image_pull_timeout_conversion() {
+        clear_benchscale_env();
+        let config = Config::default();
+        // Just test it returns a valid duration
+        assert!(config.image_pull_timeout().as_secs() > 0);
+    }
+
+    #[test]
+    fn test_network_timeout_conversion() {
+        clear_benchscale_env();
+        let config = Config::default();
+        // Just test it returns a valid duration
+        assert!(config.network_timeout().as_secs() > 0);
+    }
+
+    #[test]
+    fn test_lab_create_timeout_conversion() {
+        clear_benchscale_env();
+        let config = Config::default();
+        // Just test it returns a valid duration
+        assert!(config.lab_create_timeout().as_secs() > 0);
+    }
+
+    #[test]
+    fn test_config_to_file() {
+        clear_benchscale_env();
+        let config = Config::default();
+        let temp_file =
+            std::env::temp_dir().join(format!("test_config_{}.toml", uuid::Uuid::new_v4()));
+
+        config.to_file(&temp_file).expect("Should save config");
+        assert!(temp_file.exists());
+
+        std::fs::remove_file(&temp_file).ok();
+    }
+
+    #[test]
+    fn test_config_from_file() {
+        clear_benchscale_env();
+        let config = Config::default();
+        let temp_file =
+            std::env::temp_dir().join(format!("test_config_load_{}.toml", uuid::Uuid::new_v4()));
+
+        config.to_file(&temp_file).expect("Should save config");
+
+        let loaded = Config::from_file(&temp_file).expect("Should load config");
+        assert_eq!(loaded.libvirt.ssh.port, config.libvirt.ssh.port);
+
+        std::fs::remove_file(&temp_file).ok();
+    }
+
+    #[test]
+    fn test_config_from_nonexistent_file() {
+        let result = Config::from_file("/nonexistent/path/config.toml");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_docker_config_defaults() {
+        clear_benchscale_env();
+        let config = DockerConfig::default();
+        // Just test the structure is valid
+        assert!(config.image_pull_timeout_secs > 0);
+    }
+
+    #[test]
+    fn test_libvirt_config_defaults() {
+        clear_benchscale_env();
+        let config = LibvirtConfig::default();
+        // Just test the structure is valid
+        assert!(!config.uri.is_empty());
+        assert!(!config.overlay_dir.as_os_str().is_empty());
+    }
+
+    #[test]
+    fn test_ssh_config_defaults() {
+        clear_benchscale_env();
+        let config = SshConfig::default();
+        // Just test the structure is valid
+        assert!(config.port > 0);
+        assert!(!config.default_user.is_empty());
+        assert!(config.timeout_secs > 0);
+    }
+
+    #[test]
+    fn test_network_config_defaults() {
+        clear_benchscale_env();
+        let config = NetworkConfig::default();
+        // Just test the structure is valid
+        assert!(!config.default_subnet.is_empty());
+        assert!(config.timeout_secs > 0);
+    }
+
+    #[test]
+    fn test_lab_config_defaults() {
+        clear_benchscale_env();
+        let config = LabConfig::default();
+        // Just test the structure is valid
+        assert!(!config.state_dir.as_os_str().is_empty());
+        assert!(config.create_timeout_secs > 0);
+    }
+
+    #[test]
+    fn test_env_var_ssh_port() {
+        clear_benchscale_env();
+        std::env::set_var("BENCHSCALE_SSH_PORT", "2222");
+
+        let config = Config::from_env();
+        assert_eq!(config.libvirt.ssh.port, 2222);
+
+        clear_benchscale_env();
+    }
+
+    #[test]
+    fn test_env_var_docker_hardened() {
+        clear_benchscale_env();
+        std::env::set_var("BENCHSCALE_USE_HARDENED", "true");
+
+        let config = Config::from_env();
+        assert!(config.docker.use_hardened_images);
+
+        clear_benchscale_env();
+    }
+
+    #[test]
+    fn test_env_var_libvirt_uri() {
+        clear_benchscale_env();
+        std::env::set_var("BENCHSCALE_LIBVIRT_URI", "qemu+ssh://host/system");
+
+        let config = Config::from_env();
+        assert_eq!(config.libvirt.uri, "qemu+ssh://host/system");
+
+        clear_benchscale_env();
+    }
+
+    #[test]
+    fn test_config_cloning() {
+        clear_benchscale_env();
+        let config1 = Config::default();
+        let config2 = config1.clone();
+
+        assert_eq!(config1.libvirt.ssh.port, config2.libvirt.ssh.port);
+        assert_eq!(
+            config1.docker.use_hardened_images,
+            config2.docker.use_hardened_images
+        );
     }
 }

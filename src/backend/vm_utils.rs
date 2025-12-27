@@ -9,13 +9,13 @@ use tracing::{debug, info};
 use crate::{Error, Result};
 
 /// Disk image manager for VM backends
-pub struct DiskManager {
-    overlay_dir: PathBuf,
+pub struct DiskManager<'a> {
+    overlay_dir: &'a Path,
 }
 
-impl DiskManager {
+impl<'a> DiskManager<'a> {
     /// Create a new disk manager with specified overlay directory
-    pub fn new(overlay_dir: PathBuf) -> Self {
+    pub fn new(overlay_dir: &'a Path) -> Self {
         Self { overlay_dir }
     }
 
@@ -25,9 +25,9 @@ impl DiskManager {
     /// allowing fast VM creation without copying the entire disk.
     pub async fn create_overlay(&self, base_image: &Path, vm_name: &str) -> Result<PathBuf> {
         // Ensure overlay directory exists
-        tokio::fs::create_dir_all(&self.overlay_dir).await?;
+        tokio::fs::create_dir_all(self.overlay_dir).await?;
 
-        let mut overlay_path = self.overlay_dir.clone();
+        let mut overlay_path = self.overlay_dir.to_path_buf();
         overlay_path.push(format!("{}.qcow2", vm_name));
 
         info!(
@@ -38,9 +38,9 @@ impl DiskManager {
 
         // qemu-img create -f qcow2 -b base.qcow2 -F qcow2 overlay.qcow2
         let output = Command::new("qemu-img")
-            .args(&["create", "-f", "qcow2", "-b"])
+            .args(["create", "-f", "qcow2", "-b"])
             .arg(base_image)
-            .args(&["-F", "qcow2"])
+            .args(["-F", "qcow2"])
             .arg(&overlay_path)
             .output()
             .await
@@ -62,7 +62,7 @@ impl DiskManager {
 
     /// Delete a disk overlay
     pub async fn delete_overlay(&self, vm_name: &str) -> Result<()> {
-        let mut overlay_path = self.overlay_dir.clone();
+        let mut overlay_path = self.overlay_dir.to_path_buf();
         overlay_path.push(format!("{}.qcow2", vm_name));
 
         if overlay_path.exists() {

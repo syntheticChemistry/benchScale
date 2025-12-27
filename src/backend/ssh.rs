@@ -175,11 +175,11 @@ impl SshClient {
         let base64_data = base64::encode(&data);
         let create_cmd = format!("echo '{}' | base64 -d > {}", base64_data, temp_path);
 
-        self.execute(&vec![create_cmd]).await?;
+        self.execute(&[create_cmd]).await?;
 
         // Move to final location (might need sudo)
         let move_cmd = format!("mv {} {}", temp_path, remote_path);
-        self.execute(&vec![move_cmd]).await?;
+        self.execute(&[move_cmd]).await?;
 
         info!("File copied successfully");
         Ok(())

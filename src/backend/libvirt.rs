@@ -75,7 +75,7 @@ impl LibvirtBackend {
     async fn get_vm_ip_by_name(&self, name: &str) -> Result<String> {
         // Use virsh command to get IP (simpler than libvirt API for this)
         let output = tokio::process::Command::new("virsh")
-            .args(&["domifaddr", name, "--source", "lease"])
+            .args(["domifaddr", name, "--source", "lease"])
             .output()
             .await
             .map_err(|e| crate::Error::Backend(format!("Failed to run virsh: {}", e)))?;
@@ -108,6 +108,29 @@ impl LibvirtBackend {
         Err(crate::Error::Backend(
             "No IP address found for VM".to_string(),
         ))
+    }
+
+    /// Wait for VM to get an IP address from DHCP
+    async fn wait_for_ip(&self, vm_name: &str, timeout: std::time::Duration) -> Result<String> {
+        use tokio::time::interval;
+
+        let start = std::time::Instant::now();
+        let mut check_interval = interval(std::time::Duration::from_secs(2));
+
+        loop {
+            if start.elapsed() > timeout {
+                return Err(crate::Error::Backend(format!(
+                    "Timeout waiting for IP address for VM {}",
+                    vm_name
+                )));
+            }
+
+            check_interval.tick().await;
+
+            if let Ok(ip) = self.get_vm_ip_by_name(vm_name).await {
+                return Ok(ip);
+            }
+        }
     }
 }
 
@@ -213,12 +236,11 @@ impl Backend for LibvirtBackend {
         env: HashMap<String, String>,
     ) -> Result<NodeInfo> {
         use super::vm_utils::{generate_domain_xml, parse_memory, DiskManager};
-        use std::time::Duration;
 
         info!("Creating libvirt VM: {} from image {}", name, image);
 
         // 1. Create copy-on-write disk overlay
-        let disk_mgr = DiskManager::new(self.config.overlay_dir.clone());
+        let disk_mgr = DiskManager::new(&self.config.overlay_dir);
         let overlay_path = disk_mgr
             .create_overlay(std::path::Path::new(image), name)
             .await?;
@@ -260,7 +282,9 @@ impl Backend for LibvirtBackend {
         drop(conn); // Release lock before async wait
 
         // 5. Wait for IP address (with timeout)
-        let ip = self.wait_for_ip(name, Duration::from_secs(120)).await?;
+        let ip = self
+            .wait_for_ip(name, std::time::Duration::from_secs(120))
+            .await?;
 
         info!("VM {} created successfully with IP {}", name, ip);
 
@@ -338,7 +362,7 @@ impl Backend for LibvirtBackend {
 
         // Clean up disk overlay
         if let Some(name) = node_name {
-            let disk_mgr = DiskManager::new(self.config.overlay_dir.clone());
+            let disk_mgr = DiskManager::new(&self.config.overlay_dir);
             if let Err(e) = disk_mgr.delete_overlay(name).await {
                 warn!("Failed to delete disk overlay for {}: {}", name, e);
             }
@@ -418,12 +442,12 @@ impl Backend for LibvirtBackend {
         // Get VM IP address
         let ip = self.get_vm_ip_by_name(&node_info.name).await?;
 
-        // Connect via SSH
+        // Connect via SSH using configuration
         let mut ssh = SshClient::connect(
             &ip,
             self.config.ssh.port,
             &self.config.ssh.default_user,
-            "", // Use key-based auth
+            "", // Password auth deprecated - use key-based auth via SSH agent
         )
         .await?;
 
@@ -449,12 +473,12 @@ impl Backend for LibvirtBackend {
         // Get VM IP address
         let ip = self.get_vm_ip_by_name(&node_info.name).await?;
 
-        // Connect via SSH
+        // Connect via SSH using configuration
         let mut ssh = SshClient::connect(
             &ip,
             self.config.ssh.port,
             &self.config.ssh.default_user,
-            "", // Use key-based auth
+            "", // Password auth deprecated - use key-based auth via SSH agent
         )
         .await?;
 
