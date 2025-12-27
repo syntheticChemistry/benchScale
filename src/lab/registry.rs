@@ -183,7 +183,7 @@ impl LabRegistry {
     /// Clean up labs in failed or destroyed state
     pub async fn cleanup_stale_labs(&self, max_age_days: u32) -> Result<usize> {
         let labs = self.list_labs().await?;
-        let cutoff = chrono::Utc::now() - chrono::Duration::days(max_age_days as i64);
+        let cutoff = chrono::Utc::now() - chrono::Duration::days(i64::from(max_age_days));
         let mut cleaned = 0;
 
         for lab in labs {

@@ -220,12 +220,10 @@ impl Backend for DockerBackend {
         // Convert env to Vec<String>
         let env_vec: Vec<String> = env.iter().map(|(k, v)| format!("{}={}", k, v)).collect();
 
-        let mut endpoint_config = HashMap::new();
+        let mut endpoint_config: HashMap<String, bollard::models::EndpointSettings> = HashMap::new();
         endpoint_config.insert(
             network.to_string(),
-            bollard::models::EndpointSettings {
-                ..Default::default()
-            },
+            Default::default(),
         );
 
         let config = Config {
@@ -256,9 +254,7 @@ impl Backend for DockerBackend {
                 network,
                 ConnectNetworkOptions {
                     container: response.id.as_str(),
-                    endpoint_config: bollard::models::EndpointSettings {
-                        ..Default::default()
-                    },
+                    endpoint_config: Default::default(),
                 },
             )
             .await?;

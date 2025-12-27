@@ -530,32 +530,6 @@ impl Backend for LibvirtBackend {
 }
 
 #[cfg(feature = "libvirt")]
-impl LibvirtBackend {
-    /// Wait for VM to get an IP address from DHCP
-    async fn wait_for_ip(&self, vm_name: &str, timeout: Duration) -> Result<String> {
-        use tokio::time::interval;
-
-        let start = std::time::Instant::now();
-        let mut check_interval = interval(Duration::from_secs(2));
-
-        loop {
-            if start.elapsed() > timeout {
-                return Err(crate::Error::Backend(format!(
-                    "Timeout waiting for IP address for VM {}",
-                    vm_name
-                )));
-            }
-
-            check_interval.tick().await;
-
-            if let Ok(ip) = self.get_vm_ip_by_name(vm_name).await {
-                return Ok(ip);
-            }
-        }
-    }
-}
-
-#[cfg(feature = "libvirt")]
 impl Default for LibvirtBackend {
     fn default() -> Self {
         Self::new().expect("Failed to create LibvirtBackend")

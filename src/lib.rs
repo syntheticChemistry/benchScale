@@ -38,6 +38,23 @@
 
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
+#![warn(clippy::all)]
+#![warn(clippy::pedantic)]
+#![warn(clippy::nursery)]
+#![warn(clippy::cargo)]
+// Allow some pedantic lints that conflict with our style or are too noisy
+#![allow(clippy::module_name_repetitions)]
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::missing_panics_doc)]
+#![allow(clippy::uninlined_format_args)] // Older format! style is still readable
+#![allow(clippy::must_use_candidate)] // Too many false positives
+#![allow(clippy::multiple_crate_versions)] // Dependency issue, not ours
+#![allow(clippy::significant_drop_tightening)] // Overly pedantic for async code
+#![allow(clippy::missing_const_for_fn)] // Async fns can't be const
+#![allow(clippy::map_unwrap_or)] // map().unwrap_or_else() is idiomatic
+#![allow(clippy::use_self)] // Explicit types are clearer sometimes
+#![allow(clippy::doc_markdown)] // Too strict on URL formatting
+#![allow(clippy::unused_async)] // Some async fns are trait impls or future-proofing
 
 pub mod backend;
 pub mod config;

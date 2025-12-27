@@ -77,10 +77,10 @@ impl Lab {
 
         // Create network
         match lab.create_network().await {
-            Ok(_) => {
+            Ok(()) => {
                 // Create nodes
                 match lab.create_nodes().await {
-                    Ok(_) => {
+                    Ok(()) => {
                         // Apply network conditions
                         if let Err(e) = lab.apply_network_conditions().await {
                             warn!("Failed to apply network conditions: {}", e);

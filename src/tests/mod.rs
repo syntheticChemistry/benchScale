@@ -128,13 +128,10 @@ impl TestRunner {
             let step_start = std::time::Instant::now();
 
             // Find node container ID
-            let container_id = match lab_nodes.get(&step.node) {
-                Some(id) => id,
-                None => {
-                    success = false;
-                    error = Some(format!("Node not found: {}", step.node));
-                    break;
-                }
+            let Some(container_id) = lab_nodes.get(&step.node) else {
+                success = false;
+                error = Some(format!("Node not found: {}", step.node));
+                break;
             };
 
             // Execute command
