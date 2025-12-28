@@ -57,6 +57,7 @@
 #![allow(clippy::unused_async)] // Some async fns are trait impls or future-proofing
 
 pub mod backend;
+pub mod cloud_init;
 pub mod config;
 pub mod error;
 pub mod lab;
@@ -66,12 +67,16 @@ pub mod topology;
 
 // Re-exports
 pub use backend::{Backend, DockerBackend};
+pub use cloud_init::{CloudInit, CloudInitBuilder, CloudInitUser, CloudInitFile};
 pub use config::Config;
 pub use error::{Error, Result};
 pub use lab::{Lab, LabHandle, LabMetadata, LabRegistry, LabStatus};
 pub use network::{NetworkConditions, NetworkSimulator};
 pub use tests::{TestResult, TestRunner, TestScenario};
 pub use topology::{NodeConfig, Topology, TopologyConfig};
+
+#[cfg(feature = "libvirt")]
+pub use backend::LibvirtBackend;
 
 /// Library version
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
