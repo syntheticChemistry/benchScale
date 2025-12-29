@@ -498,10 +498,15 @@ mod tests {
     #[test]
     fn test_env_var_ssh_port() {
         clear_benchscale_env();
+        
+        // Small delay to ensure env is clean
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        
         std::env::set_var("BENCHSCALE_SSH_PORT", "2222");
 
         let config = Config::from_env();
-        assert_eq!(config.libvirt.ssh.port, 2222);
+        assert_eq!(config.libvirt.ssh.port, 2222, 
+            "Expected SSH port 2222 from env var, got {}", config.libvirt.ssh.port);
 
         clear_benchscale_env();
     }
