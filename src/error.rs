@@ -44,6 +44,11 @@ pub enum Error {
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
 
+    /// Database errors (persistence feature)
+    #[cfg(feature = "persistence")]
+    #[error("Database error: {0}")]
+    Database(#[from] sqlx::Error),
+
     /// Generic errors
     #[error("{0}")]
     Other(String),

@@ -65,6 +65,9 @@ pub mod network;
 pub mod tests;
 pub mod topology;
 
+#[cfg(feature = "persistence")]
+pub mod persistence;
+
 // Re-exports
 pub use backend::{Backend, DockerBackend};
 pub use cloud_init::{CloudInit, CloudInitBuilder, CloudInitFile, CloudInitUser};

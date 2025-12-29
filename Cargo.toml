@@ -49,6 +49,9 @@ russh = { version = "0.56", optional = true }
 russh-keys = { version = "0.46", optional = true }
 data-encoding = { version = "2.6", optional = true }
 
+# Persistence (for lifecycle management)
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite"], optional = true }
+
 [dev-dependencies]
 tokio-test = "0.4"
 
@@ -67,6 +70,7 @@ default = ["docker"]
 docker = []
 hardened = []  # Use Docker hardened images
 libvirt = ["dep:virt", "dep:russh", "dep:russh-keys", "dep:data-encoding"]  # Libvirt/KVM backend for VM testing
+persistence = ["dep:sqlx"]  # VM lifecycle persistence and state management
 
 # Libvirt backend dependencies (optional feature)
 [dependencies.virt]

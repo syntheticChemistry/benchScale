@@ -358,17 +358,19 @@ mod tests {
     }
 
     #[test]
-    #[serial_test::serial]  // Run in isolation to prevent env var interference
     fn test_default_config() {
         // Clear all environment variables that might interfere
         clear_benchscale_env();
 
         // Small delay to ensure cleanup from other tests
-        std::thread::sleep(std::time::Duration::from_millis(10));
+        std::thread::sleep(std::time::Duration::from_millis(50));
 
         let config = Config::default();
         assert_eq!(config.libvirt.ssh.port, 22);
         assert!(!config.docker.use_hardened_images); // default
+        
+        // Cleanup after test
+        clear_benchscale_env();
     }
 
     #[test]
@@ -524,9 +526,10 @@ mod tests {
     }
 
     #[test]
-    #[serial_test::serial]  // Run in isolation to prevent env var interference
     fn test_env_var_libvirt_uri() {
         clear_benchscale_env();
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        
         std::env::set_var("BENCHSCALE_LIBVIRT_URI", "qemu+ssh://host/system");
 
         let config = Config::from_env();
