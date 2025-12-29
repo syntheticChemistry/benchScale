@@ -392,29 +392,21 @@ impl LibvirtBackend {
             "192.168.122.1"              // Default libvirt gateway
         ));
         
-        let user_data = cloud_init_with_ip
-            .to_user_data()
-            .map_err(|e| {
+        let user_data = match cloud_init_with_ip.to_user_data() {
+            Ok(data) => data,
+            Err(e) => {
                 // Release IP on failure
-                let ip = static_ip;
-                tokio::spawn(async move {
-                    // Best-effort release (ignore errors since this is cleanup)
-                    let _ = self.ip_pool.release(ip).await;
-                });
-                crate::Error::Backend(format!("Failed to generate cloud-init: {}", e))
-            })?;
+                self.ip_pool.release(static_ip).await;
+                return Err(crate::Error::Backend(format!("Failed to generate cloud-init: {}", e)));
+            }
+        };
 
         let user_data_path = format!("/tmp/user-data-{}", name);
-        std::fs::write(&user_data_path, user_data)
-            .map_err(|e| {
-                // Release IP on failure
-                let ip = static_ip;
-                let pool = self.ip_pool.clone();
-                tokio::spawn(async move {
-                    let _ = pool.release(ip).await;
-                });
-                crate::Error::Backend(format!("Failed to write user-data: {}", e))
-            })?;
+        if let Err(e) = std::fs::write(&user_data_path, &user_data) {
+            // Release IP on failure
+            self.ip_pool.release(static_ip).await;
+            return Err(crate::Error::Backend(format!("Failed to write user-data: {}", e)));
+        }
 
         // Create meta-data
         let meta_data = format!("instance-id: {}\nlocal-hostname: {}\n", name, name);
@@ -1309,10 +1301,8 @@ impl Backend for LibvirtBackend {
         // Release IP back to pool if it's a valid IPv4 address
         if let Some(ref info) = node_info {
             if let Ok(ip) = Ipv4Addr::from_str(&info.ip_address) {
-                match self.ip_pool.release(ip).await {
-                    Ok(_) => info!("Released IP {} back to pool", ip),
-                    Err(e) => warn!("Failed to release IP {} for VM {}: {}", ip, node_id, e),
-                }
+                self.ip_pool.release(ip).await;
+                info!("Released IP {} back to pool", ip);
             }
         }
 
