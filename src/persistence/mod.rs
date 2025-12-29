@@ -9,9 +9,9 @@
 
 pub mod registry;
 pub mod state;
-// pub mod lifecycle;  // TODO: Implement in next iteration
+pub mod lifecycle;
 
 pub use registry::{VmRegistry, VmRecord, VmFilter};
 pub use state::{VmState, LifecycleEvent, EventType};
-// pub use lifecycle::LifecycleManager;
+pub use lifecycle::{LifecycleManager, VmConfig};
 
