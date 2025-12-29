@@ -61,6 +61,7 @@ mod cloud_init_validation_tests {
         
         let result = backend.wait_for_cloud_init(
             "nonexistent-vm",
+            None,  // No known IP - will try to query libvirt
             "testuser",
             "testpass",
             Duration::from_secs(1), // Very short timeout for test
@@ -161,9 +162,10 @@ mod integration_tests {
         
         println!("VM created: {} @ {}", node.name, node.ip_address);
         
-        // Wait for cloud-init
+        // Wait for cloud-init (pass known static IP)
         let result = backend.wait_for_cloud_init(
             &node.id,
+            Some(&node.ip_address),  // Use the known static IP
             "testuser",
             "testpass123",
             Duration::from_secs(300), // 5 minutes

@@ -340,6 +340,17 @@ impl LibvirtBackend {
 
         info!("Creating desktop VM: {}", name);
 
+        // 0. Check if VM exists and clean up (Gap #1 Fix: Auto VM cleanup)
+        if let Ok(_existing) = self.get_node(name).await {
+            warn!("VM '{}' already exists, cleaning up before creating new one...", name);
+            // Best-effort cleanup - don't fail if cleanup fails
+            if let Err(e) = self.delete_node(name).await {
+                warn!("Cleanup of existing VM '{}' failed: {}. Continuing anyway...", name, e);
+            }
+            // Small delay for libvirt to finish cleanup
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        }
+
         // 1. Allocate static IP from pool (eliminates DHCP race conditions)
         let static_ip = self.ip_pool.allocate().await?;
         info!("  Allocated static IP {} for VM {}", static_ip, name);
@@ -758,6 +769,7 @@ impl LibvirtBackend {
     pub async fn wait_for_cloud_init(
         &self,
         node_id: &str,
+        known_ip: Option<&str>,  // Gap #2 Fix: Accept known IP for static IP workflows
         username: &str,
         password: &str,
         timeout: Duration,
@@ -766,7 +778,15 @@ impl LibvirtBackend {
 
         info!("Waiting for cloud-init to complete on VM: {}", node_id);
         let start = Instant::now();
-        let ip = self.get_vm_ip_by_name(node_id).await?;
+        
+        // Use known IP if provided (for static IP VMs), otherwise query libvirt (for DHCP VMs)
+        let ip = if let Some(ip) = known_ip {
+            info!("Using known static IP: {}", ip);
+            ip.to_string()
+        } else {
+            info!("Querying libvirt for VM IP...");
+            self.get_vm_ip_by_name(node_id).await?
+        };
 
         let mut backoff = Duration::from_secs(5);
         let mut last_error = String::new();
@@ -960,13 +980,18 @@ impl LibvirtBackend {
             .create_desktop_vm(name, base_image, cloud_init, memory_mb, vcpus, disk_size_gb)
             .await?;
 
-        // Wait for cloud-init to complete
+        // Wait for cloud-init to complete (Gap #3 Fix: Pass known static IP)
         info!(
             "Waiting for cloud-init to complete (timeout: {}s)...",
             timeout.as_secs()
         );
-        self.wait_for_cloud_init(&node.id, username, password, timeout)
-            .await?;
+        self.wait_for_cloud_init(
+            &node.id,
+            Some(&node.ip_address),  // Pass the known static IP!
+            username,
+            password,
+            timeout
+        ).await?;
 
         info!("VM {} is fully ready!", name);
         Ok(node)
@@ -1031,7 +1056,7 @@ impl LibvirtBackend {
                 "Waiting for cloud-init to complete (timeout: {}s)...",
                 timeout.as_secs()
             );
-            self.wait_for_cloud_init(&node.id, username, password, timeout)
+            self.wait_for_cloud_init(&node.id, Some(&node.ip_address), username, password, timeout)
                 .await?;
         } else {
             // Just wait for SSH if no cloud-init

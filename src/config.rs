@@ -358,6 +358,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]  // Run in isolation to prevent env var interference
     fn test_default_config() {
         // Clear all environment variables that might interfere
         clear_benchscale_env();
@@ -523,6 +524,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]  // Run in isolation to prevent env var interference
     fn test_env_var_libvirt_uri() {
         clear_benchscale_env();
         std::env::set_var("BENCHSCALE_LIBVIRT_URI", "qemu+ssh://host/system");

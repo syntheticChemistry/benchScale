@@ -40,17 +40,22 @@ pub struct CloudInit {
 /// User configuration for cloud-init
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CloudInitUser {
+    /// Username for the cloud-init user
     pub name: String,
 
+    /// Groups to add the user to (e.g., ["sudo", "docker"])
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub groups: Vec<String>,
 
+    /// Sudo privileges (e.g., "ALL=(ALL) NOPASSWD:ALL")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sudo: Option<String>,
 
+    /// Shell path (e.g., "/bin/bash")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub shell: Option<String>,
 
+    /// Whether to lock password authentication
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lock_passwd: Option<bool>,
 
@@ -58,6 +63,7 @@ pub struct CloudInitUser {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub passwd: Option<String>,
 
+    /// SSH public keys for authentication
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub ssh_authorized_keys: Vec<String>,
 }
@@ -65,12 +71,16 @@ pub struct CloudInitUser {
 /// File to write via cloud-init
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CloudInitFile {
+    /// File path on the VM filesystem
     pub path: String,
+    /// File content
     pub content: String,
 
+    /// File permissions in octal (e.g., "0644")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub permissions: Option<String>,
 
+    /// File owner (e.g., "root:root")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub owner: Option<String>,
 }
