@@ -67,7 +67,7 @@ pub mod topology;
 
 // Re-exports
 pub use backend::{Backend, DockerBackend};
-pub use cloud_init::{CloudInit, CloudInitBuilder, CloudInitUser, CloudInitFile};
+pub use cloud_init::{CloudInit, CloudInitBuilder, CloudInitFile, CloudInitUser};
 pub use config::Config;
 pub use error::{Error, Result};
 pub use lab::{Lab, LabHandle, LabMetadata, LabRegistry, LabStatus};

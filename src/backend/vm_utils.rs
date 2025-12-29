@@ -108,7 +108,7 @@ pub fn generate_domain_xml(
     serial_log: &Path,
 ) -> String {
     format!(
-        r#"<domain type='kvm'>
+        r"<domain type='kvm'>
   <name>{name}</name>
   <memory unit='MiB'>{memory}</memory>
   <vcpu>{vcpus}</vcpu>
@@ -144,7 +144,7 @@ pub fn generate_domain_xml(
     </console>
     <graphics type='none'/>
   </devices>
-</domain>"#,
+</domain>",
         name = name,
         memory = memory_mb,
         vcpus = vcpus,

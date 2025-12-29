@@ -70,7 +70,7 @@ impl LibvirtBackend {
             config,
         })
     }
-    
+
     /// Create a desktop VM with cloud-init support
     ///
     /// This creates a full desktop environment VM suitable for GUI applications
@@ -94,7 +94,7 @@ impl LibvirtBackend {
     ///
     /// # async fn example() -> anyhow::Result<()> {
     /// let backend = LibvirtBackend::new()?;
-    /// 
+    ///
     /// let cloud_init = CloudInit::builder()
     ///     .add_user("iontest", "ssh-rsa AAAAB3...")
     ///     .package("ubuntu-desktop-minimal")
@@ -124,62 +124,70 @@ impl LibvirtBackend {
         disk_size_gb: u32,
     ) -> Result<NodeInfo> {
         use std::process::Command;
-        
+
         info!("Creating desktop VM: {}", name);
-        
+
         // 1. Create disk from base image
         let disk_path = format!("/var/lib/libvirt/images/{}.qcow2", name);
-        
+
         info!("  Copying base image to {}", disk_path);
         let output = Command::new("sudo")
             .args(["cp", base_image.to_str().unwrap(), &disk_path])
             .output()
             .map_err(|e| crate::Error::Backend(format!("Failed to copy image: {}", e)))?;
-        
+
         if !output.status.success() {
             return Err(crate::Error::Backend(format!(
                 "Failed to copy image: {}",
                 String::from_utf8_lossy(&output.stderr)
             )));
         }
-        
+
         // Resize disk
         info!("  Resizing disk to {}GB", disk_size_gb);
         let output = Command::new("sudo")
-            .args(["qemu-img", "resize", &disk_path, &format!("{}G", disk_size_gb)])
+            .args([
+                "qemu-img",
+                "resize",
+                &disk_path,
+                &format!("{}G", disk_size_gb),
+            ])
             .output()
             .map_err(|e| crate::Error::Backend(format!("Failed to resize: {}", e)))?;
-        
+
         if !output.status.success() {
             return Err(crate::Error::Backend(format!(
                 "Failed to resize disk: {}",
                 String::from_utf8_lossy(&output.stderr)
             )));
         }
-        
+
         // 2. Generate cloud-init ISO
         info!("  Generating cloud-init configuration");
-        let user_data = cloud_init.to_user_data()
+        let user_data = cloud_init
+            .to_user_data()
             .map_err(|e| crate::Error::Backend(format!("Failed to generate cloud-init: {}", e)))?;
-        
+
         let user_data_path = format!("/tmp/user-data-{}", name);
         std::fs::write(&user_data_path, user_data)
             .map_err(|e| crate::Error::Backend(format!("Failed to write user-data: {}", e)))?;
-        
+
         // Create meta-data
         let meta_data = format!("instance-id: {}\nlocal-hostname: {}\n", name, name);
         let meta_data_path = format!("/tmp/meta-data-{}", name);
         std::fs::write(&meta_data_path, meta_data)
             .map_err(|e| crate::Error::Backend(format!("Failed to write meta-data: {}", e)))?;
-        
+
         // Create ISO
         let iso_path = format!("/var/lib/libvirt/images/{}-cidata.iso", name);
         info!("  Creating cloud-init ISO");
         let output = Command::new("sudo")
             .args([
                 "genisoimage",
-                "-output", &iso_path,
-                "-volid", "cidata",
+                "-output",
+                &iso_path,
+                "-volid",
+                "cidata",
                 "-joliet",
                 "-rock",
                 &user_data_path,
@@ -187,47 +195,56 @@ impl LibvirtBackend {
             ])
             .output()
             .map_err(|e| crate::Error::Backend(format!("Failed to create ISO: {}", e)))?;
-        
+
         if !output.status.success() {
             return Err(crate::Error::Backend(format!(
                 "Failed to create cloud-init ISO: {}",
                 String::from_utf8_lossy(&output.stderr)
             )));
         }
-        
+
         // 3. Define and start VM
         info!("  Defining VM in libvirt");
         let output = Command::new("sudo")
             .args([
                 "virt-install",
-                "--name", name,
-                "--memory", &memory_mb.to_string(),
-                "--vcpus", &vcpus.to_string(),
-                "--disk", &format!("path={},format=qcow2", disk_path),
-                "--disk", &format!("path={},device=cdrom", iso_path),
-                "--os-variant", "ubuntu22.04",
-                "--network", "network=default",
-                "--graphics", "vnc,listen=0.0.0.0",
+                "--name",
+                name,
+                "--memory",
+                &memory_mb.to_string(),
+                "--vcpus",
+                &vcpus.to_string(),
+                "--disk",
+                &format!("path={},format=qcow2", disk_path),
+                "--disk",
+                &format!("path={},device=cdrom", iso_path),
+                "--os-variant",
+                "ubuntu22.04",
+                "--network",
+                "network=default",
+                "--graphics",
+                "vnc,listen=0.0.0.0",
                 "--noautoconsole",
                 "--import",
             ])
             .output()
             .map_err(|e| crate::Error::Backend(format!("Failed to create VM: {}", e)))?;
-        
+
         if !output.status.success() {
             return Err(crate::Error::Backend(format!(
                 "Failed to create VM: {}",
                 String::from_utf8_lossy(&output.stderr)
             )));
         }
-        
+
         info!("  VM created, waiting for network");
-        
-        // 4. Wait for IP address
-        let ip_address = self.wait_for_ip(name, Duration::from_secs(60)).await?;
-        
+
+        // 4. Wait for IP address (using configured timeout)
+        let timeout = Duration::from_secs(self.config.vm_ip_timeout_secs);
+        let ip_address = self.wait_for_ip(name, timeout).await?;
+
         info!("  VM got IP: {}", ip_address);
-        
+
         // 5. Return NodeInfo
         Ok(NodeInfo {
             id: name.to_string(),
@@ -239,7 +256,7 @@ impl LibvirtBackend {
             metadata: HashMap::new(),
         })
     }
-    
+
     /// Create a VM from a pre-built template image
     ///
     /// Uses a template from agentReagents/ for faster provisioning.
@@ -260,7 +277,7 @@ impl LibvirtBackend {
     /// # async fn example() -> anyhow::Result<()> {
     /// let backend = LibvirtBackend::new()?;
     /// let template = PathBuf::from("../agentReagents/images/templates/rustdesk-ubuntu-22.04-template.qcow2");
-    /// 
+    ///
     /// let node = backend.create_from_template(
     ///     "my-rustdesk-vm",
     ///     &template,
@@ -284,136 +301,153 @@ impl LibvirtBackend {
         save_intermediate: bool,
     ) -> Result<NodeInfo> {
         use std::process::Command;
-        
+
         info!("Creating VM from template: {}", name);
         info!("  Template: {}", template_path.display());
-        
+
         // 1. Create disk from template using CoW (copy-on-write)
         let disk_path = format!("/var/lib/libvirt/images/{}.qcow2", name);
-        
+
         info!("  Creating CoW disk from template");
         let output = Command::new("sudo")
             .args([
                 "qemu-img",
                 "create",
-                "-f", "qcow2",
-                "-F", "qcow2",
-                "-b", template_path.to_str().unwrap(),
+                "-f",
+                "qcow2",
+                "-F",
+                "qcow2",
+                "-b",
+                template_path.to_str().unwrap(),
                 &disk_path,
             ])
             .output()
             .map_err(|e| crate::Error::Backend(format!("Failed to create CoW disk: {}", e)))?;
-        
+
         if !output.status.success() {
             return Err(crate::Error::Backend(format!(
                 "Failed to create CoW disk: {}",
                 String::from_utf8_lossy(&output.stderr)
             )));
         }
-        
+
         // 2. Handle cloud-init configuration
         let mut cloud_init_args = Vec::new();
-        
+
         if let Some(cloud_init) = cloud_init {
             info!("  Generating cloud-init for customization");
-            
-            let user_data = cloud_init.to_user_data()
-                .map_err(|e| crate::Error::Backend(format!("Failed to generate user-data: {}", e)))?;
-            
+
+            let user_data = cloud_init.to_user_data().map_err(|e| {
+                crate::Error::Backend(format!("Failed to generate user-data: {}", e))
+            })?;
+
             let meta_data = format!("instance-id: {}\nlocal-hostname: {}\n", name, name);
-            
+
             // Write to temp files
             let user_data_path = format!("/tmp/user-data-{}", name);
             let meta_data_path = format!("/tmp/meta-data-{}", name);
-            
+
             std::fs::write(&user_data_path, user_data)
                 .map_err(|e| crate::Error::Backend(format!("Failed to write user-data: {}", e)))?;
             std::fs::write(&meta_data_path, meta_data)
                 .map_err(|e| crate::Error::Backend(format!("Failed to write meta-data: {}", e)))?;
-            
+
             // Use virt-install's built-in cloud-init support (more reliable than ISO)
             cloud_init_args = vec![
                 "--cloud-init".to_string(),
                 format!("user-data={},meta-data={}", user_data_path, meta_data_path),
             ];
         }
-        
+
         // 3. Define and start VM
         info!("  Defining VM in libvirt");
-        
+
         // Prepare arguments (must live long enough)
         let memory_str = memory_mb.to_string();
         let vcpus_str = vcpus.to_string();
         let disk_arg = format!("path={},format=qcow2", disk_path);
-        
+
         let mut virt_install_args = vec![
             "virt-install",
-            "--name", name,
-            "--memory", &memory_str,
-            "--vcpus", &vcpus_str,
-            "--disk", &disk_arg,
-            "--os-variant", "ubuntu22.04",
-            "--network", "network=default",
-            "--graphics", "vnc,listen=0.0.0.0",
+            "--name",
+            name,
+            "--memory",
+            &memory_str,
+            "--vcpus",
+            &vcpus_str,
+            "--disk",
+            &disk_arg,
+            "--os-variant",
+            "ubuntu22.04",
+            "--network",
+            "network=default",
+            "--graphics",
+            "vnc,listen=0.0.0.0",
             "--noautoconsole",
             "--import",
         ];
-        
+
         // Add cloud-init args if present (using virt-install's built-in support)
         for arg in &cloud_init_args {
             virt_install_args.push(arg);
         }
-        
+
         let output = Command::new("sudo")
             .args(&virt_install_args)
             .output()
             .map_err(|e| crate::Error::Backend(format!("Failed to create VM: {}", e)))?;
-        
+
         if !output.status.success() {
             return Err(crate::Error::Backend(format!(
                 "Failed to create VM: {}",
                 String::from_utf8_lossy(&output.stderr)
             )));
         }
-        
+
         info!("  VM created, waiting for network");
-        
-        // 4. Wait for IP address
-        let ip_address = self.wait_for_ip(name, Duration::from_secs(60)).await?;
-        
+
+        // 4. Wait for IP address (using configured timeout)
+        let timeout = Duration::from_secs(self.config.vm_ip_timeout_secs);
+        let ip_address = self.wait_for_ip(name, timeout).await?;
+
         info!("  VM got IP: {}", ip_address);
-        
+
         // 5. Save intermediate if requested
         if save_intermediate {
             info!("  Saving intermediate snapshot");
-            
+
             // Create intermediates directory if it doesn't exist
-            let intermediate_dir = template_path.parent().and_then(|p| p.parent())
+            let intermediate_dir = template_path
+                .parent()
+                .and_then(|p| p.parent())
                 .map(|p| p.join("intermediates"))
                 .unwrap_or_else(|| std::path::PathBuf::from("/tmp"));
-            
-            std::fs::create_dir_all(&intermediate_dir)
-                .map_err(|e| crate::Error::Backend(format!("Failed to create intermediates dir: {}", e)))?;
-            
+
+            std::fs::create_dir_all(&intermediate_dir).map_err(|e| {
+                crate::Error::Backend(format!("Failed to create intermediates dir: {}", e))
+            })?;
+
             let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
-            let intermediate_path = intermediate_dir.join(format!("{}-intermediate-{}.qcow2", name, timestamp));
-            
+            let intermediate_path =
+                intermediate_dir.join(format!("{}-intermediate-{}.qcow2", name, timestamp));
+
             let output = Command::new("sudo")
-                .args([
-                    "cp",
-                    &disk_path,
-                    intermediate_path.to_str().unwrap(),
-                ])
+                .args(["cp", &disk_path, intermediate_path.to_str().unwrap()])
                 .output()
-                .map_err(|e| crate::Error::Backend(format!("Failed to save intermediate: {}", e)))?;
-            
+                .map_err(|e| {
+                    crate::Error::Backend(format!("Failed to save intermediate: {}", e))
+                })?;
+
             if output.status.success() {
                 info!("  Intermediate saved: {}", intermediate_path.display());
             } else {
-                warn!("  Failed to save intermediate: {}", String::from_utf8_lossy(&output.stderr));
+                warn!(
+                    "  Failed to save intermediate: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
             }
         }
-        
+
         // 6. Return NodeInfo
         Ok(NodeInfo {
             id: name.to_string(),
@@ -425,11 +459,11 @@ impl LibvirtBackend {
             metadata: HashMap::new(),
         })
     }
-    
+
     /// Wait for VM to get an IP address
     async fn wait_for_ip(&self, name: &str, timeout: Duration) -> Result<String> {
         let start = std::time::Instant::now();
-        
+
         loop {
             if start.elapsed() > timeout {
                 return Err(crate::Error::Backend(format!(
@@ -437,15 +471,340 @@ impl LibvirtBackend {
                     name
                 )));
             }
-            
+
             if let Ok(ip) = self.get_vm_ip_by_name(name).await {
                 if !ip.is_empty() && ip != "0.0.0.0" {
                     return Ok(ip);
                 }
             }
-            
+
             tokio::time::sleep(Duration::from_secs(2)).await;
         }
+    }
+
+    /// Wait for cloud-init to complete on a VM
+    ///
+    /// Polls the VM until cloud-init finishes or timeout is reached.
+    /// This should be called after `create_desktop_vm()` or `create_from_template()`
+    /// and before attempting SSH connections.
+    ///
+    /// # Arguments
+    /// * `node_id` - The VM name/ID
+    /// * `username` - Username to use for SSH connection
+    /// * `password` - Password for SSH authentication
+    /// * `timeout` - Maximum time to wait (recommended: 10 minutes for desktop VMs)
+    ///
+    /// # Returns
+    /// `Ok(())` when cloud-init completes successfully
+    ///
+    /// # Errors
+    /// Returns error if:
+    /// - Timeout is reached
+    /// - Cloud-init fails
+    /// - VM is not accessible
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use benchscale::LibvirtBackend;
+    /// # use std::time::Duration;
+    /// # async fn example() -> anyhow::Result<()> {
+    /// let backend = LibvirtBackend::new()?;
+    /// let node = backend.create_desktop_vm(...).await?;
+    /// backend.wait_for_cloud_init(&node.id, "iontest", "iontest123", Duration::from_secs(600)).await?;
+    /// // Now safe to use SSH
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn wait_for_cloud_init(
+        &self,
+        node_id: &str,
+        username: &str,
+        password: &str,
+        timeout: Duration,
+    ) -> Result<()> {
+        use std::time::Instant;
+
+        info!("Waiting for cloud-init to complete on VM: {}", node_id);
+        let start = Instant::now();
+        let ip = self.get_vm_ip_by_name(node_id).await?;
+
+        let mut backoff = Duration::from_secs(5);
+        let mut last_error = String::new();
+
+        while start.elapsed() < timeout {
+            // Try to connect and check cloud-init status
+            match SshClient::connect(&ip, 22, username, password).await {
+                Ok(mut ssh) => {
+                    // Cloud-init status command
+                    match ssh.execute(&["cloud-init status --wait".to_string()]).await {
+                        Ok((exit_code, stdout, _stderr)) => {
+                            if exit_code == 0 && stdout.contains("status: done") {
+                                info!("Cloud-init completed successfully on {}", node_id);
+                                let _ = ssh.disconnect().await;
+                                return Ok(());
+                            } else if exit_code == 0 && stdout.contains("status: running") {
+                                info!("Cloud-init still running on {}, waiting...", node_id);
+                                last_error = "Cloud-init still running".to_string();
+                            } else if stdout.contains("status: error")
+                                || stdout.contains("status: degraded")
+                            {
+                                warn!(
+                                    "Cloud-init reported error/degraded status on {}: {}",
+                                    node_id, stdout
+                                );
+                                // Continue waiting - some errors are non-fatal
+                                last_error = format!("Cloud-init error: {}", stdout);
+                            }
+                        }
+                        Err(e) => {
+                            // Command failed, but SSH worked - cloud-init might not be installed
+                            // or command is not available yet
+                            last_error = format!("Cloud-init status check failed: {}", e);
+                        }
+                    }
+                    let _ = ssh.disconnect().await;
+                }
+                Err(e) => {
+                    // SSH not ready yet - normal during early boot
+                    last_error = format!("SSH not ready: {}", e);
+                }
+            }
+
+            // Exponential backoff up to 30 seconds
+            tokio::time::sleep(backoff).await;
+            backoff = (backoff * 2).min(Duration::from_secs(30));
+        }
+
+        Err(crate::Error::Backend(format!(
+            "Timeout waiting for cloud-init on {} after {}s. Last error: {}",
+            node_id,
+            timeout.as_secs(),
+            last_error
+        )))
+    }
+
+    /// Wait for SSH to become available on a VM
+    ///
+    /// Polls until SSH connection succeeds with exponential backoff.
+    /// This is useful for VMs that don't use cloud-init or for additional validation.
+    ///
+    /// # Arguments
+    /// * `ip` - VM IP address
+    /// * `username` - SSH username
+    /// * `password` - SSH password
+    /// * `timeout` - Maximum time to wait
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use benchscale::LibvirtBackend;
+    /// # use std::time::Duration;
+    /// # async fn example() -> anyhow::Result<()> {
+    /// let backend = LibvirtBackend::new()?;
+    /// let node = backend.create_desktop_vm(...).await?;
+    /// backend.wait_for_ssh(&node.ip_address, "iontest", "iontest123", Duration::from_secs(300)).await?;
+    /// // SSH is ready
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn wait_for_ssh(
+        &self,
+        ip: &str,
+        username: &str,
+        password: &str,
+        timeout: Duration,
+    ) -> Result<()> {
+        use std::time::Instant;
+
+        info!("Waiting for SSH to become available on {}", ip);
+        let start = Instant::now();
+        let mut backoff = Duration::from_secs(2);
+        let mut last_error = String::new();
+
+        while start.elapsed() < timeout {
+            match SshClient::connect(ip, 22, username, password).await {
+                Ok(mut ssh) => {
+                    // Test with simple command
+                    match ssh.execute(&["echo 'SSH ready'".to_string()]).await {
+                        Ok((exit_code, stdout, _)) => {
+                            if exit_code == 0 && stdout.contains("SSH ready") {
+                                info!("SSH is ready on {}", ip);
+                                let _ = ssh.disconnect().await;
+                                return Ok(());
+                            }
+                        }
+                        Err(e) => {
+                            last_error = format!("Command execution failed: {}", e);
+                        }
+                    }
+                    let _ = ssh.disconnect().await;
+                }
+                Err(e) => {
+                    last_error = format!("Connection failed: {}", e);
+                }
+            }
+
+            // Exponential backoff up to 30 seconds
+            tokio::time::sleep(backoff).await;
+            backoff = (backoff * 2).min(Duration::from_secs(30));
+        }
+
+        Err(crate::Error::Backend(format!(
+            "Timeout waiting for SSH on {} after {}s. Last error: {}",
+            ip,
+            timeout.as_secs(),
+            last_error
+        )))
+    }
+
+    /// Create a desktop VM and wait for it to be ready
+    ///
+    /// Convenience method that combines `create_desktop_vm()` with validation.
+    /// **This should become the recommended API** as it ensures the VM is fully
+    /// provisioned before returning.
+    ///
+    /// # Arguments
+    /// * `name` - Unique name for the VM
+    /// * `base_image` - Path to cloud image
+    /// * `cloud_init` - Cloud-init configuration
+    /// * `memory_mb` - RAM in megabytes
+    /// * `vcpus` - Number of virtual CPUs
+    /// * `disk_size_gb` - Disk size in GB
+    /// * `username` - Username for SSH validation
+    /// * `password` - Password for SSH validation
+    /// * `timeout` - Maximum time to wait for cloud-init (recommended: 600s for desktop)
+    ///
+    /// # Example
+    /// ```no_run
+    /// use benchscale::{LibvirtBackend, CloudInit};
+    /// use std::path::Path;
+    /// use std::time::Duration;
+    ///
+    /// # async fn example() -> anyhow::Result<()> {
+    /// let backend = LibvirtBackend::new()?;
+    ///
+    /// let cloud_init = CloudInit::builder()
+    ///     .add_user("iontest", "ssh-rsa AAAAB3...")
+    ///     .password("iontest", "iontest123")
+    ///     .package("ubuntu-desktop-minimal")
+    ///     .build();
+    ///
+    /// let node = backend.create_desktop_vm_ready(
+    ///     "my-vm",
+    ///     Path::new("/path/to/ubuntu-22.04.img"),
+    ///     &cloud_init,
+    ///     3072, 2, 25,
+    ///     "iontest",
+    ///     "iontest123",
+    ///     Duration::from_secs(600), // Wait up to 10 min
+    /// ).await?;
+    ///
+    /// // SSH is guaranteed to work now
+    /// // Cloud-init has completed
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn create_desktop_vm_ready(
+        &self,
+        name: &str,
+        base_image: &std::path::Path,
+        cloud_init: &crate::CloudInit,
+        memory_mb: u32,
+        vcpus: u32,
+        disk_size_gb: u32,
+        username: &str,
+        password: &str,
+        timeout: Duration,
+    ) -> Result<NodeInfo> {
+        // Create the VM
+        let node = self
+            .create_desktop_vm(name, base_image, cloud_init, memory_mb, vcpus, disk_size_gb)
+            .await?;
+
+        // Wait for cloud-init to complete
+        info!(
+            "Waiting for cloud-init to complete (timeout: {}s)...",
+            timeout.as_secs()
+        );
+        self.wait_for_cloud_init(&node.id, username, password, timeout)
+            .await?;
+
+        info!("VM {} is fully ready!", name);
+        Ok(node)
+    }
+
+    /// Create a VM from template and wait for it to be ready
+    ///
+    /// Convenience method that combines `create_from_template()` with validation.
+    /// Useful when templates include cloud-init customization.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use benchscale::LibvirtBackend;
+    /// use std::path::Path;
+    /// use std::time::Duration;
+    ///
+    /// # async fn example() -> anyhow::Result<()> {
+    /// let backend = LibvirtBackend::new()?;
+    ///
+    /// let node = backend.create_from_template_ready(
+    ///     "my-vm",
+    ///     Path::new("../agentReagents/images/templates/popos-cosmic-rustdesk-template.qcow2"),
+    ///     None,
+    ///     3072, 2,
+    ///     false,
+    ///     "iontest",
+    ///     "iontest123",
+    ///     Duration::from_secs(120), // Templates are faster
+    /// ).await?;
+    ///
+    /// // SSH is ready
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn create_from_template_ready(
+        &self,
+        name: &str,
+        template_path: &std::path::Path,
+        cloud_init: Option<&crate::CloudInit>,
+        memory_mb: u32,
+        vcpus: u32,
+        save_intermediate: bool,
+        username: &str,
+        password: &str,
+        timeout: Duration,
+    ) -> Result<NodeInfo> {
+        // Create from template
+        let node = self
+            .create_from_template(
+                name,
+                template_path,
+                cloud_init,
+                memory_mb,
+                vcpus,
+                save_intermediate,
+            )
+            .await?;
+
+        // If cloud-init was provided, wait for it
+        if cloud_init.is_some() {
+            info!(
+                "Waiting for cloud-init to complete (timeout: {}s)...",
+                timeout.as_secs()
+            );
+            self.wait_for_cloud_init(&node.id, username, password, timeout)
+                .await?;
+        } else {
+            // Just wait for SSH if no cloud-init
+            info!(
+                "Waiting for SSH to be ready (timeout: {}s)...",
+                timeout.as_secs()
+            );
+            self.wait_for_ssh(&node.ip_address, username, password, timeout)
+                .await?;
+        }
+
+        info!("VM {} is fully ready!", name);
+        Ok(node)
     }
 
     /// Get VM IP address by domain name
@@ -518,7 +877,7 @@ impl Backend for LibvirtBackend {
         let dhcp_end = subnet.replace("/24", ".254");
 
         let network_xml = format!(
-            r#"<network>
+            r"<network>
   <name>{name}</name>
   <forward mode='nat'/>
   <bridge name='virbr-{bridge}' stp='on' delay='0'/>
@@ -527,7 +886,7 @@ impl Backend for LibvirtBackend {
       <range start='{dhcp_start}' end='{dhcp_end}'/>
     </dhcp>
   </ip>
-</network>"#,
+</network>",
             name = name,
             bridge = name.replace("-", ""),
             gateway = gateway,
@@ -635,10 +994,9 @@ impl Backend for LibvirtBackend {
 
         drop(conn); // Release lock before async wait
 
-        // 5. Wait for IP address (with timeout)
-        let ip = self
-            .wait_for_ip(name, std::time::Duration::from_secs(120))
-            .await?;
+        // 5. Wait for IP address (using configured timeout)
+        let timeout = Duration::from_secs(self.config.vm_ip_timeout_secs);
+        let ip = self.wait_for_ip(name, timeout).await?;
 
         info!("VM {} created successfully with IP {}", name, ip);
 
@@ -889,6 +1247,10 @@ impl Default for LibvirtBackend {
         Self::new().expect("Failed to create LibvirtBackend")
     }
 }
+
+#[cfg(all(test, feature = "libvirt"))]
+#[path = "libvirt_validation_tests.rs"]
+mod validation_tests;
 
 // Stub implementation when libvirt feature is not enabled
 #[cfg(not(feature = "libvirt"))]

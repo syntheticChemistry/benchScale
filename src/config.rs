@@ -47,6 +47,10 @@ pub struct LibvirtConfig {
     #[serde(default = "defaults::overlay_dir")]
     pub overlay_dir: PathBuf,
 
+    /// VM IP acquisition timeout in seconds
+    #[serde(default = "defaults::vm_ip_timeout_secs")]
+    pub vm_ip_timeout_secs: u64,
+
     /// SSH configuration for VM access
     pub ssh: SshConfig,
 }
@@ -188,6 +192,13 @@ mod defaults {
             .and_then(|v| v.parse().ok())
             .unwrap_or(true)
     }
+
+    pub fn vm_ip_timeout_secs() -> u64 {
+        std::env::var("BENCHSCALE_VM_IP_TIMEOUT")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(180) // 3 minutes (sufficient for COSMIC cloud-init)
+    }
 }
 
 impl Default for DockerConfig {
@@ -205,6 +216,7 @@ impl Default for LibvirtConfig {
             uri: defaults::libvirt_uri(),
             base_image_path: defaults::base_image_path(),
             overlay_dir: defaults::overlay_dir(),
+            vm_ip_timeout_secs: defaults::vm_ip_timeout_secs(),
             ssh: SshConfig::default(),
         }
     }
@@ -279,6 +291,11 @@ impl Config {
     /// Get lab create timeout as Duration
     pub fn lab_create_timeout(&self) -> Duration {
         Duration::from_secs(self.lab.create_timeout_secs)
+    }
+
+    /// Get VM IP acquisition timeout as Duration
+    pub fn vm_ip_timeout(&self) -> Duration {
+        Duration::from_secs(self.libvirt.vm_ip_timeout_secs)
     }
 }
 
