@@ -483,8 +483,8 @@ impl LibvirtBackend {
             })?;
 
         if !output.status.success() {
-            // Release IP on failure
-            self.ip_pool.release(static_ip).await?;
+            // Release IP on failure (ignore release errors, prioritize VM creation error)
+            let _ = self.ip_pool.release(static_ip).await;
             return Err(crate::Error::Backend(format!(
                 "Failed to create VM: {}",
                 String::from_utf8_lossy(&output.stderr)
@@ -1309,10 +1309,9 @@ impl Backend for LibvirtBackend {
         // Release IP back to pool if it's a valid IPv4 address
         if let Some(ref info) = node_info {
             if let Ok(ip) = Ipv4Addr::from_str(&info.ip_address) {
-                if let Err(e) = self.ip_pool.release(ip).await {
-                    warn!("Failed to release IP {} for VM {}: {}", ip, node_id, e);
-                } else {
-                    info!("Released IP {} back to pool", ip);
+                match self.ip_pool.release(ip).await {
+                    Ok(_) => info!("Released IP {} back to pool", ip),
+                    Err(e) => warn!("Failed to release IP {} for VM {}: {}", ip, node_id, e),
                 }
             }
         }
