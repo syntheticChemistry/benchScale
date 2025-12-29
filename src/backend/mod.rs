@@ -29,6 +29,18 @@ pub mod health;
 #[cfg(feature = "libvirt")]
 pub use health::{HealthCheck, HealthMonitor, HealthStatus};
 
+#[cfg(feature = "libvirt")]
+pub mod ip_pool;
+
+#[cfg(feature = "libvirt")]
+pub use ip_pool::IpPool;
+
+#[cfg(feature = "libvirt")]
+pub mod timeout_utils;
+
+#[cfg(feature = "libvirt")]
+pub use timeout_utils::{BackoffConfig, retry_with_backoff, wait_for_condition, wait_for_condition_backoff};
+
 /// Information about a running container/node
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NodeInfo {

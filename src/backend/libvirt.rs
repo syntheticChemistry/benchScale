@@ -47,17 +47,34 @@ use super::ssh::SshClient;
 ///
 /// Provides a generic backend for benchScale that uses libvirt to manage VMs.
 /// This enables testing scenarios that require full OS environments rather than containers.
+///
+/// ## IP Address Management
+///
+/// Uses a deterministic IP pool to eliminate DHCP race conditions when creating
+/// multiple VMs rapidly. Each VM gets a pre-allocated unique IP address configured
+/// via cloud-init, ensuring no conflicts regardless of creation speed.
 #[cfg(feature = "libvirt")]
 pub struct LibvirtBackend {
     conn: Arc<Mutex<Connect>>,
     config: crate::config::LibvirtConfig,
+    ip_pool: crate::backend::IpPool,
+    templates: HashMap<String, std::path::PathBuf>,
 }
 
 #[cfg(feature = "libvirt")]
 impl LibvirtBackend {
     /// Create a new LibvirtBackend with default configuration
     pub fn new() -> Result<Self> {
-        Self::with_config(crate::config::LibvirtConfig::default())
+        let mut backend = Self::with_config(crate::config::LibvirtConfig::default())?;
+        
+        // Auto-discover templates if template_dir is configured
+        if backend.config.template_dir.is_some() {
+            if let Err(e) = backend.discover_templates() {
+                warn!("Failed to auto-discover templates: {}", e);
+            }
+        }
+        
+        Ok(backend)
     }
 
     /// Create a new LibvirtBackend with custom configuration
@@ -65,11 +82,207 @@ impl LibvirtBackend {
         let conn = Connect::open(Some(&config.uri))
             .map_err(|e| crate::Error::Backend(format!("Failed to connect to libvirt: {}", e)))?;
 
+        // Initialize IP pool for deterministic IP assignment
+        let ip_pool = crate::backend::IpPool::default_libvirt();
+
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
             config,
+            ip_pool,
+            templates: HashMap::new(),
         })
     }
+
+    // ========================================================================
+    // Template Management API
+    // ========================================================================
+
+    /// Register a template with a friendly name
+    ///
+    /// Templates allow you to create VMs from pre-configured base images
+    /// (e.g., from agentReagents) using friendly names instead of full paths.
+    ///
+    /// # Arguments
+    /// * `name` - Friendly name for the template (e.g., "rustdesk-ubuntu-22.04")
+    /// * `path` - Full path to the template qcow2 file
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use benchscale::LibvirtBackend;
+    /// # use std::path::PathBuf;
+    /// # fn example() -> anyhow::Result<()> {
+    /// let mut backend = LibvirtBackend::new()?;
+    /// backend.register_template(
+    ///     "my-template",
+    ///     PathBuf::from("/path/to/template.qcow2")
+    /// )?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn register_template(&mut self, name: impl Into<String>, path: std::path::PathBuf) -> Result<()> {
+        let name = name.into();
+        
+        if !path.exists() {
+            return Err(crate::Error::Backend(format!(
+                "Template path does not exist: {:?}",
+                path
+            )));
+        }
+        
+        if path.extension().and_then(|s| s.to_str()) != Some("qcow2") {
+            warn!("Template {:?} does not have .qcow2 extension", path);
+        }
+        
+        info!("Registered template '{}' -> {:?}", name, path);
+        self.templates.insert(name, path);
+        Ok(())
+    }
+
+    /// Discover templates from the configured template directory
+    ///
+    /// Scans the template directory (from config or BENCHSCALE_TEMPLATE_DIR)
+    /// and registers all .qcow2 files as templates.
+    ///
+    /// # Returns
+    /// Number of templates discovered
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use benchscale::LibvirtBackend;
+    /// # fn example() -> anyhow::Result<()> {
+    /// let mut backend = LibvirtBackend::new()?;
+    /// let count = backend.discover_templates()?;
+    /// println!("Discovered {} templates", count);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn discover_templates(&mut self) -> Result<usize> {
+        let template_dir = self.config.template_dir
+            .as_ref()
+            .ok_or_else(|| crate::Error::Backend(
+                "No template directory configured. Set BENCHSCALE_TEMPLATE_DIR or ensure agentReagents is in a standard location.".to_string()
+            ))?;
+
+        if !template_dir.exists() {
+            return Err(crate::Error::Backend(format!(
+                "Template directory does not exist: {:?}",
+                template_dir
+            )));
+        }
+
+        let mut count = 0;
+        for entry in std::fs::read_dir(template_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+
+            // Only register .qcow2 files
+            if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("qcow2") {
+                if let Some(name) = path.file_stem().and_then(|s| s.to_str()) {
+                    self.templates.insert(name.to_string(), path);
+                    count += 1;
+                }
+            }
+        }
+
+        info!("Discovered {} templates from {:?}", count, template_dir);
+        Ok(count)
+    }
+
+    /// List all registered template names
+    ///
+    /// Returns a sorted list of template names that can be used with
+    /// `create_from_registered_template()`.
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use benchscale::LibvirtBackend;
+    /// # fn example() -> anyhow::Result<()> {
+    /// let backend = LibvirtBackend::new()?;
+    /// for template in backend.list_templates() {
+    ///     println!("  - {}", template);
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn list_templates(&self) -> Vec<String> {
+        let mut names: Vec<_> = self.templates.keys().cloned().collect();
+        names.sort();
+        names
+    }
+
+    /// Get the path for a registered template
+    ///
+    /// # Arguments
+    /// * `name` - Template name (as registered or discovered)
+    ///
+    /// # Returns
+    /// Path to the template file
+    ///
+    /// # Errors
+    /// Returns error if template is not registered
+    pub fn get_template_path(&self, name: &str) -> Result<&std::path::PathBuf> {
+        self.templates.get(name)
+            .ok_or_else(|| crate::Error::Backend(format!(
+                "Template '{}' not registered. Available templates: {:?}",
+                name, self.list_templates()
+            )))
+    }
+
+    /// Create VM from a registered template by name
+    ///
+    /// This is a convenience method that looks up the template path and calls
+    /// `create_from_template()`. Templates can be registered manually via
+    /// `register_template()` or auto-discovered via `discover_templates()`.
+    ///
+    /// # Arguments
+    /// * `vm_name` - Name for the new VM
+    /// * `template_name` - Name of the registered template
+    /// * `cloud_init` - Optional cloud-init configuration
+    /// * `memory_mb` - RAM in megabytes
+    /// * `vcpus` - Number of virtual CPUs
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use benchscale::{LibvirtBackend, CloudInit};
+    /// # async fn example() -> anyhow::Result<()> {
+    /// let backend = LibvirtBackend::new()?;
+    ///
+    /// // Templates auto-discovered from agentReagents
+    /// let vm = backend.create_from_registered_template(
+    ///     "my-vm",
+    ///     "rustdesk-ubuntu-22.04-template",
+    ///     None,
+    ///     2048,
+    ///     2
+    /// ).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn create_from_registered_template(
+        &self,
+        vm_name: &str,
+        template_name: &str,
+        cloud_init: Option<&crate::CloudInit>,
+        memory_mb: u32,
+        vcpus: u32,
+    ) -> Result<NodeInfo> {
+        let template_path = self.get_template_path(template_name)?;
+        
+        info!("Creating VM '{}' from template '{}'", vm_name, template_name);
+        
+        self.create_from_template(
+            vm_name,
+            template_path,
+            cloud_init,
+            memory_mb,
+            vcpus,
+            false  // save_intermediate
+        ).await
+    }
+
+    // ========================================================================
+    // VM Creation Methods
+    // ========================================================================
 
     /// Create a desktop VM with cloud-init support
     ///

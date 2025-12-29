@@ -31,6 +31,10 @@ pub struct CloudInit {
     /// Write files
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub write_files: Vec<CloudInitFile>,
+
+    /// Network configuration (for static IP assignment)
+    #[serde(skip)]
+    pub network_config: Option<NetworkConfig>,
 }
 
 /// User configuration for cloud-init
@@ -71,6 +75,63 @@ pub struct CloudInitFile {
     pub owner: Option<String>,
 }
 
+/// Network configuration for static IP assignment
+///
+/// Supports cloud-init network-config v2 format for deterministic IP addressing.
+/// This eliminates DHCP race conditions when creating multiple VMs rapidly.
+#[derive(Debug, Clone)]
+pub struct NetworkConfig {
+    /// Interface name (e.g., "enp1s0", "eth0")
+    pub interface: String,
+    /// Static IP address with CIDR (e.g., "192.168.122.10/24")
+    pub address: String,
+    /// Gateway IP (e.g., "192.168.122.1")
+    pub gateway: String,
+    /// DNS nameserver IPs
+    pub nameservers: Vec<String>,
+}
+
+impl NetworkConfig {
+    /// Create a new network configuration
+    pub fn new(
+        interface: impl Into<String>,
+        address: impl Into<String>,
+        gateway: impl Into<String>,
+    ) -> Self {
+        Self {
+            interface: interface.into(),
+            address: address.into(),
+            gateway: gateway.into(),
+            nameservers: vec!["8.8.8.8".to_string(), "8.8.4.4".to_string()],
+        }
+    }
+
+    /// Set custom nameservers
+    pub fn with_nameservers(mut self, nameservers: Vec<String>) -> Self {
+        self.nameservers = nameservers;
+        self
+    }
+
+    /// Generate network-config YAML for cloud-init
+    pub fn to_network_config_yaml(&self) -> String {
+        format!(
+            r#"version: 2
+ethernets:
+  {}:
+    addresses:
+      - {}
+    gateway4: {}
+    nameservers:
+      addresses: [{}]
+"#,
+            self.interface,
+            self.address,
+            self.gateway,
+            self.nameservers.join(", ")
+        )
+    }
+}
+
 impl CloudInit {
     /// Create a new CloudInit configuration
     pub fn new() -> Self {
@@ -81,6 +142,7 @@ impl CloudInit {
             package_update: None,
             package_upgrade: None,
             write_files: Vec::new(),
+            network_config: None,
         }
     }
 
@@ -243,6 +305,73 @@ impl CloudInitBuilder {
         self
     }
 
+    /// Set network configuration for static IP assignment
+    ///
+    /// This configures a static IP address instead of using DHCP, eliminating
+    /// race conditions when creating multiple VMs rapidly.
+    ///
+    /// # Arguments
+    /// * `interface` - Network interface name (e.g., "enp1s0", "eth0")
+    /// * `ip` - Static IP address (e.g., "192.168.122.10")
+    /// * `cidr` - Network CIDR (e.g., "24" for /24)
+    /// * `gateway` - Gateway IP (e.g., "192.168.122.1")
+    ///
+    /// # Example
+    /// ```
+    /// use benchscale::CloudInit;
+    ///
+    /// let cloud_init = CloudInit::builder()
+    ///     .add_user("test", "ssh-rsa AAAAB3...")
+    ///     .static_ip("enp1s0", "192.168.122.10", 24, "192.168.122.1")
+    ///     .build();
+    /// ```
+    pub fn static_ip(
+        mut self,
+        interface: impl Into<String>,
+        ip: impl Into<String>,
+        cidr: u8,
+        gateway: impl Into<String>,
+    ) -> Self {
+        let ip_str = ip.into();
+        let address = format!("{}/{}", ip_str, cidr);
+        self.config.network_config = Some(NetworkConfig::new(interface, address, gateway));
+        self
+    }
+
+    /// Set network configuration with custom nameservers
+    ///
+    /// Like `static_ip()` but allows specifying custom DNS servers.
+    ///
+    /// # Example
+    /// ```
+    /// use benchscale::CloudInit;
+    ///
+    /// let cloud_init = CloudInit::builder()
+    ///     .add_user("test", "ssh-rsa AAAAB3...")
+    ///     .static_ip_with_dns(
+    ///         "enp1s0",
+    ///         "192.168.122.10",
+    ///         24,
+    ///         "192.168.122.1",
+    ///         vec!["192.168.122.1".to_string()]
+    ///     )
+    ///     .build();
+    /// ```
+    pub fn static_ip_with_dns(
+        mut self,
+        interface: impl Into<String>,
+        ip: impl Into<String>,
+        cidr: u8,
+        gateway: impl Into<String>,
+        nameservers: Vec<String>,
+    ) -> Self {
+        let ip_str = ip.into();
+        let address = format!("{}/{}", ip_str, cidr);
+        self.config.network_config =
+            Some(NetworkConfig::new(interface, address, gateway).with_nameservers(nameservers));
+        self
+    }
+
     /// Build the CloudInit configuration
     pub fn build(self) -> CloudInit {
         self.config
@@ -331,5 +460,107 @@ mod tests {
             cloud_init.runcmd.len() > 0,
             "Should have password set command"
         );
+    }
+
+    // === Network Config Tests (Phase 1a) ===
+
+    #[test]
+    fn test_network_config_creation() {
+        let net_config = NetworkConfig::new(
+            "enp1s0",
+            "192.168.122.10/24",
+            "192.168.122.1"
+        );
+
+        assert_eq!(net_config.interface, "enp1s0");
+        assert_eq!(net_config.address, "192.168.122.10/24");
+        assert_eq!(net_config.gateway, "192.168.122.1");
+        assert_eq!(net_config.nameservers, vec!["8.8.8.8", "8.8.4.4"]);
+    }
+
+    #[test]
+    fn test_network_config_custom_dns() {
+        let net_config = NetworkConfig::new(
+            "eth0",
+            "10.0.0.5/24",
+            "10.0.0.1"
+        ).with_nameservers(vec!["1.1.1.1".to_string(), "1.0.0.1".to_string()]);
+
+        assert_eq!(net_config.nameservers, vec!["1.1.1.1", "1.0.0.1"]);
+    }
+
+    #[test]
+    fn test_network_config_yaml_generation() {
+        let net_config = NetworkConfig::new(
+            "enp1s0",
+            "192.168.122.10/24",
+            "192.168.122.1"
+        );
+
+        let yaml = net_config.to_network_config_yaml();
+
+        // Verify YAML format
+        assert!(yaml.contains("version: 2"));
+        assert!(yaml.contains("ethernets:"));
+        assert!(yaml.contains("enp1s0:"));
+        assert!(yaml.contains("addresses:"));
+        assert!(yaml.contains("- 192.168.122.10/24"));
+        assert!(yaml.contains("gateway4: 192.168.122.1"));
+        assert!(yaml.contains("nameservers:"));
+        assert!(yaml.contains("8.8.8.8"));
+        assert!(yaml.contains("8.8.4.4"));
+    }
+
+    #[test]
+    fn test_cloud_init_with_static_ip() {
+        let cloud_init = CloudInit::builder()
+            .add_user("testuser", "ssh-rsa AAAAB3...")
+            .static_ip("enp1s0", "192.168.122.50", 24, "192.168.122.1")
+            .build();
+
+        assert!(cloud_init.network_config.is_some());
+        let net_config = cloud_init.network_config.as_ref().unwrap();
+        assert_eq!(net_config.interface, "enp1s0");
+        assert_eq!(net_config.address, "192.168.122.50/24");
+        assert_eq!(net_config.gateway, "192.168.122.1");
+    }
+
+    #[test]
+    fn test_cloud_init_with_static_ip_custom_dns() {
+        let cloud_init = CloudInit::builder()
+            .add_user("testuser", "ssh-rsa AAAAB3...")
+            .static_ip_with_dns(
+                "eth0",
+                "10.0.0.10",
+                24,
+                "10.0.0.1",
+                vec!["1.1.1.1".to_string()]
+            )
+            .build();
+
+        assert!(cloud_init.network_config.is_some());
+        let net_config = cloud_init.network_config.as_ref().unwrap();
+        assert_eq!(net_config.interface, "eth0");
+        assert_eq!(net_config.address, "10.0.0.10/24");
+        assert_eq!(net_config.gateway, "10.0.0.1");
+        assert_eq!(net_config.nameservers, vec!["1.1.1.1"]);
+    }
+
+    #[test]
+    fn test_network_config_yaml_format_valid() {
+        let net_config = NetworkConfig::new(
+            "enp1s0",
+            "192.168.122.100/24",
+            "192.168.122.1"
+        );
+
+        let yaml = net_config.to_network_config_yaml();
+
+        // Parse as YAML to ensure it's valid
+        let _parsed: serde_yaml::Value = serde_yaml::from_str(&yaml)
+            .expect("Generated YAML should be valid");
+
+        // Verify structure
+        assert!(yaml.lines().count() >= 6, "YAML should have at least 6 lines");
     }
 }

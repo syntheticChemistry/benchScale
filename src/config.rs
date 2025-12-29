@@ -51,6 +51,11 @@ pub struct LibvirtConfig {
     #[serde(default = "defaults::vm_ip_timeout_secs")]
     pub vm_ip_timeout_secs: u64,
 
+    /// Template directory for VM base images (e.g., agentReagents templates)
+    /// If not specified, will attempt to auto-discover agentReagents
+    #[serde(default = "defaults::template_dir")]
+    pub template_dir: Option<PathBuf>,
+
     /// SSH configuration for VM access
     pub ssh: SshConfig,
 }
@@ -199,6 +204,45 @@ mod defaults {
             .and_then(|v| v.parse().ok())
             .unwrap_or(180) // 3 minutes (sufficient for COSMIC cloud-init)
     }
+
+    pub fn template_dir() -> Option<PathBuf> {
+        // 1. Check environment variable first
+        if let Ok(dir) = std::env::var("BENCHSCALE_TEMPLATE_DIR") {
+            return Some(PathBuf::from(dir));
+        }
+
+        // 2. Try to auto-discover agentReagents templates
+        discover_agentreagents_templates().ok()
+    }
+
+    fn discover_agentreagents_templates() -> Result<PathBuf, ()> {
+        // Common locations relative to benchScale
+        let search_paths = vec![
+            PathBuf::from("../primalTools/agentReagents/images/templates"),
+            PathBuf::from("../../primalTools/agentReagents/images/templates"),
+            PathBuf::from("../agentReagents/images/templates"),
+            PathBuf::from("../../agentReagents/images/templates"),
+            PathBuf::from("./agentReagents/images/templates"),
+        ];
+
+        // Also check AGENTREAGENTS_PATH if set
+        if let Ok(base) = std::env::var("AGENTREAGENTS_PATH") {
+            let mut path = PathBuf::from(base);
+            path.push("images/templates");
+            if path.exists() && path.is_dir() {
+                return Ok(path);
+            }
+        }
+
+        // Try relative paths
+        for path in search_paths {
+            if path.exists() && path.is_dir() {
+                return Ok(path);
+            }
+        }
+
+        Err(())
+    }
 }
 
 impl Default for DockerConfig {
@@ -217,6 +261,7 @@ impl Default for LibvirtConfig {
             base_image_path: defaults::base_image_path(),
             overlay_dir: defaults::overlay_dir(),
             vm_ip_timeout_secs: defaults::vm_ip_timeout_secs(),
+            template_dir: defaults::template_dir(),
             ssh: SshConfig::default(),
         }
     }

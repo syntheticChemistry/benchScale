@@ -1,7 +1,23 @@
-// Tests for cloud-init validation helpers
+// Integration tests for cloud-init validation helpers
 //
 // These tests verify the behavior of wait_for_cloud_init, wait_for_ssh,
-// and the *_ready() convenience methods.
+// and the *_ready() convenience methods WITH A REAL LIBVIRT CONNECTION.
+//
+// ## Requirements
+// - Libvirt daemon running (`systemctl status libvirtd`)
+// - User in libvirt group (`sudo usermod -aG libvirt $USER`)
+// - OR run with: `sudo -E cargo test --features libvirt`
+//
+// ## Running
+// ```bash
+// cargo test --features libvirt libvirt_validation_tests -- --ignored
+// ```
+//
+// ## Note
+// These are marked #[ignore] because they require actual libvirt access.
+// For unit testing timeout/retry logic without libvirt, see:
+// - `src/backend/timeout_utils.rs` (pure functions)
+// - `src/backend/timeout_utils.rs::tests` (unit tests)
 
 #[cfg(test)]
 mod cloud_init_validation_tests {
@@ -10,6 +26,7 @@ mod cloud_init_validation_tests {
     use tokio::time::Instant;
 
     #[tokio::test]
+    #[ignore] // Requires libvirt daemon with proper permissions
     async fn test_wait_for_ssh_timeout_behavior() {
         // Test that wait_for_ssh properly times out
         let backend = LibvirtBackend::new().expect("Failed to create backend");
@@ -37,6 +54,7 @@ mod cloud_init_validation_tests {
     }
 
     #[tokio::test]
+    #[ignore] // Requires libvirt daemon with proper permissions
     async fn test_wait_for_cloud_init_timeout_behavior() {
         // Test that wait_for_cloud_init properly times out
         let backend = LibvirtBackend::new().expect("Failed to create backend");
@@ -57,6 +75,7 @@ mod cloud_init_validation_tests {
     }
 
     #[tokio::test]
+    #[ignore] // Requires libvirt daemon with proper permissions
     async fn test_exponential_backoff_ssh() {
         // Verify timeout behavior (not strict timing due to test environment variability)
         let backend = LibvirtBackend::new().expect("Failed to create backend");
@@ -76,6 +95,7 @@ mod cloud_init_validation_tests {
     }
 
     #[test]
+    #[ignore] // Requires libvirt daemon with proper permissions
     fn test_backend_creation() {
         // Verify backend can be created
         let result = LibvirtBackend::new();
@@ -83,6 +103,7 @@ mod cloud_init_validation_tests {
     }
 
     #[tokio::test]
+    #[ignore] // Requires libvirt daemon with proper permissions
     async fn test_wait_for_ip_private_helper() {
         // Test the private wait_for_ip helper
         let backend = LibvirtBackend::new().expect("Failed to create backend");
