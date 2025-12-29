@@ -340,7 +340,11 @@ impl LibvirtBackend {
 
         info!("Creating desktop VM: {}", name);
 
-        // 1. Create disk from base image
+        // 1. Allocate static IP from pool (eliminates DHCP race conditions)
+        let static_ip = self.ip_pool.allocate().await?;
+        info!("  Allocated static IP {} for VM {}", static_ip, name);
+
+        // 2. Create disk from base image
         let disk_path = format!("/var/lib/libvirt/images/{}.qcow2", name);
 
         info!("  Copying base image to {}", disk_path);
@@ -375,15 +379,42 @@ impl LibvirtBackend {
             )));
         }
 
-        // 2. Generate cloud-init ISO
-        info!("  Generating cloud-init configuration");
-        let user_data = cloud_init
+        // 3. Generate cloud-init ISO with static IP configuration
+        info!("  Generating cloud-init configuration with static IP");
+        
+        // Clone cloud-init and add static IP network configuration
+        let mut cloud_init_with_ip = cloud_init.clone();
+        
+        // Add static IP network configuration for default libvirt network (192.168.122.0/24)
+        cloud_init_with_ip.network_config = Some(crate::cloud_init::NetworkConfig::new(
+            "enp1s0",                    // Common virtio interface name
+            format!("{}/24", static_ip), // IP with /24 netmask
+            "192.168.122.1"              // Default libvirt gateway
+        ));
+        
+        let user_data = cloud_init_with_ip
             .to_user_data()
-            .map_err(|e| crate::Error::Backend(format!("Failed to generate cloud-init: {}", e)))?;
+            .map_err(|e| {
+                // Release IP on failure
+                let ip = static_ip;
+                tokio::spawn(async move {
+                    // Best-effort release (ignore errors since this is cleanup)
+                    let _ = self.ip_pool.release(ip).await;
+                });
+                crate::Error::Backend(format!("Failed to generate cloud-init: {}", e))
+            })?;
 
         let user_data_path = format!("/tmp/user-data-{}", name);
         std::fs::write(&user_data_path, user_data)
-            .map_err(|e| crate::Error::Backend(format!("Failed to write user-data: {}", e)))?;
+            .map_err(|e| {
+                // Release IP on failure
+                let ip = static_ip;
+                let pool = self.ip_pool.clone();
+                tokio::spawn(async move {
+                    let _ = pool.release(ip).await;
+                });
+                crate::Error::Backend(format!("Failed to write user-data: {}", e))
+            })?;
 
         // Create meta-data
         let meta_data = format!("instance-id: {}\nlocal-hostname: {}\n", name, name);
@@ -416,7 +447,7 @@ impl LibvirtBackend {
             )));
         }
 
-        // 3. Define and start VM
+        // 4. Define and start VM
         info!("  Defining VM in libvirt");
         let output = Command::new("sudo")
             .args([
@@ -441,29 +472,33 @@ impl LibvirtBackend {
                 "--import",
             ])
             .output()
-            .map_err(|e| crate::Error::Backend(format!("Failed to create VM: {}", e)))?;
+            .map_err(|e| {
+                // Release IP on failure
+                let ip = static_ip;
+                let pool = self.ip_pool.clone();
+                tokio::spawn(async move {
+                    let _ = pool.release(ip).await;
+                });
+                crate::Error::Backend(format!("Failed to create VM: {}", e))
+            })?;
 
         if !output.status.success() {
+            // Release IP on failure
+            self.ip_pool.release(static_ip).await?;
             return Err(crate::Error::Backend(format!(
                 "Failed to create VM: {}",
                 String::from_utf8_lossy(&output.stderr)
             )));
         }
 
-        info!("  VM created, waiting for network");
+        info!("  VM created with static IP {}", static_ip);
 
-        // 4. Wait for IP address (using configured timeout)
-        let timeout = Duration::from_secs(self.config.vm_ip_timeout_secs);
-        let ip_address = self.wait_for_ip(name, timeout).await?;
-
-        info!("  VM got IP: {}", ip_address);
-
-        // 5. Return NodeInfo
+        // 5. Return NodeInfo with pre-assigned IP (no DHCP wait needed!)
         Ok(NodeInfo {
             id: name.to_string(),
             name: name.to_string(),
             container_id: name.to_string(),
-            ip_address,
+            ip_address: static_ip.to_string(),
             network: "default".to_string(),
             status: NodeStatus::Running,
             metadata: HashMap::new(),
@@ -1262,12 +1297,25 @@ impl Backend for LibvirtBackend {
 
     async fn delete_node(&self, node_id: &str) -> Result<()> {
         use super::vm_utils::DiskManager;
+        use std::net::Ipv4Addr;
+        use std::str::FromStr;
 
         info!("Deleting VM: {}", node_id);
 
-        // Get node info first to clean up disk overlay
+        // Get node info first to clean up disk overlay and release IP
         let node_info = self.get_node(node_id).await.ok();
         let node_name = node_info.as_ref().map(|n| n.name.as_str());
+        
+        // Release IP back to pool if it's a valid IPv4 address
+        if let Some(ref info) = node_info {
+            if let Ok(ip) = Ipv4Addr::from_str(&info.ip_address) {
+                if let Err(e) = self.ip_pool.release(ip).await {
+                    warn!("Failed to release IP {} for VM {}: {}", ip, node_id, e);
+                } else {
+                    info!("Released IP {} back to pool", ip);
+                }
+            }
+        }
 
         let conn = self.conn.lock().await;
         let domain = Domain::lookup_by_uuid_string(&conn, node_id)

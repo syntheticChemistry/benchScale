@@ -8,8 +8,8 @@
 //!
 //! Run with: cargo test --features libvirt --test libvirt_e2e_tests -- --ignored
 
-use benchscale::backend::ip_pool::IpPool;
-use benchscale::{Backend, CloudInit, LibvirtBackend};
+use benchscale::backend::{Backend, LibvirtBackend, NodeInfo};
+use benchscale::{CloudInit, Error};
 use std::collections::HashMap;
 use std::net::Ipv4Addr;
 use std::path::Path;
@@ -282,7 +282,7 @@ async fn test_delete_vm_releases_ip() {
         println!("✅ VM created with IP: {}", allocated_ip);
 
         // Delete VM
-        backend.delete_node(&vm.id).await.expect("Failed to delete VM");
+        Backend::delete_node(&backend, &vm.id).await.expect("Failed to delete VM");
         println!("✅ VM deleted");
 
         // Note: Actual verification of IP release would require access to the
@@ -299,7 +299,7 @@ async fn test_delete_vm_releases_ip() {
             println!("   (IP was available for reuse)");
 
             // Cleanup
-            backend.delete_node(&vm2.id).await.expect("Failed to cleanup");
+            Backend::delete_node(&backend, &vm2.id).await.expect("Failed to cleanup");
         }
     }
 }
@@ -349,7 +349,11 @@ async fn bench_rapid_vm_creation() {
     // Benchmark: Create 3 VMs as fast as possible
     let start = std::time::Instant::now();
     
-    let (r1, r2, r3) = tokio::join!(
+    let (r1, r2, r3): (
+        Result<NodeInfo, Error>,
+        Result<NodeInfo, Error>,
+        Result<NodeInfo, Error>,
+    ) = tokio::join!(
         backend.create_desktop_vm("benchscale-bench-vm1", base_image, &cloud_init, 1024, 1, 10),
         backend.create_desktop_vm("benchscale-bench-vm2", base_image, &cloud_init, 1024, 1, 10),
         backend.create_desktop_vm("benchscale-bench-vm3", base_image, &cloud_init, 1024, 1, 10),
