@@ -421,11 +421,22 @@ impl LibvirtBackend {
 
         // Create meta-data
         let meta_data = format!("instance-id: {}\nlocal-hostname: {}\n", name, name);
-        let meta_data_path = format!("/tmp/meta-data-{}", name);
+        
+        // Create temp directory for this VM's cloud-init files
+        let temp_dir = format!("/tmp/cloud-init-{}", name);
+        std::fs::create_dir_all(&temp_dir)
+            .map_err(|e| crate::Error::Backend(format!("Failed to create temp dir: {}", e)))?;
+        
+        // Write with standard cloud-init filenames (not VM-specific names)
+        let meta_data_path = format!("{}/meta-data", temp_dir);
+        let user_data_final_path = format!("{}/user-data", temp_dir);
+        
         std::fs::write(&meta_data_path, meta_data)
             .map_err(|e| crate::Error::Backend(format!("Failed to write meta-data: {}", e)))?;
+        std::fs::copy(&user_data_path, &user_data_final_path)
+            .map_err(|e| crate::Error::Backend(format!("Failed to copy user-data: {}", e)))?;
 
-        // Create ISO
+        // Create ISO with standard cloud-init filenames
         let iso_path = format!("/var/lib/libvirt/images/{}-cidata.iso", name);
         info!("  Creating cloud-init ISO");
         let output = Command::new("sudo")
@@ -437,7 +448,7 @@ impl LibvirtBackend {
                 "cidata",
                 "-joliet",
                 "-rock",
-                &user_data_path,
+                &user_data_final_path,
                 &meta_data_path,
             ])
             .output()
@@ -594,9 +605,14 @@ impl LibvirtBackend {
 
             let meta_data = format!("instance-id: {}\nlocal-hostname: {}\n", name, name);
 
-            // Write to temp files
-            let user_data_path = format!("/tmp/user-data-{}", name);
-            let meta_data_path = format!("/tmp/meta-data-{}", name);
+            // Create temp directory for this VM's cloud-init files
+            let temp_dir = format!("/tmp/cloud-init-{}", name);
+            std::fs::create_dir_all(&temp_dir)
+                .map_err(|e| crate::Error::Backend(format!("Failed to create temp dir: {}", e)))?;
+            
+            // Write to temp files with standard cloud-init filenames
+            let user_data_path = format!("{}/user-data", temp_dir);
+            let meta_data_path = format!("{}/meta-data", temp_dir);
 
             std::fs::write(&user_data_path, user_data)
                 .map_err(|e| crate::Error::Backend(format!("Failed to write user-data: {}", e)))?;
