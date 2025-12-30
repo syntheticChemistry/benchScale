@@ -7,11 +7,10 @@
 //! - Live handoff capability
 //! - Full audit trail
 
+pub mod lifecycle;
 pub mod registry;
 pub mod state;
-pub mod lifecycle;
 
-pub use registry::{VmRegistry, VmRecord, VmFilter};
-pub use state::{VmState, LifecycleEvent, EventType};
 pub use lifecycle::{LifecycleManager, VmConfig};
-
+pub use registry::{VmFilter, VmRecord, VmRegistry};
+pub use state::{EventType, LifecycleEvent, VmState};

@@ -1,5 +1,5 @@
 //! Integration tests for benchScale
-//! 
+//!
 //! These tests verify basic functionality without requiring actual VMs
 
 use benchscale::CloudInit;
@@ -11,7 +11,7 @@ fn test_cloud_init_creation() {
         .package("vim")
         .package("curl")
         .build();
-    
+
     assert_eq!(cloud_init.users.len(), 1);
     assert_eq!(cloud_init.packages.len(), 2);
 }
@@ -21,9 +21,9 @@ fn test_cloud_init_yaml_generation() {
     let cloud_init = CloudInit::builder()
         .add_user("testuser", "ssh-rsa AAAA...")
         .build();
-    
+
     let yaml = cloud_init.to_user_data().expect("Failed to generate YAML");
-    
+
     // Should contain user data
     assert!(!yaml.is_empty());
     assert!(yaml.contains("testuser"));
@@ -35,7 +35,7 @@ fn test_cloud_init_with_multiple_users() {
         .add_user("user1", "key1")
         .add_user("user2", "key2")
         .build();
-    
+
     assert_eq!(cloud_init.users.len(), 2);
 }
 
@@ -47,7 +47,6 @@ fn test_cloud_init_with_packages() {
         .package("git")
         .package("htop")
         .build();
-    
+
     assert_eq!(cloud_init.packages.len(), 4);
 }
-

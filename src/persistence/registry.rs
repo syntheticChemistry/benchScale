@@ -256,8 +256,9 @@ impl VmRegistry {
 
     /// List VMs by filter
     pub async fn list(&self, filter: VmFilter) -> Result<Vec<VmRecord>> {
-        // For simplicity, get all and filter in memory (for now)
-        // TODO: Optimize with proper SQL queries for production
+        // Fetch all VMs and filter in-memory
+        // This is acceptable for typical VM counts (<1000)
+        // For larger deployments, consider SQL WHERE clauses
         let rows = sqlx::query("SELECT * FROM vms")
             .fetch_all(&self.pool)
             .await?;
@@ -395,10 +396,11 @@ impl VmRegistry {
 
     /// Get VM lifecycle history
     pub async fn get_history(&self, vm_id: &str) -> Result<Vec<LifecycleEvent>> {
-        let rows = sqlx::query("SELECT * FROM lifecycle_events WHERE vm_id = ? ORDER BY timestamp ASC")
-            .bind(vm_id)
-            .fetch_all(&self.pool)
-            .await?;
+        let rows =
+            sqlx::query("SELECT * FROM lifecycle_events WHERE vm_id = ? ORDER BY timestamp ASC")
+                .bind(vm_id)
+                .fetch_all(&self.pool)
+                .await?;
 
         let mut events = Vec::new();
         for row in rows {
@@ -592,4 +594,3 @@ mod tests {
         assert!(result.is_err());
     }
 }
-

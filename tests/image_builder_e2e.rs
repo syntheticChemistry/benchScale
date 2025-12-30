@@ -15,8 +15,9 @@ async fn test_basic_image_build() -> anyhow::Result<()> {
     // 2. Wait for cloud-init
     // 3. Save as template
 
-    let base_image = PathBuf::from("../agentReagents/images/cloud/ubuntu-24.04-server-cloudimg-amd64.img");
-    
+    let base_image =
+        PathBuf::from("../agentReagents/images/cloud/ubuntu-24.04-server-cloudimg-amd64.img");
+
     if !base_image.exists() {
         eprintln!("Skipping test - base image not found");
         return Ok(());
@@ -48,8 +49,9 @@ async fn test_image_build_with_packages() -> anyhow::Result<()> {
     // 3. Install packages
     // 4. Save as template
 
-    let base_image = PathBuf::from("../agentReagents/images/cloud/ubuntu-24.04-server-cloudimg-amd64.img");
-    
+    let base_image =
+        PathBuf::from("../agentReagents/images/cloud/ubuntu-24.04-server-cloudimg-amd64.img");
+
     if !base_image.exists() {
         eprintln!("Skipping test - base image not found");
         return Ok(());
@@ -60,7 +62,10 @@ async fn test_image_build_with_packages() -> anyhow::Result<()> {
         .with_memory(2048)
         .with_vcpus(1)
         .add_step(BuildStep::WaitForCloudInit) // Critical: wait for apt lock!
-        .add_step(BuildStep::InstallPackages(vec!["vim".to_string(), "curl".to_string()]));
+        .add_step(BuildStep::InstallPackages(vec![
+            "vim".to_string(),
+            "curl".to_string(),
+        ]));
 
     let result = builder.build().await?;
 
@@ -81,8 +86,9 @@ async fn test_image_build_with_user_verification() -> anyhow::Result<()> {
     // 3. Pause for user to verify via VNC
     // 4. Save as template
 
-    let base_image = PathBuf::from("../agentReagents/images/cloud/ubuntu-24.04-server-cloudimg-amd64.img");
-    
+    let base_image =
+        PathBuf::from("../agentReagents/images/cloud/ubuntu-24.04-server-cloudimg-amd64.img");
+
     if !base_image.exists() {
         eprintln!("Skipping test - base image not found");
         return Ok(());
@@ -93,7 +99,9 @@ async fn test_image_build_with_user_verification() -> anyhow::Result<()> {
         .with_memory(4096)
         .with_vcpus(2)
         .add_step(BuildStep::WaitForCloudInit)
-        .add_step(BuildStep::InstallPackages(vec!["ubuntu-desktop".to_string()]))
+        .add_step(BuildStep::InstallPackages(vec![
+            "ubuntu-desktop".to_string()
+        ]))
         .add_step(BuildStep::Reboot)
         .add_step(BuildStep::UserVerification {
             message: "Check VNC - is Ubuntu desktop running?".to_string(),
@@ -120,8 +128,9 @@ async fn test_intermediate_save() -> anyhow::Result<()> {
     // 4. Install more
     // 5. Save final template
 
-    let base_image = PathBuf::from("../agentReagents/images/cloud/ubuntu-24.04-server-cloudimg-amd64.img");
-    
+    let base_image =
+        PathBuf::from("../agentReagents/images/cloud/ubuntu-24.04-server-cloudimg-amd64.img");
+
     if !base_image.exists() {
         eprintln!("Skipping test - base image not found");
         return Ok(());
@@ -160,8 +169,9 @@ async fn test_apt_lock_handling() -> anyhow::Result<()> {
     // This was the bug we found - cloud-init was holding apt lock
     // and package installation failed
 
-    let base_image = PathBuf::from("../agentReagents/images/cloud/ubuntu-24.04-server-cloudimg-amd64.img");
-    
+    let base_image =
+        PathBuf::from("../agentReagents/images/cloud/ubuntu-24.04-server-cloudimg-amd64.img");
+
     if !base_image.exists() {
         eprintln!("Skipping test - base image not found");
         return Ok(());
@@ -193,4 +203,3 @@ async fn test_apt_lock_handling() -> anyhow::Result<()> {
 
     Ok(())
 }
-

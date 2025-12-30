@@ -39,7 +39,9 @@ pub use ip_pool::IpPool;
 pub mod timeout_utils;
 
 #[cfg(feature = "libvirt")]
-pub use timeout_utils::{BackoffConfig, retry_with_backoff, wait_for_condition, wait_for_condition_backoff};
+pub use timeout_utils::{
+    retry_with_backoff, wait_for_condition, wait_for_condition_backoff, BackoffConfig,
+};
 
 #[cfg(all(feature = "libvirt", test))]
 mod vnc_display_tests;

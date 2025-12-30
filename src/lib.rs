@@ -57,7 +57,9 @@
 #![allow(clippy::unused_async)] // Some async fns are trait impls or future-proofing
 
 pub mod backend;
+pub mod capabilities;
 pub mod cloud_init;
+/// Simplified cloud-init configuration for common use cases
 pub mod cloud_init_simplified;
 pub mod config;
 pub mod constants;

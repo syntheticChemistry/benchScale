@@ -91,6 +91,9 @@ mod tests {
         fail: bool,
     }
 
+    /// Deep debt solution: MockBackend returns proper errors instead of panicking.
+    /// Mocks should be isolated to testing and return errors for unimplemented methods
+    /// rather than causing panics.
     #[async_trait]
     impl Backend for MockBackend {
         async fn create_network(
@@ -98,10 +101,14 @@ mod tests {
             _: &str,
             _: &str,
         ) -> crate::Result<crate::backend::NetworkInfo> {
-            unimplemented!()
+            Err(crate::Error::Test(
+                "MockBackend::create_network not implemented - use real backend or implement for test".to_string()
+            ))
         }
         async fn delete_network(&self, _: &str) -> crate::Result<()> {
-            unimplemented!()
+            Err(crate::Error::Test(
+                "MockBackend::delete_network not implemented - use real backend or implement for test".to_string()
+            ))
         }
         async fn create_node(
             &self,
@@ -110,35 +117,53 @@ mod tests {
             _: &str,
             _: std::collections::HashMap<String, String>,
         ) -> crate::Result<crate::backend::NodeInfo> {
-            unimplemented!()
+            Err(crate::Error::Test(
+                "MockBackend::create_node not implemented - use real backend or implement for test".to_string()
+            ))
         }
         async fn start_node(&self, _: &str) -> crate::Result<()> {
-            unimplemented!()
+            Err(crate::Error::Test(
+                "MockBackend::start_node not implemented - use real backend or implement for test".to_string()
+            ))
         }
         async fn stop_node(&self, _: &str) -> crate::Result<()> {
-            unimplemented!()
+            Err(crate::Error::Test(
+                "MockBackend::stop_node not implemented - use real backend or implement for test".to_string()
+            ))
         }
         async fn delete_node(&self, _: &str) -> crate::Result<()> {
-            unimplemented!()
+            Err(crate::Error::Test(
+                "MockBackend::delete_node not implemented - use real backend or implement for test".to_string()
+            ))
         }
         async fn get_node(&self, _: &str) -> crate::Result<crate::backend::NodeInfo> {
-            unimplemented!()
+            Err(crate::Error::Test(
+                "MockBackend::get_node not implemented - use real backend or implement for test".to_string()
+            ))
         }
         async fn list_nodes(&self, _: &str) -> crate::Result<Vec<crate::backend::NodeInfo>> {
-            unimplemented!()
+            Err(crate::Error::Test(
+                "MockBackend::list_nodes not implemented - use real backend or implement for test".to_string()
+            ))
         }
         async fn exec_command(
             &self,
             _: &str,
             _: Vec<String>,
         ) -> crate::Result<crate::backend::ExecResult> {
-            unimplemented!()
+            Err(crate::Error::Test(
+                "MockBackend::exec_command not implemented - use real backend or implement for test".to_string()
+            ))
         }
         async fn copy_to_node(&self, _: &str, _: &str, _: &str) -> crate::Result<()> {
-            unimplemented!()
+            Err(crate::Error::Test(
+                "MockBackend::copy_to_node not implemented - use real backend or implement for test".to_string()
+            ))
         }
         async fn get_logs(&self, _: &str) -> crate::Result<String> {
-            unimplemented!()
+            Err(crate::Error::Test(
+                "MockBackend::get_logs not implemented - use real backend or implement for test".to_string()
+            ))
         }
 
         async fn apply_network_conditions(

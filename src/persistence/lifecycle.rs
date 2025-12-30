@@ -158,7 +158,7 @@ impl<B: Backend> LifecycleManager<B> {
         // Note: This is a simplified version. In production, you'd call
         // backend-specific methods based on _record.config
         // For now, we just transition to Running
-        
+
         // Simulate startup
         tokio::time::sleep(Duration::from_millis(100)).await;
 
@@ -364,7 +364,10 @@ impl<B: Backend> LifecycleManager<B> {
     }
 
     /// Get VM history
-    pub async fn get_vm_history(&self, vm_id: &str) -> Result<Vec<crate::persistence::state::LifecycleEvent>> {
+    pub async fn get_vm_history(
+        &self,
+        vm_id: &str,
+    ) -> Result<Vec<crate::persistence::state::LifecycleEvent>> {
         self.registry.get_history(vm_id).await
     }
 }
@@ -439,7 +442,11 @@ mod tests {
             Ok(vec![])
         }
 
-        async fn exec_command(&self, _node_id: &str, _command: Vec<String>) -> crate::Result<ExecResult> {
+        async fn exec_command(
+            &self,
+            _node_id: &str,
+            _command: Vec<String>,
+        ) -> crate::Result<ExecResult> {
             Ok(ExecResult {
                 exit_code: 0,
                 stdout: String::new(),
@@ -447,7 +454,12 @@ mod tests {
             })
         }
 
-        async fn copy_to_node(&self, _node_id: &str, _src_path: &str, _dest_path: &str) -> crate::Result<()> {
+        async fn copy_to_node(
+            &self,
+            _node_id: &str,
+            _src_path: &str,
+            _dest_path: &str,
+        ) -> crate::Result<()> {
             Ok(())
         }
 
@@ -665,4 +677,3 @@ mod tests {
         assert_eq!(alice_vms[0].owner, Some("alice".to_string()));
     }
 }
-

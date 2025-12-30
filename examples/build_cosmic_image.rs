@@ -56,7 +56,7 @@ async fn main() -> anyhow::Result<()> {
 
         // Step 1: Wait for cloud-init to finish (handles apt locks!)
         .add_step(BuildStep::WaitForCloudInit)
-        
+
         // Step 2: Install prerequisites
         .add_step(BuildStep::InstallPackages(vec![
             "curl".to_string(),
@@ -64,21 +64,21 @@ async fn main() -> anyhow::Result<()> {
             "gnupg2".to_string(),
             "software-properties-common".to_string(),
         ]))
-        
+
         // Step 3: Add COSMIC repository (when available)
         // Note: COSMIC is still in development, repo may not exist yet
         .add_step(BuildStep::RunCommands(vec![
             // Check if COSMIC repo exists first
             "curl -fsSL https://apt.system76.com/signing-key.asc 2>/dev/null || echo 'COSMIC repo not available yet'".to_string(),
         ]))
-        
+
         // For now, install a desktop environment we know works
         .add_step(BuildStep::InstallPackages(vec![
             "ubuntu-desktop-minimal".to_string(),
             "pipewire".to_string(),
             "wireplumber".to_string(),
         ]))
-        
+
         // Step 4: Install RustDesk
         .add_step(BuildStep::RunCommands(vec![
             "cd /tmp && wget -q https://github.com/rustdesk/rustdesk/releases/download/1.2.3/rustdesk-1.2.3-x86_64.deb".to_string(),
@@ -86,23 +86,23 @@ async fn main() -> anyhow::Result<()> {
             "sudo DEBIAN_FRONTEND=noninteractive apt install -y -f".to_string(),
             "rm -f /tmp/rustdesk-1.2.3-x86_64.deb".to_string(),
         ]))
-        
+
         // Step 5: Configure auto-login and RustDesk auto-start
         .add_step(BuildStep::RunCommands(vec![
             "sudo systemctl set-default graphical.target".to_string(),
             "mkdir -p ~/.config/autostart".to_string(),
             "cat > ~/.config/autostart/rustdesk.desktop << 'EOF'\n[Desktop Entry]\nType=Application\nName=RustDesk\nExec=/usr/bin/rustdesk\nX-GNOME-Autostart-enabled=true\nEOF".to_string(),
         ]))
-        
+
         // Step 6: Save intermediate state (before reboot)
         .add_step(BuildStep::SaveIntermediate {
             name: "before-gui-reboot".to_string(),
             path: PathBuf::from("/var/lib/libvirt/images/cosmic-intermediate.qcow2"),
         })
-        
+
         // Step 7: Reboot to start GUI
         .add_step(BuildStep::Reboot)
-        
+
         // Step 8: USER VERIFICATION - Check GUI via VNC
         .add_step(BuildStep::UserVerification {
             message: r#"
@@ -115,7 +115,7 @@ Please verify the desktop environment is working:
 "#.to_string(),
             vnc_port: None, // Auto-detect
         })
-        
+
         // Step 9: Cleanup
         .add_step(BuildStep::RunCommands(vec![
             "sudo apt autoremove -y".to_string(),

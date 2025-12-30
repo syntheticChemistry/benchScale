@@ -7,11 +7,11 @@
 //! - Multi-VM coordination
 
 #[cfg(feature = "persistence")]
+use async_trait::async_trait;
+#[cfg(feature = "persistence")]
 use benchscale::backend::{Backend, ExecResult, NetworkInfo, NodeInfo, NodeStatus};
 #[cfg(feature = "persistence")]
 use benchscale::persistence::{LifecycleManager, VmConfig, VmFilter, VmRegistry, VmState};
-#[cfg(feature = "persistence")]
-use async_trait::async_trait;
 #[cfg(feature = "persistence")]
 use std::collections::HashMap;
 #[cfg(feature = "persistence")]
@@ -269,7 +269,9 @@ mod persistence_e2e {
             .unwrap();
 
         assert_eq!(alice_vms.len(), 2);
-        assert!(alice_vms.iter().all(|vm| vm.owner == Some("alice".to_string())));
+        assert!(alice_vms
+            .iter()
+            .all(|vm| vm.owner == Some("alice".to_string())));
 
         // List Bob's VMs
         let bob_vms = manager
@@ -412,4 +414,3 @@ mod persistence_e2e {
         assert_eq!(vm.state, VmState::Running);
     }
 }
-

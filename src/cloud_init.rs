@@ -112,7 +112,10 @@ impl NetworkConfig {
             interface: interface.into(),
             address: address.into(),
             gateway: gateway.into(),
-            nameservers: vec!["8.8.8.8".to_string(), "8.8.4.4".to_string()],
+            nameservers: vec![
+                crate::constants::network::DEFAULT_DNS_PRIMARY.to_string(),
+                crate::constants::network::DEFAULT_DNS_SECONDARY.to_string(),
+            ],
         }
     }
 
@@ -181,6 +184,7 @@ pub struct CloudInitBuilder {
 }
 
 impl CloudInitBuilder {
+    /// Creates a new CloudInit builder with default configuration
     pub fn new() -> Self {
         Self {
             config: CloudInit::new(),
@@ -249,7 +253,7 @@ impl CloudInitBuilder {
         // In production, this should use proper password hashing
 
         self.config.users.push(CloudInitUser {
-            name: username,
+            name: username.clone(),
             groups: vec!["users".to_string(), "admin".to_string(), "sudo".to_string()],
             sudo: Some("ALL=(ALL) NOPASSWD:ALL".to_string()),
             shell: Some("/bin/bash".to_string()),
@@ -261,7 +265,7 @@ impl CloudInitBuilder {
         // Add runcmd to set password
         self.config.runcmd.push(format!(
             "echo '{}:{}' | chpasswd",
-            self.config.users.last().unwrap().name,
+            username,
             password_plain
         ));
 
@@ -403,31 +407,41 @@ mod tests {
         // CRITICAL: This test prevents regression of the cloud-init filename bug
         // Issue: Cloud-init requires exact filenames "meta-data" and "user-data"
         // Previous bug: Used "meta-data-{vm-name}" which cloud-init ignores
-        
+
         let temp_dir = "/tmp/test-cloud-init-filenames";
         std::fs::create_dir_all(temp_dir).unwrap();
-        
+
         // Simulate what create_desktop_vm does
         let vm_name = "test-vm";
-        let meta_data_path = format!("{}/meta-data", temp_dir);  // ✅ Correct
-        let user_data_path = format!("{}/user-data", temp_dir);   // ✅ Correct
-        
+        let meta_data_path = format!("{}/meta-data", temp_dir); // ✅ Correct
+        let user_data_path = format!("{}/user-data", temp_dir); // ✅ Correct
+
         // These would be WRONG and cause silent failure:
         let wrong_meta = format!("{}/meta-data-{}", temp_dir, vm_name);
         let wrong_user = format!("{}/user-data-{}", temp_dir, vm_name);
-        
+
         // Verify we're using the correct paths
-        assert!(!meta_data_path.contains(vm_name), 
-            "meta-data path must NOT contain VM name");
-        assert!(!user_data_path.contains(vm_name),
-            "user-data path must NOT contain VM name");
-        assert_eq!(std::path::Path::new(&meta_data_path).file_name().unwrap(), "meta-data");
-        assert_eq!(std::path::Path::new(&user_data_path).file_name().unwrap(), "user-data");
-        
+        assert!(
+            !meta_data_path.contains(vm_name),
+            "meta-data path must NOT contain VM name"
+        );
+        assert!(
+            !user_data_path.contains(vm_name),
+            "user-data path must NOT contain VM name"
+        );
+        assert_eq!(
+            std::path::Path::new(&meta_data_path).file_name().unwrap(),
+            "meta-data"
+        );
+        assert_eq!(
+            std::path::Path::new(&user_data_path).file_name().unwrap(),
+            "user-data"
+        );
+
         // Verify wrong paths contain VM name (proof they're different)
         assert!(wrong_meta.contains(vm_name));
         assert!(wrong_user.contains(vm_name));
-        
+
         // Cleanup
         std::fs::remove_dir_all(temp_dir).ok();
     }
@@ -510,11 +524,7 @@ mod tests {
 
     #[test]
     fn test_network_config_creation() {
-        let net_config = NetworkConfig::new(
-            "enp1s0",
-            "192.168.122.10/24",
-            "192.168.122.1"
-        );
+        let net_config = NetworkConfig::new("enp1s0", "192.168.122.10/24", "192.168.122.1");
 
         assert_eq!(net_config.interface, "enp1s0");
         assert_eq!(net_config.address, "192.168.122.10/24");
@@ -524,22 +534,15 @@ mod tests {
 
     #[test]
     fn test_network_config_custom_dns() {
-        let net_config = NetworkConfig::new(
-            "eth0",
-            "10.0.0.5/24",
-            "10.0.0.1"
-        ).with_nameservers(vec!["1.1.1.1".to_string(), "1.0.0.1".to_string()]);
+        let net_config = NetworkConfig::new("eth0", "10.0.0.5/24", "10.0.0.1")
+            .with_nameservers(vec!["1.1.1.1".to_string(), "1.0.0.1".to_string()]);
 
         assert_eq!(net_config.nameservers, vec!["1.1.1.1", "1.0.0.1"]);
     }
 
     #[test]
     fn test_network_config_yaml_generation() {
-        let net_config = NetworkConfig::new(
-            "enp1s0",
-            "192.168.122.10/24",
-            "192.168.122.1"
-        );
+        let net_config = NetworkConfig::new("enp1s0", "192.168.122.10/24", "192.168.122.1");
 
         let yaml = net_config.to_network_config_yaml();
 
@@ -578,7 +581,7 @@ mod tests {
                 "10.0.0.10",
                 24,
                 "10.0.0.1",
-                vec!["1.1.1.1".to_string()]
+                vec!["1.1.1.1".to_string()],
             )
             .build();
 
@@ -592,19 +595,18 @@ mod tests {
 
     #[test]
     fn test_network_config_yaml_format_valid() {
-        let net_config = NetworkConfig::new(
-            "enp1s0",
-            "192.168.122.100/24",
-            "192.168.122.1"
-        );
+        let net_config = NetworkConfig::new("enp1s0", "192.168.122.100/24", "192.168.122.1");
 
         let yaml = net_config.to_network_config_yaml();
 
         // Parse as YAML to ensure it's valid
-        let _parsed: serde_yaml::Value = serde_yaml::from_str(&yaml)
-            .expect("Generated YAML should be valid");
+        let _parsed: serde_yaml::Value =
+            serde_yaml::from_str(&yaml).expect("Generated YAML should be valid");
 
         // Verify structure
-        assert!(yaml.lines().count() >= 6, "YAML should have at least 6 lines");
+        assert!(
+            yaml.lines().count() >= 6,
+            "YAML should have at least 6 lines"
+        );
     }
 }

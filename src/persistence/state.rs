@@ -206,4 +206,3 @@ mod tests {
         assert_eq!(format!("{}", Paused), "paused");
     }
 }
-

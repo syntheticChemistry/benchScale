@@ -368,7 +368,7 @@ mod tests {
         let config = Config::default();
         assert_eq!(config.libvirt.ssh.port, 22);
         assert!(!config.docker.use_hardened_images); // default
-        
+
         // Cleanup after test
         clear_benchscale_env();
     }
@@ -501,15 +501,18 @@ mod tests {
     #[test]
     fn test_env_var_ssh_port() {
         clear_benchscale_env();
-        
+
         // Small delay to ensure env is clean
         std::thread::sleep(std::time::Duration::from_millis(10));
-        
+
         std::env::set_var("BENCHSCALE_SSH_PORT", "2222");
 
         let config = Config::from_env();
-        assert_eq!(config.libvirt.ssh.port, 2222, 
-            "Expected SSH port 2222 from env var, got {}", config.libvirt.ssh.port);
+        assert_eq!(
+            config.libvirt.ssh.port, 2222,
+            "Expected SSH port 2222 from env var, got {}",
+            config.libvirt.ssh.port
+        );
 
         clear_benchscale_env();
     }
@@ -529,7 +532,7 @@ mod tests {
     fn test_env_var_libvirt_uri() {
         clear_benchscale_env();
         std::thread::sleep(std::time::Duration::from_millis(50));
-        
+
         std::env::set_var("BENCHSCALE_LIBVIRT_URI", "qemu+ssh://host/system");
 
         let config = Config::from_env();

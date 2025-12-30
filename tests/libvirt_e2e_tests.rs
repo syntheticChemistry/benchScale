@@ -21,7 +21,10 @@ async fn is_libvirt_available() -> bool {
 /// Helper to create a test cloud-init config
 fn create_test_cloud_init() -> CloudInit {
     CloudInit::builder()
-        .add_user("testuser", "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC... (test key)")
+        .add_user(
+            "testuser",
+            "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC... (test key)",
+        )
         .package("curl")
         .build()
 }
@@ -52,18 +55,27 @@ async fn test_create_single_vm_with_ip_pool() {
 
     // Create VM
     let vm_result: Result<_, _> = backend
-        .create_desktop_vm("benchscale-test-ip-pool", base_image, &cloud_init, 1024, 1, 10)
+        .create_desktop_vm(
+            "benchscale-test-ip-pool",
+            base_image,
+            &cloud_init,
+            1024,
+            1,
+            10,
+        )
         .await;
 
     match vm_result {
         Ok(vm) => {
             println!("✅ VM created with IP: {}", vm.ip_address);
-            
+
             // Verify IP is in expected range (192.168.122.10-250)
             assert!(vm.ip_address.starts_with("192.168.122."));
-            
+
             // Cleanup
-            Backend::delete_node(&backend, &vm.id).await.expect("Failed to cleanup");
+            Backend::delete_node(&backend, &vm.id)
+                .await
+                .expect("Failed to cleanup");
             println!("✅ VM deleted and IP released");
         }
         Err(e) => {
@@ -92,8 +104,22 @@ async fn test_concurrent_vm_creation_no_ip_conflict() {
     println!("🧪 Testing concurrent VM creation (2 VMs)...");
 
     // Create two VMs concurrently
-    let vm1_future = backend.create_desktop_vm("benchscale-concurrent-1", base_image, &cloud_init, 1024, 1, 10);
-    let vm2_future = backend.create_desktop_vm("benchscale-concurrent-2", base_image, &cloud_init, 1024, 1, 10);
+    let vm1_future = backend.create_desktop_vm(
+        "benchscale-concurrent-1",
+        base_image,
+        &cloud_init,
+        1024,
+        1,
+        10,
+    );
+    let vm2_future = backend.create_desktop_vm(
+        "benchscale-concurrent-2",
+        base_image,
+        &cloud_init,
+        1024,
+        1,
+        10,
+    );
 
     let (r1, r2) = tokio::join!(vm1_future, vm2_future);
 
@@ -145,7 +171,14 @@ async fn test_ip_release_on_delete() {
 
     // Create VM
     let vm: benchscale::backend::NodeInfo = backend
-        .create_desktop_vm("benchscale-test-release", base_image, &cloud_init, 1024, 1, 10)
+        .create_desktop_vm(
+            "benchscale-test-release",
+            base_image,
+            &cloud_init,
+            1024,
+            1,
+            10,
+        )
         .await
         .expect("Failed to create VM");
 
@@ -153,12 +186,21 @@ async fn test_ip_release_on_delete() {
     println!("✅ VM created with IP: {}", allocated_ip);
 
     // Delete VM
-    Backend::delete_node(&backend, &vm.id).await.expect("Failed to delete VM");
+    Backend::delete_node(&backend, &vm.id)
+        .await
+        .expect("Failed to delete VM");
     println!("✅ VM deleted");
 
     // Try to create another VM immediately - should get same or different IP
     let vm2: benchscale::backend::NodeInfo = backend
-        .create_desktop_vm("benchscale-test-release2", base_image, &cloud_init, 1024, 1, 10)
+        .create_desktop_vm(
+            "benchscale-test-release2",
+            base_image,
+            &cloud_init,
+            1024,
+            1,
+            10,
+        )
         .await
         .expect("Failed to create second VM");
 
@@ -166,7 +208,9 @@ async fn test_ip_release_on_delete() {
     println!("   (IP was available for reuse)");
 
     // Cleanup
-    Backend::delete_node(&backend, &vm2.id).await.expect("Failed to cleanup");
+    Backend::delete_node(&backend, &vm2.id)
+        .await
+        .expect("Failed to cleanup");
 }
 
 /// Note: This test is commented out because it would exhaust the IP pool

@@ -94,8 +94,12 @@ where
     Fut: Future<Output = std::result::Result<T, E>>,
     E: std::fmt::Display,
 {
+    // Deep debt solution: Handle edge case instead of unreachable!()
+    if config.max_attempts == 0 {
+        return operation().await;
+    }
+
     let mut delay = config.initial_delay;
-    let mut last_error = None;
 
     for attempt in 1..=config.max_attempts {
         debug!("Attempt {}/{}", attempt, config.max_attempts);
@@ -109,13 +113,12 @@ where
             }
             Err(e) => {
                 debug!("Attempt {} failed: {}", attempt, e);
-                
+
+                // Return error on last attempt
                 if attempt == config.max_attempts {
                     return Err(e);
                 }
 
-                last_error = Some(format!("{}", e));
-                
                 debug!("Waiting {:?} before retry", delay);
                 tokio::time::sleep(delay).await;
 
@@ -128,11 +131,12 @@ where
         }
     }
 
-    // Should never reach here due to loop structure, but for completeness
-    unreachable!(
-        "retry_with_backoff exhausted {} attempts. Last error: {:?}",
-        config.max_attempts,
-        last_error
+    // Deep debt: This is truly unreachable now (loop always returns)
+    // But Rust can't prove it, so we satisfy the compiler with a panic
+    // that explains the logic error if it ever happens.
+    panic!(
+        "BUG: retry_with_backoff loop didn't return. Attempts: {}. This should never happen.",
+        config.max_attempts
     )
 }
 
@@ -180,9 +184,13 @@ where
 
     loop {
         attempt += 1;
-        
+
         if check().await {
-            debug!("Condition met after {} attempts ({:?})", attempt, start.elapsed());
+            debug!(
+                "Condition met after {} attempts ({:?})",
+                attempt,
+                start.elapsed()
+            );
             return Ok(());
         }
 
@@ -214,18 +222,27 @@ where
 /// # Ok(())
 /// # }
 /// ```
-pub async fn wait_for_condition_backoff<F, Fut>(
-    mut check: F,
-    config: BackoffConfig,
-) -> Result<()>
+pub async fn wait_for_condition_backoff<F, Fut>(mut check: F, config: BackoffConfig) -> Result<()>
 where
     F: FnMut() -> Fut,
     Fut: Future<Output = bool>,
 {
+    // Deep debt solution: Handle edge case instead of unreachable!()
+    if config.max_attempts == 0 {
+        return if check().await {
+            Ok(())
+        } else {
+            Err(Error::Backend("Condition not met (0 attempts configured)".to_string()))
+        };
+    }
+
     let mut delay = config.initial_delay;
 
     for attempt in 1..=config.max_attempts {
-        debug!("Checking condition, attempt {}/{}", attempt, config.max_attempts);
+        debug!(
+            "Checking condition, attempt {}/{}",
+            attempt, config.max_attempts
+        );
 
         if check().await {
             debug!("Condition met after {} attempts", attempt);
@@ -248,7 +265,12 @@ where
         );
     }
 
-    unreachable!()
+    // Deep debt: This is truly unreachable now (loop always returns)
+    // But satisfy the compiler with a descriptive panic for any logic bugs
+    panic!(
+        "BUG: wait_for_condition_backoff loop didn't return. Attempts: {}. This should never happen.",
+        config.max_attempts
+    )
 }
 
 // ============================================================================
@@ -419,11 +441,7 @@ mod tests {
             multiplier: 2.0,
         };
 
-        let result = wait_for_condition_backoff(
-            || async { false },
-            config,
-        )
-        .await;
+        let result = wait_for_condition_backoff(|| async { false }, config).await;
 
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
@@ -455,16 +473,15 @@ mod tests {
 
         let start = Instant::now();
 
-        let _result = retry_with_backoff(
-            || async { Err::<(), _>("fail") },
-            config,
-        )
-        .await;
+        let _result = retry_with_backoff(|| async { Err::<(), _>("fail") }, config).await;
 
         let elapsed = start.elapsed();
 
         // Should have delays: 10ms + 20ms + 40ms + 80ms = 150ms minimum
-        assert!(elapsed >= Duration::from_millis(150), "Backoff too fast: {:?}", elapsed);
+        assert!(
+            elapsed >= Duration::from_millis(150),
+            "Backoff too fast: {:?}",
+            elapsed
+        );
     }
 }
-

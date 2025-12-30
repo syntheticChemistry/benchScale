@@ -18,14 +18,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!();
 
     // Configuration
-    let vm_name = format!("production-ready-{}", chrono::Utc::now().format("%Y%m%d-%H%M%S"));
+    let vm_name = format!(
+        "production-ready-{}",
+        chrono::Utc::now().format("%Y%m%d-%H%M%S")
+    );
     let base_image = Path::new("/home/nestgate/Development/syntheticChemistry/agentReagents/images/cloud/ubuntu-22.04-server-cloudimg-amd64.img");
-    let ssh_public_key = std::env::var("SSH_PUBLIC_KEY")
-        .unwrap_or_else(|_| {
-            // Fallback to reading from default SSH key
-            std::fs::read_to_string(std::env::var("HOME").unwrap() + "/.ssh/id_rsa.pub")
-                .unwrap_or_else(|_| "".to_string())
-        });
+    let ssh_public_key = std::env::var("SSH_PUBLIC_KEY").unwrap_or_else(|_| {
+        // Fallback to reading from default SSH key
+        std::fs::read_to_string(std::env::var("HOME").unwrap() + "/.ssh/id_rsa.pub")
+            .unwrap_or_else(|_| "".to_string())
+    });
 
     println!("🔧 Configuration");
     println!("   VM Name: {}", vm_name);
@@ -47,7 +49,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cloud_init = if ssh_public_key.is_empty() {
         println!("⚠️  No SSH key found - using password authentication");
         println!("   For production, use SSH keys via SSH_PUBLIC_KEY env var");
-        
+
         CloudInit::builder()
             .add_user("ubuntu", "")
             .cmd("echo 'ubuntu:ubuntu' | chpasswd")
@@ -61,7 +63,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .build()
     } else {
         println!("✅ Using SSH key authentication (RECOMMENDED)");
-        
+
         CloudInit::builder()
             .add_user("ubuntu", &ssh_public_key)
             .packages(vec![
@@ -78,7 +80,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // ═══════════════════════════════════════════════════════════════════════
     // PRODUCTION PATTERN: Use create_desktop_vm_ready()
     // ═══════════════════════════════════════════════════════════════════════
-    
+
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     println!("🚀 Creating VM with GUARANTEED SSH access...");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
@@ -93,26 +95,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!();
 
     let start = Instant::now();
-    
+
     let username = "ubuntu";
-    let password = if ssh_public_key.is_empty() { "ubuntu" } else { "" };
-    
-    let result = backend.create_desktop_vm_ready(
-        &vm_name,
-        base_image,
-        &cloud_init,
-        2048,  // 2GB RAM
-        2,     // 2 vCPUs
-        15,    // 15GB disk
-        username,
-        password,
-        Duration::from_secs(600),  // Wait up to 10 minutes
-    ).await;
-    
+    let password = if ssh_public_key.is_empty() {
+        "ubuntu"
+    } else {
+        ""
+    };
+
+    let result = backend
+        .create_desktop_vm_ready(
+            &vm_name,
+            base_image,
+            &cloud_init,
+            2048, // 2GB RAM
+            2,    // 2 vCPUs
+            15,   // 15GB disk
+            username,
+            password,
+            Duration::from_secs(600), // Wait up to 10 minutes
+        )
+        .await;
+
     match result {
         Ok(node) => {
             let total_time = start.elapsed();
-            
+
             println!("✅ VM IS READY!");
             println!();
             println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
@@ -137,10 +145,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             println!();
             println!("   Or use programmatically:");
-            println!("   let ssh = SshClient::connect(\"{}\", 22, \"ubuntu\", ...).await?;", node.ip_address);
+            println!(
+                "   let ssh = SshClient::connect(\"{}\", 22, \"ubuntu\", ...).await?;",
+                node.ip_address
+            );
             println!("   ssh.execute(\"hostname\").await?;  // Works immediately!");
             println!();
-            
+
             // Demonstrate the value
             println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
             println!("💡 Key Benefits");
@@ -154,7 +165,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("   ✅ Cloud-init guaranteed complete");
             println!("   ✅ Clear error messages on failure");
             println!();
-            
+
             println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
             println!("🧹 Cleanup");
             println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
@@ -165,7 +176,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!();
             println!("   VM will remain running for inspection.");
             println!();
-        },
+        }
         Err(e) => {
             println!("❌ VM creation failed: {}", e);
             println!();
@@ -181,4 +192,3 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
-

@@ -30,7 +30,7 @@ fn find_ubuntu_template() -> Option<PathBuf> {
         PathBuf::from("/var/lib/libvirt/images/ubuntu-24.04-server-cloudimg-amd64.img"),
         PathBuf::from("/var/lib/libvirt/images/ubuntu-22.04-server-cloudimg-amd64.img"),
     ];
-    
+
     paths.into_iter().find(|p| p.exists())
 }
 
@@ -42,7 +42,7 @@ fn find_ubuntu_template() -> Option<PathBuf> {
 #[ignore] // Requires libvirt + template + long running time
 async fn test_e2e_full_rustdesk_workflow() {
     // CRITICAL E2E: Complete RustDesk VM creation and validation
-    
+
     if !is_libvirt_available().await {
         println!("⏭️  Skipping: libvirt not available");
         return;
@@ -74,7 +74,10 @@ async fn test_e2e_full_rustdesk_workflow() {
         .build();
 
     println!("📦 Creating VM with desktop environment...");
-    let vm = match backend.create_desktop_vm(vm_name, &template, &cloud_init, 4096, 2, 120).await {
+    let vm = match backend
+        .create_desktop_vm(vm_name, &template, &cloud_init, 4096, 2, 120)
+        .await
+    {
         Ok(vm) => vm,
         Err(e) => {
             println!("❌ VM creation failed: {:?}", e);
@@ -99,26 +102,39 @@ async fn test_e2e_full_rustdesk_workflow() {
 
     let vnc_display = String::from_utf8_lossy(&vnc_check.stdout);
     assert!(!vnc_display.is_empty(), "VNC display should be configured");
-    assert!(vnc_display.starts_with(':'), "VNC display should start with :");
+    assert!(
+        vnc_display.starts_with(':'),
+        "VNC display should start with :"
+    );
     println!("  ✅ VNC display active: {}", vnc_display.trim());
 
     // Test 2: Verify desktop environment installed
     println!("\n🔍 Test 2: Desktop Environment Installed");
     let desktop_check = Command::new("ssh")
         .args(&[
-            "-o", "StrictHostKeyChecking=no",
-            "-o", "UserKnownHostsFile=/dev/null",
-            "-o", "ConnectTimeout=10",
-            "-i", &ssh_key_path,
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "UserKnownHostsFile=/dev/null",
+            "-o",
+            "ConnectTimeout=10",
+            "-i",
+            &ssh_key_path,
             &format!("rustdesktest@{}", vm.ip_address),
             "dpkg -l | grep -E '(ubuntu-desktop|gnome|xfce)' | wc -l",
         ])
         .output()
         .expect("Failed to check desktop");
 
-    let desktop_count = String::from_utf8_lossy(&desktop_check.stdout).trim().parse::<i32>().unwrap_or(0);
+    let desktop_count = String::from_utf8_lossy(&desktop_check.stdout)
+        .trim()
+        .parse::<i32>()
+        .unwrap_or(0);
     assert!(desktop_count > 0, "Desktop packages should be installed");
-    println!("  ✅ Desktop environment installed ({} packages)", desktop_count);
+    println!(
+        "  ✅ Desktop environment installed ({} packages)",
+        desktop_count
+    );
 
     // Test 3: Install RustDesk
     println!("\n🔍 Test 3: RustDesk Installation");
@@ -143,7 +159,7 @@ async fn test_e2e_full_rustdesk_workflow() {
 
     // Test 4: Verify VM is remotely accessible
     println!("\n🔍 Test 4: Remote Accessibility");
-    
+
     // Check if VNC port is open
     let vnc_port_check = Command::new("sudo")
         .args(&["ss", "-tln"])
@@ -152,15 +168,21 @@ async fn test_e2e_full_rustdesk_workflow() {
 
     let ports = String::from_utf8_lossy(&vnc_port_check.stdout);
     let has_vnc = ports.contains("5900") || ports.contains("590");
-    println!("  ✅ VNC port accessible: {}", if has_vnc { "yes" } else { "check manually" });
+    println!(
+        "  ✅ VNC port accessible: {}",
+        if has_vnc { "yes" } else { "check manually" }
+    );
 
     // Test 5: Verify cloud-init completed successfully
     println!("\n🔍 Test 5: Cloud-init Status");
     let cloudinit_check = Command::new("ssh")
         .args(&[
-            "-o", "StrictHostKeyChecking=no",
-            "-o", "UserKnownHostsFile=/dev/null",
-            "-i", &ssh_key_path,
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "UserKnownHostsFile=/dev/null",
+            "-i",
+            &ssh_key_path,
             &format!("rustdesktest@{}", vm.ip_address),
             "cloud-init status",
         ])
@@ -168,7 +190,10 @@ async fn test_e2e_full_rustdesk_workflow() {
         .expect("Failed to check cloud-init");
 
     let cloudinit_status = String::from_utf8_lossy(&cloudinit_check.stdout);
-    assert!(cloudinit_status.contains("done"), "Cloud-init should be done");
+    assert!(
+        cloudinit_status.contains("done"),
+        "Cloud-init should be done"
+    );
     println!("  ✅ Cloud-init completed successfully");
 
     // Print connection information
@@ -195,7 +220,7 @@ async fn test_e2e_full_rustdesk_workflow() {
 #[ignore] // Requires libvirt
 async fn test_e2e_vnc_accessibility() {
     // Test that VNC is properly configured and accessible
-    
+
     if !is_libvirt_available().await {
         println!("⏭️  Skipping: libvirt not available");
         return;
@@ -218,12 +243,12 @@ async fn test_e2e_vnc_accessibility() {
     let backend = LibvirtBackend::new().expect("Failed to create backend");
     let vm_name = "benchscale-e2e-vnc-test";
 
-    let cloud_init = CloudInit::builder()
-        .add_user("vnctest", &ssh_key)
-        .build();
+    let cloud_init = CloudInit::builder().add_user("vnctest", &ssh_key).build();
 
     println!("📦 Creating VM...");
-    let vm = backend.create_desktop_vm(vm_name, &template, &cloud_init, 2048, 2, 60).await
+    let vm = backend
+        .create_desktop_vm(vm_name, &template, &cloud_init, 2048, 2, 60)
+        .await
         .expect("Failed to create VM");
 
     println!("✅ VM created: {}", vm.name);
@@ -235,20 +260,31 @@ async fn test_e2e_vnc_accessibility() {
         .output()
         .expect("Failed to check VNC");
 
-    assert!(vnc_result.status.success(), "VNC display command should succeed");
-    
+    assert!(
+        vnc_result.status.success(),
+        "VNC display command should succeed"
+    );
+
     let vnc_display = String::from_utf8_lossy(&vnc_result.stdout);
     assert!(!vnc_display.is_empty(), "VNC display should be configured");
-    assert!(vnc_display.trim().starts_with(':'), "VNC display format should be correct");
+    assert!(
+        vnc_display.trim().starts_with(':'),
+        "VNC display format should be correct"
+    );
 
     println!("  ✅ VNC configured: {}", vnc_display.trim());
 
     // Parse VNC port
-    let display_num: u16 = vnc_display.trim()[1..].parse().expect("Failed to parse display");
+    let display_num: u16 = vnc_display.trim()[1..]
+        .parse()
+        .expect("Failed to parse display");
     let vnc_port = 5900 + display_num;
     println!("  ✅ VNC port: {}", vnc_port);
 
-    assert!(vnc_port >= 5900 && vnc_port < 6000, "VNC port should be in valid range");
+    assert!(
+        vnc_port >= 5900 && vnc_port < 6000,
+        "VNC port should be in valid range"
+    );
 
     // Cleanup
     println!("\n🧹 Cleaning up...");
@@ -262,7 +298,7 @@ async fn test_e2e_vnc_accessibility() {
 #[ignore] // Requires libvirt
 async fn test_e2e_desktop_vm_vs_server_vm() {
     // Compare desktop VM (with VNC) vs server VM (headless)
-    
+
     if !is_libvirt_available().await {
         println!("⏭️  Skipping: libvirt not available");
         return;
@@ -289,12 +325,17 @@ async fn test_e2e_desktop_vm_vs_server_vm() {
 
     // Create desktop VM
     println!("📦 Creating desktop VM (with VNC)...");
-    let desktop_vm = backend.create_desktop_vm(
-        "benchscale-e2e-desktop",
-        &template,
-        &cloud_init,
-        2048, 2, 60
-    ).await.expect("Failed to create desktop VM");
+    let desktop_vm = backend
+        .create_desktop_vm(
+            "benchscale-e2e-desktop",
+            &template,
+            &cloud_init,
+            2048,
+            2,
+            60,
+        )
+        .await
+        .expect("Failed to create desktop VM");
 
     println!("✅ Desktop VM created");
 
@@ -307,7 +348,10 @@ async fn test_e2e_desktop_vm_vs_server_vm() {
 
     let has_vnc = !String::from_utf8_lossy(&desktop_vnc.stdout).is_empty();
     assert!(has_vnc, "Desktop VM should have VNC display");
-    println!("  ✅ Desktop VM has VNC: {}", String::from_utf8_lossy(&desktop_vnc.stdout).trim());
+    println!(
+        "  ✅ Desktop VM has VNC: {}",
+        String::from_utf8_lossy(&desktop_vnc.stdout).trim()
+    );
 
     // Cleanup
     println!("\n🧹 Cleaning up...");
@@ -316,4 +360,3 @@ async fn test_e2e_desktop_vm_vs_server_vm() {
 
     println!("\n✅ DESKTOP VS SERVER VM TEST PASSED!");
 }
-

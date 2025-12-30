@@ -51,6 +51,37 @@ struct IpPoolInner {
 }
 
 impl IpPool {
+    /// Create a new IP pool from string IP range
+    ///
+    /// Convenience method that parses IP addresses from strings.
+    ///
+    /// # Arguments
+    /// * `start_ip` - First allocatable IP as string (e.g., "192.168.122.10")
+    /// * `end_ip` - Last allocatable IP as string (e.g., "192.168.122.250")
+    ///
+    /// # Example
+    /// ```
+    /// use benchscale::backend::ip_pool::IpPool;
+    ///
+    /// let pool = IpPool::from_range("192.168.122.10", "192.168.122.250")?;
+    /// # Ok::<(), benchscale::Error>(())
+    /// ```
+    pub fn from_range(start_ip: &str, end_ip: &str) -> Result<Self> {
+        let range_start: Ipv4Addr = start_ip
+            .parse()
+            .map_err(|e| Error::Backend(format!("Invalid start IP '{}': {}", start_ip, e)))?;
+
+        let range_end: Ipv4Addr = end_ip
+            .parse()
+            .map_err(|e| Error::Backend(format!("Invalid end IP '{}': {}", end_ip, e)))?;
+
+        // Extract network prefix from start IP (assume /24)
+        let octets = range_start.octets();
+        let network_cidr = format!("{}.{}.{}.0/24", octets[0], octets[1], octets[2]);
+
+        Self::new(network_cidr, range_start, range_end)
+    }
+
     /// Create a new IP pool
     ///
     /// # Arguments
@@ -80,7 +111,8 @@ impl IpPool {
         }
 
         // Validate CIDR format by parsing it
-        let network = network_cidr.parse::<IpNetwork>()
+        let network = network_cidr
+            .parse::<IpNetwork>()
             .map_err(|e| Error::Backend(format!("Invalid CIDR '{}': {}", network_cidr, e)))?;
 
         // Validate that both range_start and range_end are within the network
@@ -102,7 +134,7 @@ impl IpPool {
                 allocated: HashSet::new(),
                 next_candidate: range_start,
             })),
-            network: network_cidr,  // Store as String
+            network: network_cidr, // Store as String
             range_start,
             range_end,
         })
@@ -151,13 +183,13 @@ impl IpPool {
     /// ```
     pub async fn allocate(&self) -> Result<Ipv4Addr> {
         let mut inner = self.inner.lock().await;
-        
+
         // Normalize start IP to be within range
         let mut start_ip = inner.next_candidate;
         if start_ip < self.range_start || start_ip > self.range_end {
             start_ip = self.range_start;
         }
-        
+
         // Calculate total IPs in the pool to prevent infinite loops
         let pool_size = Self::range_size(self.range_start, self.range_end);
         let mut checked = 0;
@@ -176,13 +208,13 @@ impl IpPool {
             if !inner.allocated.contains(&current_ip) {
                 // Found an available IP!
                 inner.allocated.insert(current_ip);
-                
+
                 // Update next_candidate for faster future allocations
                 inner.next_candidate = Self::next_ip(current_ip);
                 if inner.next_candidate > self.range_end {
                     inner.next_candidate = self.range_start;
                 }
-                
+
                 return Ok(current_ip);
             }
 
@@ -190,7 +222,7 @@ impl IpPool {
             current_ip = Self::next_ip(current_ip);
             checked += 1;
         }
-        
+
         // We've checked all IPs in the pool - exhausted
         Err(Error::Backend(format!(
             "IP pool exhausted: all {} addresses in range {}-{} are allocated",
@@ -239,10 +271,7 @@ impl IpPool {
 
         // Check if already allocated
         if inner.allocated.contains(&ip) {
-            return Err(Error::Backend(format!(
-                "IP {} is already allocated",
-                ip
-            )));
+            return Err(Error::Backend(format!("IP {} is already allocated", ip)));
         }
 
         // Allocate it
@@ -271,7 +300,7 @@ impl IpPool {
     pub async fn release(&self, ip: Ipv4Addr) {
         let mut inner = self.inner.lock().await;
         inner.allocated.remove(&ip);
-        
+
         // Optimize: if this IP is before our next candidate, update next_candidate
         // to this IP for faster future allocations
         if ip < inner.next_candidate {
@@ -366,7 +395,7 @@ impl IpPool {
     fn next_ip(ip: Ipv4Addr) -> Ipv4Addr {
         let ip_u32 = u32::from(ip);
         let next_u32 = ip_u32 + 1;
-        
+
         // Convert back to Ipv4Addr
         Ipv4Addr::from(next_u32)
     }
@@ -390,16 +419,16 @@ mod tests {
     #[tokio::test]
     async fn test_allocate_unique_ips() {
         let pool = IpPool::default_libvirt();
-        
+
         let ip1 = pool.allocate().await.unwrap();
         let ip2 = pool.allocate().await.unwrap();
         let ip3 = pool.allocate().await.unwrap();
-        
+
         // All IPs should be unique
         assert_ne!(ip1, ip2);
         assert_ne!(ip2, ip3);
         assert_ne!(ip1, ip3);
-        
+
         // All should be in range
         assert!(ip1 >= Ipv4Addr::new(192, 168, 122, 10));
         assert!(ip1 <= Ipv4Addr::new(192, 168, 122, 250));
@@ -408,12 +437,12 @@ mod tests {
     #[tokio::test]
     async fn test_release_and_reallocate() {
         let pool = IpPool::default_libvirt();
-        
+
         let ip1 = pool.allocate().await.unwrap();
         let ip2 = pool.allocate().await.unwrap();
-        
+
         pool.release(ip1).await;
-        
+
         let ip3 = pool.allocate().await.unwrap();
         // After releasing ip1, it should be available again
         // (might be ip1 or another IP depending on allocation strategy)
@@ -423,10 +452,10 @@ mod tests {
     #[tokio::test]
     async fn test_allocate_specific() {
         let pool = IpPool::default_libvirt();
-        
+
         let target_ip = Ipv4Addr::new(192, 168, 122, 100);
         let allocated = pool.allocate_specific(target_ip).await.unwrap();
-        
+
         assert_eq!(allocated, target_ip);
         assert!(pool.is_allocated(target_ip).await);
     }
@@ -434,10 +463,10 @@ mod tests {
     #[tokio::test]
     async fn test_allocate_specific_already_allocated() {
         let pool = IpPool::default_libvirt();
-        
+
         let ip = Ipv4Addr::new(192, 168, 122, 100);
         pool.allocate_specific(ip).await.unwrap();
-        
+
         // Try to allocate the same IP again
         let result = pool.allocate_specific(ip).await;
         assert!(result.is_err());
@@ -446,43 +475,45 @@ mod tests {
     #[tokio::test]
     async fn test_concurrent_allocation() {
         let pool = IpPool::default_libvirt();
-        
+
         // Allocate 10 IPs concurrently
         let handles: Vec<_> = (0..10)
             .map(|_| {
                 let pool_clone = pool.clone();
-                tokio::spawn(async move {
-                    pool_clone.allocate().await
-                })
+                tokio::spawn(async move { pool_clone.allocate().await })
             })
             .collect();
-        
+
         let mut ips = Vec::new();
         for handle in handles {
             let ip = handle.await.unwrap().unwrap();
             ips.push(ip);
         }
-        
+
         // All IPs should be unique
         let unique_ips: HashSet<_> = ips.iter().collect();
-        assert_eq!(unique_ips.len(), 10, "All concurrently allocated IPs should be unique");
+        assert_eq!(
+            unique_ips.len(),
+            10,
+            "All concurrently allocated IPs should be unique"
+        );
     }
 
     #[tokio::test]
     async fn test_capacity_and_counts() {
         let pool = IpPool::default_libvirt();
-        
+
         let capacity = pool.capacity();
         assert_eq!(capacity, 241); // 192.168.122.10-250 inclusive
-        
+
         let ip1 = pool.allocate().await.unwrap();
         assert_eq!(pool.allocated_count().await, 1);
         assert_eq!(pool.available_count().await, capacity - 1);
-        
+
         let ip2 = pool.allocate().await.unwrap();
         assert_eq!(pool.allocated_count().await, 2);
         assert_eq!(pool.available_count().await, capacity - 2);
-        
+
         pool.release(ip1).await;
         assert_eq!(pool.allocated_count().await, 1);
         assert_eq!(pool.available_count().await, capacity - 1);
@@ -497,16 +528,16 @@ mod tests {
             Ipv4Addr::new(192, 168, 122, 12), // Only 3 IPs
         )
         .unwrap();
-        
+
         // Allocate all IPs
         let ip1 = pool.allocate().await.unwrap();
         let ip2 = pool.allocate().await.unwrap();
         let ip3 = pool.allocate().await.unwrap();
-        
+
         // Try to allocate one more - should fail
         let result = pool.allocate().await;
         assert!(result.is_err());
-        
+
         // Release one and try again - should work
         pool.release(ip2).await;
         let ip4 = pool.allocate().await;
@@ -522,7 +553,7 @@ mod tests {
             Ipv4Addr::new(192, 168, 122, 10),
             Ipv4Addr::new(192, 168, 122, 50),
         );
-        
+
         assert!(result.is_err());
         if let Err(e) = result {
             assert!(e.to_string().contains("CIDR") || e.to_string().contains("network"));
@@ -536,7 +567,7 @@ mod tests {
             Ipv4Addr::new(192, 168, 122, 100), // Start
             Ipv4Addr::new(192, 168, 122, 50),  // End (before start!)
         );
-        
+
         assert!(result.is_err());
         if let Err(e) = result {
             assert!(e.to_string().contains("range") || e.to_string().contains("start"));
@@ -550,7 +581,7 @@ mod tests {
             Ipv4Addr::new(192, 168, 123, 10), // Wrong subnet!
             Ipv4Addr::new(192, 168, 123, 50),
         );
-        
+
         assert!(result.is_err());
         if let Err(e) = result {
             assert!(e.to_string().contains("network") || e.to_string().contains("range"));
@@ -560,13 +591,13 @@ mod tests {
     #[tokio::test]
     async fn test_release_unallocated_ip() {
         let pool = IpPool::default_libvirt();
-        
+
         let ip = Ipv4Addr::new(192, 168, 122, 100);
-        
+
         // Release an IP that was never allocated
         // This should succeed (idempotent release) - current implementation doesn't error
         pool.release(ip).await; // Returns () not Result
-        
+
         // Verify it's not allocated
         assert!(!pool.is_allocated(ip).await);
     }
@@ -574,15 +605,15 @@ mod tests {
     #[tokio::test]
     async fn test_double_release() {
         let pool = IpPool::default_libvirt();
-        
+
         let ip = pool.allocate().await.unwrap();
-        
+
         // First release
         pool.release(ip).await;
-        
+
         // Second release of same IP (idempotent)
         pool.release(ip).await;
-        
+
         // Verify it's not allocated
         assert!(!pool.is_allocated(ip).await);
     }
@@ -595,21 +626,20 @@ mod tests {
             Ipv4Addr::new(192, 168, 122, 12), // Only 3 IPs
         )
         .unwrap();
-        
+
         // Allocate all
         let _ip1 = pool.allocate().await.unwrap();
         let ip2 = pool.allocate().await.unwrap();
         let _ip3 = pool.allocate().await.unwrap();
-        
+
         // Pool exhausted
         assert!(pool.allocate().await.is_err());
-        
+
         // Release one
         pool.release(ip2).await;
-        
+
         // Should be able to allocate again
         let ip4 = pool.allocate().await.unwrap();
         assert_eq!(ip4, ip2, "Should reuse the released IP");
     }
 }
-

@@ -34,7 +34,7 @@ fn find_ubuntu_template() -> Option<PathBuf> {
         PathBuf::from("/var/lib/libvirt/images/ubuntu-22.04-server-cloudimg-amd64.img"),
         PathBuf::from("../agentReagents/images/templates/ubuntu-24.04-baseline.qcow2"),
     ];
-    
+
     paths.into_iter().find(|p| p.exists())
 }
 
@@ -47,7 +47,7 @@ fn find_ubuntu_template() -> Option<PathBuf> {
 async fn test_e2e_cloudinit_processing() {
     // CRITICAL: Validates that cloud-init ACTUALLY processes config
     // This catches the filename bug we just fixed!
-    
+
     if !is_libvirt_available().await {
         println!("⏭️  Skipping: libvirt not available");
         return;
@@ -79,7 +79,10 @@ async fn test_e2e_cloudinit_processing() {
         .build();
 
     println!("📦 Creating VM: {}", vm_name);
-    let vm = match backend.create_desktop_vm(vm_name, &template, &cloud_init, 2048, 2, 60).await {
+    let vm = match backend
+        .create_desktop_vm(vm_name, &template, &cloud_init, 2048, 2, 60)
+        .await
+    {
         Ok(vm) => vm,
         Err(e) => {
             println!("❌ VM creation failed: {:?}", e);
@@ -95,14 +98,18 @@ async fn test_e2e_cloudinit_processing() {
 
     // Verify cloud-init processing via SSH
     println!("\n🔍 Verifying cloud-init effects via SSH...");
-    
+
     // Test 1: SSH connection with injected key
     let ssh_test = Command::new("ssh")
         .args(&[
-            "-o", "StrictHostKeyChecking=no",
-            "-o", "UserKnownHostsFile=/dev/null",
-            "-o", "ConnectTimeout=10",
-            "-i", &format!("{}/.ssh/id_ed25519", std::env::var("HOME").unwrap()),
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "UserKnownHostsFile=/dev/null",
+            "-o",
+            "ConnectTimeout=10",
+            "-i",
+            &format!("{}/.ssh/id_ed25519", std::env::var("HOME").unwrap()),
             &format!("e2etest@{}", vm.ip_address),
             "echo 'SSH_SUCCESS'",
         ])
@@ -118,10 +125,14 @@ async fn test_e2e_cloudinit_processing() {
     // Test 2: Check if packages were installed
     let packages_check = Command::new("ssh")
         .args(&[
-            "-o", "StrictHostKeyChecking=no",
-            "-o", "UserKnownHostsFile=/dev/null",
-            "-o", "ConnectTimeout=10",
-            "-i", &format!("{}/.ssh/id_ed25519", std::env::var("HOME").unwrap()),
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "UserKnownHostsFile=/dev/null",
+            "-o",
+            "ConnectTimeout=10",
+            "-i",
+            &format!("{}/.ssh/id_ed25519", std::env::var("HOME").unwrap()),
             &format!("e2etest@{}", vm.ip_address),
             "dpkg -l | grep -E '(curl|wget)' | wc -l",
         ])
@@ -137,10 +148,14 @@ async fn test_e2e_cloudinit_processing() {
     // Test 3: Check if runcmd executed
     let runcmd_check = Command::new("ssh")
         .args(&[
-            "-o", "StrictHostKeyChecking=no",
-            "-o", "UserKnownHostsFile=/dev/null",
-            "-o", "ConnectTimeout=10",
-            "-i", &format!("{}/.ssh/id_ed25519", std::env::var("HOME").unwrap()),
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "UserKnownHostsFile=/dev/null",
+            "-o",
+            "ConnectTimeout=10",
+            "-i",
+            &format!("{}/.ssh/id_ed25519", std::env::var("HOME").unwrap()),
             &format!("e2etest@{}", vm.ip_address),
             "test -f /tmp/cloudinit-ran-successfully && echo 'MARKER_FOUND'",
         ])
@@ -156,10 +171,14 @@ async fn test_e2e_cloudinit_processing() {
     // Test 4: Verify cloud-init status
     let cloudinit_status = Command::new("ssh")
         .args(&[
-            "-o", "StrictHostKeyChecking=no",
-            "-o", "UserKnownHostsFile=/dev/null",
-            "-o", "ConnectTimeout=10",
-            "-i", &format!("{}/.ssh/id_ed25519", std::env::var("HOME").unwrap()),
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "UserKnownHostsFile=/dev/null",
+            "-o",
+            "ConnectTimeout=10",
+            "-i",
+            &format!("{}/.ssh/id_ed25519", std::env::var("HOME").unwrap()),
             &format!("e2etest@{}", vm.ip_address),
             "cloud-init status --wait",
         ])
@@ -174,10 +193,30 @@ async fn test_e2e_cloudinit_processing() {
 
     // Print results
     println!("\n📊 Test Results:");
-    println!("  SSH Key Auth:         {}", if ssh_works { "✅ PASS" } else { "❌ FAIL" });
-    println!("  Packages Installed:   {}", if packages_installed { "✅ PASS" } else { "❌ FAIL" });
-    println!("  Runcmd Executed:      {}", if runcmd_ran { "✅ PASS" } else { "❌ FAIL" });
-    println!("  Cloud-init Status:    {}", if cloudinit_done { "✅ PASS (done)" } else { "❌ FAIL (not done)" });
+    println!(
+        "  SSH Key Auth:         {}",
+        if ssh_works { "✅ PASS" } else { "❌ FAIL" }
+    );
+    println!(
+        "  Packages Installed:   {}",
+        if packages_installed {
+            "✅ PASS"
+        } else {
+            "❌ FAIL"
+        }
+    );
+    println!(
+        "  Runcmd Executed:      {}",
+        if runcmd_ran { "✅ PASS" } else { "❌ FAIL" }
+    );
+    println!(
+        "  Cloud-init Status:    {}",
+        if cloudinit_done {
+            "✅ PASS (done)"
+        } else {
+            "❌ FAIL (not done)"
+        }
+    );
 
     // Cleanup
     println!("\n🧹 Cleaning up...");
@@ -185,10 +224,22 @@ async fn test_e2e_cloudinit_processing() {
     println!("✅ VM deleted");
 
     // Assert all tests passed
-    assert!(ssh_works, "SSH key authentication failed - cloud-init didn't inject SSH keys!");
-    assert!(packages_installed, "Packages not installed - cloud-init didn't process packages!");
-    assert!(runcmd_ran, "Runcmd didn't execute - cloud-init didn't process commands!");
-    assert!(cloudinit_done, "Cloud-init not done - config not fully processed!");
+    assert!(
+        ssh_works,
+        "SSH key authentication failed - cloud-init didn't inject SSH keys!"
+    );
+    assert!(
+        packages_installed,
+        "Packages not installed - cloud-init didn't process packages!"
+    );
+    assert!(
+        runcmd_ran,
+        "Runcmd didn't execute - cloud-init didn't process commands!"
+    );
+    assert!(
+        cloudinit_done,
+        "Cloud-init not done - config not fully processed!"
+    );
 
     println!("\n✅ ALL CLOUD-INIT TESTS PASSED!");
 }
@@ -197,7 +248,7 @@ async fn test_e2e_cloudinit_processing() {
 #[ignore] // Requires libvirt + SSH setup
 async fn test_e2e_ssh_automation() {
     // CRITICAL: Validates SSH-based automation works end-to-end
-    
+
     if !is_libvirt_available().await {
         println!("⏭️  Skipping: libvirt not available");
         return;
@@ -220,12 +271,12 @@ async fn test_e2e_ssh_automation() {
     let backend = LibvirtBackend::new().expect("Failed to create backend");
     let vm_name = "benchscale-e2e-ssh";
 
-    let cloud_init = CloudInit::builder()
-        .add_user("sshtest", &ssh_key)
-        .build();
+    let cloud_init = CloudInit::builder().add_user("sshtest", &ssh_key).build();
 
     println!("📦 Creating VM: {}", vm_name);
-    let vm = backend.create_desktop_vm(vm_name, &template, &cloud_init, 2048, 2, 60).await
+    let vm = backend
+        .create_desktop_vm(vm_name, &template, &cloud_init, 2048, 2, 60)
+        .await
         .expect("Failed to create VM");
 
     println!("✅ VM created with IP: {}", vm.ip_address);
@@ -238,10 +289,14 @@ async fn test_e2e_ssh_automation() {
     println!("\n🔍 Test 1: Basic SSH connectivity");
     let result = Command::new("ssh")
         .args(&[
-            "-o", "StrictHostKeyChecking=no",
-            "-o", "UserKnownHostsFile=/dev/null",
-            "-o", "ConnectTimeout=10",
-            "-i", &ssh_key_path,
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "UserKnownHostsFile=/dev/null",
+            "-o",
+            "ConnectTimeout=10",
+            "-i",
+            &ssh_key_path,
             &format!("sshtest@{}", vm.ip_address),
             "whoami",
         ])
@@ -249,17 +304,24 @@ async fn test_e2e_ssh_automation() {
         .expect("Failed to run SSH");
 
     let username = String::from_utf8_lossy(&result.stdout).trim().to_string();
-    assert_eq!(username, "sshtest", "SSH command didn't return expected username");
+    assert_eq!(
+        username, "sshtest",
+        "SSH command didn't return expected username"
+    );
     println!("  ✅ SSH connectivity works");
 
     // Test 2: Command execution
     println!("\n🔍 Test 2: Command execution");
     let result = Command::new("ssh")
         .args(&[
-            "-o", "StrictHostKeyChecking=no",
-            "-o", "UserKnownHostsFile=/dev/null",
-            "-o", "ConnectTimeout=10",
-            "-i", &ssh_key_path,
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "UserKnownHostsFile=/dev/null",
+            "-o",
+            "ConnectTimeout=10",
+            "-i",
+            &ssh_key_path,
             &format!("sshtest@{}", vm.ip_address),
             "echo 'test123' | sha256sum",
         ])
@@ -267,16 +329,22 @@ async fn test_e2e_ssh_automation() {
         .expect("Failed to run SSH command");
 
     let output = String::from_utf8_lossy(&result.stdout);
-    assert!(output.contains("ecd"), "Command execution didn't produce expected output");
+    assert!(
+        output.contains("ecd"),
+        "Command execution didn't produce expected output"
+    );
     println!("  ✅ Command execution works");
 
     // Test 3: File operations
     println!("\n🔍 Test 3: File operations");
     let _ = Command::new("ssh")
         .args(&[
-            "-o", "StrictHostKeyChecking=no",
-            "-o", "UserKnownHostsFile=/dev/null",
-            "-i", &ssh_key_path,
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "UserKnownHostsFile=/dev/null",
+            "-i",
+            &ssh_key_path,
             &format!("sshtest@{}", vm.ip_address),
             "echo 'automation test' > /tmp/test.txt",
         ])
@@ -284,9 +352,12 @@ async fn test_e2e_ssh_automation() {
 
     let result = Command::new("ssh")
         .args(&[
-            "-o", "StrictHostKeyChecking=no",
-            "-o", "UserKnownHostsFile=/dev/null",
-            "-i", &ssh_key_path,
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "UserKnownHostsFile=/dev/null",
+            "-i",
+            &ssh_key_path,
             &format!("sshtest@{}", vm.ip_address),
             "cat /tmp/test.txt",
         ])
@@ -294,24 +365,35 @@ async fn test_e2e_ssh_automation() {
         .expect("Failed to read file via SSH");
 
     let content = String::from_utf8_lossy(&result.stdout).trim().to_string();
-    assert_eq!(content, "automation test", "File operations didn't work correctly");
+    assert_eq!(
+        content, "automation test",
+        "File operations didn't work correctly"
+    );
     println!("  ✅ File operations work");
 
     // Test 4: Error handling
     println!("\n🔍 Test 4: Error handling");
     let result = Command::new("ssh")
         .args(&[
-            "-o", "StrictHostKeyChecking=no",
-            "-o", "UserKnownHostsFile=/dev/null",
-            "-o", "ConnectTimeout=10",
-            "-i", &ssh_key_path,
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "UserKnownHostsFile=/dev/null",
+            "-o",
+            "ConnectTimeout=10",
+            "-i",
+            &ssh_key_path,
             &format!("sshtest@{}", vm.ip_address),
             "exit 42",
         ])
         .output()
         .expect("Failed to run SSH");
 
-    assert_eq!(result.status.code(), Some(42), "Exit code not propagated correctly");
+    assert_eq!(
+        result.status.code(),
+        Some(42),
+        "Exit code not propagated correctly"
+    );
     println!("  ✅ Error handling works");
 
     // Cleanup
@@ -326,7 +408,7 @@ async fn test_e2e_ssh_automation() {
 #[ignore] // Requires libvirt
 async fn test_e2e_vm_lifecycle() {
     // CRITICAL: Validates full VM lifecycle
-    
+
     if !is_libvirt_available().await {
         println!("⏭️  Skipping: libvirt not available");
         return;
@@ -355,7 +437,9 @@ async fn test_e2e_vm_lifecycle() {
 
     // Test 1: Creation
     println!("🔍 Test 1: VM Creation");
-    let vm = backend.create_desktop_vm(vm_name, &template, &cloud_init, 2048, 2, 30).await
+    let vm = backend
+        .create_desktop_vm(vm_name, &template, &cloud_init, 2048, 2, 30)
+        .await
         .expect("Failed to create VM");
     println!("  ✅ VM created: {}", vm.id);
 
@@ -365,9 +449,12 @@ async fn test_e2e_vm_lifecycle() {
         .args(&["virsh", "list", "--all"])
         .output()
         .expect("Failed to check VM status");
-    
+
     let status_output = String::from_utf8_lossy(&status_check.stdout);
-    assert!(status_output.contains(vm_name), "VM not found in virsh list");
+    assert!(
+        status_output.contains(vm_name),
+        "VM not found in virsh list"
+    );
     assert!(status_output.contains("running"), "VM not running");
     println!("  ✅ VM is running");
 
@@ -377,7 +464,7 @@ async fn test_e2e_vm_lifecycle() {
         .args(&["virsh", "shutdown", vm_name])
         .output()
         .expect("Failed to stop VM");
-    
+
     assert!(stop_result.status.success(), "Failed to shutdown VM");
     sleep(Duration::from_secs(10)).await;
     println!("  ✅ VM shutdown command sent");
@@ -389,7 +476,7 @@ async fn test_e2e_vm_lifecycle() {
         .args(&["virsh", "list", "--all"])
         .output()
         .expect("Failed to check VM status");
-    
+
     let status_output = String::from_utf8_lossy(&status_check.stdout);
     assert!(status_output.contains(vm_name), "VM disappeared!");
     println!("  ✅ VM stopped");
@@ -397,16 +484,18 @@ async fn test_e2e_vm_lifecycle() {
     // Test 5: Cleanup
     println!("\n🔍 Test 5: VM Deletion");
     let _ = Backend::delete_node(&backend, &vm.id).await;
-    
+
     let status_check = Command::new("sudo")
         .args(&["virsh", "list", "--all"])
         .output()
         .expect("Failed to check VM status");
-    
+
     let status_output = String::from_utf8_lossy(&status_check.stdout);
-    assert!(!status_output.contains(vm_name), "VM still exists after deletion!");
+    assert!(
+        !status_output.contains(vm_name),
+        "VM still exists after deletion!"
+    );
     println!("  ✅ VM deleted");
 
     println!("\n✅ ALL LIFECYCLE TESTS PASSED!");
 }
-

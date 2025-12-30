@@ -11,7 +11,7 @@ mod vnc_display_tests {
     fn test_vnc_graphics_argument() {
         // Validate VNC graphics configuration string
         let vnc_config = "vnc,listen=0.0.0.0";
-        
+
         assert!(vnc_config.contains("vnc"));
         assert!(vnc_config.contains("listen=0.0.0.0"));
         assert!(!vnc_config.contains("none"));
@@ -24,20 +24,20 @@ mod vnc_display_tests {
             method: String,
             needs_gui: bool,
         }
-        
+
         let desktop_vm = DisplayConfig {
             method: "vnc".to_string(),
             needs_gui: true,
         };
-        
+
         let server_vm = DisplayConfig {
             method: "none".to_string(),
             needs_gui: false,
         };
-        
+
         assert_eq!(desktop_vm.method, "vnc");
         assert!(desktop_vm.needs_gui);
-        
+
         assert_eq!(server_vm.method, "none");
         assert!(!server_vm.needs_gui);
     }
@@ -47,7 +47,7 @@ mod vnc_display_tests {
         // VNC typically uses ports 5900-5999
         let vnc_display_0 = 5900;
         let vnc_display_99 = 5999;
-        
+
         assert!(vnc_display_0 >= 5900);
         assert!(vnc_display_99 <= 5999);
     }
@@ -60,10 +60,14 @@ mod vnc_display_tests {
             ("none", false, "Headless server"),
             ("spice", true, "Spice for better performance"),
         ];
-        
+
         for (config, has_display, description) in options {
             if has_display {
-                assert!(!config.contains("none"), "{} should have display", description);
+                assert!(
+                    !config.contains("none"),
+                    "{} should have display",
+                    description
+                );
             } else {
                 assert_eq!(config, "none", "{} should be headless", description);
             }
@@ -77,7 +81,7 @@ mod vnc_display_tests {
             listen: String,
             accessible_from: &'static str,
         }
-        
+
         let configs = vec![
             VncConfig {
                 listen: "0.0.0.0".to_string(),
@@ -88,7 +92,7 @@ mod vnc_display_tests {
                 accessible_from: "localhost only",
             },
         ];
-        
+
         for config in configs {
             if config.listen == "0.0.0.0" {
                 assert_eq!(config.accessible_from, "anywhere");
@@ -102,23 +106,33 @@ mod vnc_display_tests {
     fn test_virt_install_graphics_arg() {
         // Validate that we use correct virt-install graphics argument
         let desktop_args = vec![
-            "--name", "test-vm",
-            "--graphics", "vnc,listen=0.0.0.0",  // Correct for desktop!
+            "--name",
+            "test-vm",
+            "--graphics",
+            "vnc,listen=0.0.0.0", // Correct for desktop!
         ];
-        
+
         let headless_args = vec![
-            "--name", "test-vm",
-            "--graphics", "none",  // Correct for server!
+            "--name",
+            "test-vm",
+            "--graphics",
+            "none", // Correct for server!
         ];
-        
+
         // Desktop VM should have VNC
         assert!(desktop_args.contains(&"--graphics"));
-        let graphics_idx = desktop_args.iter().position(|&x| x == "--graphics").unwrap();
+        let graphics_idx = desktop_args
+            .iter()
+            .position(|&x| x == "--graphics")
+            .unwrap();
         assert!(desktop_args[graphics_idx + 1].contains("vnc"));
-        
+
         // Headless VM should have none
         assert!(headless_args.contains(&"--graphics"));
-        let graphics_idx = headless_args.iter().position(|&x| x == "--graphics").unwrap();
+        let graphics_idx = headless_args
+            .iter()
+            .position(|&x| x == "--graphics")
+            .unwrap();
         assert_eq!(headless_args[graphics_idx + 1], "none");
     }
 
@@ -131,7 +145,7 @@ mod vnc_display_tests {
             requires_x11: bool,
             libvirt_auto: bool,
         }
-        
+
         let methods = vec![
             DisplayMethod {
                 name: "VNC",
@@ -152,7 +166,7 @@ mod vnc_display_tests {
                 libvirt_auto: false,
             },
         ];
-        
+
         // VNC should be best for remote desktop VMs
         let vnc = methods.iter().find(|m| m.name == "VNC").unwrap();
         assert!(vnc.remote_access, "VNC must support remote access");
@@ -169,12 +183,19 @@ mod vnc_display_tests {
                 "server" => "none",
                 "development" => "vnc,listen=127.0.0.1",
                 _ => "none",
-            }.to_string()
+            }
+            .to_string()
         }
-        
-        assert_eq!(validate_display_for_vm_type("desktop"), "vnc,listen=0.0.0.0");
+
+        assert_eq!(
+            validate_display_for_vm_type("desktop"),
+            "vnc,listen=0.0.0.0"
+        );
         assert_eq!(validate_display_for_vm_type("server"), "none");
-        assert_eq!(validate_display_for_vm_type("development"), "vnc,listen=127.0.0.1");
+        assert_eq!(
+            validate_display_for_vm_type("development"),
+            "vnc,listen=127.0.0.1"
+        );
         assert_eq!(validate_display_for_vm_type("unknown"), "none");
     }
 }
@@ -188,7 +209,7 @@ mod libvirt_integration_tests {
         // Test the command we use to get VNC display
         let vm_name = "test-vm";
         let command = format!("virsh vncdisplay {}", vm_name);
-        
+
         assert!(command.contains("virsh"));
         assert!(command.contains("vncdisplay"));
         assert!(command.contains(vm_name));
@@ -203,7 +224,7 @@ mod libvirt_integration_tests {
             (":99", 5999),
             ("127.0.0.1:0", 5900),
         ];
-        
+
         for (output, expected_port) in vnc_outputs {
             if output.starts_with(':') {
                 let display_num: u16 = output[1..].parse().unwrap();
@@ -218,27 +239,38 @@ mod libvirt_integration_tests {
         // Validate virt-install command structure for desktop VM
         let command_args = vec![
             "virt-install",
-            "--name", "test-vm",
-            "--memory", "2048",
-            "--vcpus", "2",
-            "--disk", "path=/var/lib/libvirt/images/test.qcow2,format=qcow2",
-            "--disk", "path=/var/lib/libvirt/images/test-cidata.iso,device=cdrom",
-            "--os-variant", "ubuntu22.04",
-            "--network", "network=default",
-            "--graphics", "vnc,listen=0.0.0.0",  // Critical for VNC!
+            "--name",
+            "test-vm",
+            "--memory",
+            "2048",
+            "--vcpus",
+            "2",
+            "--disk",
+            "path=/var/lib/libvirt/images/test.qcow2,format=qcow2",
+            "--disk",
+            "path=/var/lib/libvirt/images/test-cidata.iso,device=cdrom",
+            "--os-variant",
+            "ubuntu22.04",
+            "--network",
+            "network=default",
+            "--graphics",
+            "vnc,listen=0.0.0.0", // Critical for VNC!
             "--noautoconsole",
             "--import",
         ];
-        
+
         // Verify required arguments are present
         assert!(command_args.contains(&"virt-install"));
         assert!(command_args.contains(&"--name"));
         assert!(command_args.contains(&"--graphics"));
         assert!(command_args.contains(&"--network"));
         assert!(command_args.contains(&"--import"));
-        
+
         // Verify graphics is VNC
-        let graphics_idx = command_args.iter().position(|&x| x == "--graphics").unwrap();
+        let graphics_idx = command_args
+            .iter()
+            .position(|&x| x == "--graphics")
+            .unwrap();
         assert!(command_args[graphics_idx + 1].contains("vnc"));
     }
 
@@ -246,16 +278,17 @@ mod libvirt_integration_tests {
     fn test_cloud_init_iso_attachment() {
         // Validate that cloud-init ISO is attached as CDROM
         let disk_args = vec![
-            "--disk", "path=/var/lib/libvirt/images/vm.qcow2,format=qcow2",
-            "--disk", "path=/var/lib/libvirt/images/vm-cidata.iso,device=cdrom",
+            "--disk",
+            "path=/var/lib/libvirt/images/vm.qcow2,format=qcow2",
+            "--disk",
+            "path=/var/lib/libvirt/images/vm-cidata.iso,device=cdrom",
         ];
-        
+
         // Should have main disk
         assert!(disk_args.iter().any(|&arg| arg.contains(".qcow2")));
-        
+
         // Should have cloud-init ISO as cdrom
         assert!(disk_args.iter().any(|&arg| arg.contains("cidata.iso")));
         assert!(disk_args.iter().any(|&arg| arg.contains("device=cdrom")));
     }
 }
-
