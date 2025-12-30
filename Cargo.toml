@@ -51,6 +51,8 @@ data-encoding = { version = "2.6", optional = true }
 
 # Persistence (for lifecycle management)
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite"], optional = true }
+log = "0.4.29"
+env_logger = "0.11.8"
 
 [dev-dependencies]
 tokio-test = "0.4"
