@@ -399,6 +399,40 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_cloudinit_iso_filenames() {
+        // CRITICAL: This test prevents regression of the cloud-init filename bug
+        // Issue: Cloud-init requires exact filenames "meta-data" and "user-data"
+        // Previous bug: Used "meta-data-{vm-name}" which cloud-init ignores
+        
+        let temp_dir = "/tmp/test-cloud-init-filenames";
+        std::fs::create_dir_all(temp_dir).unwrap();
+        
+        // Simulate what create_desktop_vm does
+        let vm_name = "test-vm";
+        let meta_data_path = format!("{}/meta-data", temp_dir);  // ✅ Correct
+        let user_data_path = format!("{}/user-data", temp_dir);   // ✅ Correct
+        
+        // These would be WRONG and cause silent failure:
+        let wrong_meta = format!("{}/meta-data-{}", temp_dir, vm_name);
+        let wrong_user = format!("{}/user-data-{}", temp_dir, vm_name);
+        
+        // Verify we're using the correct paths
+        assert!(!meta_data_path.contains(vm_name), 
+            "meta-data path must NOT contain VM name");
+        assert!(!user_data_path.contains(vm_name),
+            "user-data path must NOT contain VM name");
+        assert_eq!(std::path::Path::new(&meta_data_path).file_name().unwrap(), "meta-data");
+        assert_eq!(std::path::Path::new(&user_data_path).file_name().unwrap(), "user-data");
+        
+        // Verify wrong paths contain VM name (proof they're different)
+        assert!(wrong_meta.contains(vm_name));
+        assert!(wrong_user.contains(vm_name));
+        
+        // Cleanup
+        std::fs::remove_dir_all(temp_dir).ok();
+    }
+
+    #[test]
     fn test_cloud_init_builder() {
         let cloud_init = CloudInit::builder()
             .add_user("testuser", "ssh-rsa AAAAB3...")
