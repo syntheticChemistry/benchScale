@@ -60,6 +60,7 @@ pub mod backend;
 pub mod cloud_init;
 pub mod cloud_init_simplified;
 pub mod config;
+pub mod constants;
 pub mod error;
 pub mod image_builder;
 pub mod lab;

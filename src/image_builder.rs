@@ -49,7 +49,7 @@ async fn detect_ssh_user(ip: &str) -> Result<String> {
         debug!("Trying SSH user: {}", user);
         
         let result = tokio::process::Command::new("ssh")
-            .args(&[
+            .args([
                 "-o", "StrictHostKeyChecking=no",
                 "-o", "UserKnownHostsFile=/dev/null",
                 "-o", "ConnectTimeout=3",
@@ -74,7 +74,7 @@ async fn detect_ssh_user(ip: &str) -> Result<String> {
 /// Get actual IP address from virsh (not the allocated one)
 async fn get_actual_vm_ip(vm_name: &str) -> Result<String> {
     let output = tokio::process::Command::new("sudo")
-        .args(&["virsh", "domifaddr", vm_name])
+        .args(["virsh", "domifaddr", vm_name])
         .output()
         .await
         .map_err(|e| Error::Backend(format!("Failed to get VM IP: {}", e)))?;
@@ -107,7 +107,7 @@ async fn wait_for_ssh(ip: &str, user: &str, max_attempts: u32) -> Result<()> {
     
     for attempt in 1..=max_attempts {
         let result = tokio::process::Command::new("ssh")
-            .args(&[
+            .args([
                 "-o", "StrictHostKeyChecking=no",
                 "-o", "UserKnownHostsFile=/dev/null",
                 "-o", "ConnectTimeout=3",
@@ -563,7 +563,7 @@ impl ImageBuilder {
     /// Run SSH command with known user
     async fn run_ssh_command_with_user(&self, node: &NodeInfo, user: &str, command: &str) -> Result<()> {
         let output = tokio::process::Command::new("ssh")
-            .args(&[
+            .args([
                 "-o", "StrictHostKeyChecking=no",
                 "-o", "UserKnownHostsFile=/dev/null",
                 &format!("{}@{}", user, node.ip_address),
@@ -584,7 +584,7 @@ impl ImageBuilder {
     /// Run SSH command silently with known user
     async fn run_ssh_command_with_user_silent(&self, node: &NodeInfo, user: &str, command: &str) -> Result<String> {
         let output = tokio::process::Command::new("ssh")
-            .args(&[
+            .args([
                 "-o", "StrictHostKeyChecking=no",
                 "-o", "UserKnownHostsFile=/dev/null",
                 "-o", "ConnectTimeout=5",
@@ -617,7 +617,7 @@ impl ImageBuilder {
         
         // TODO: Use proper SSH library instead of shelling out
         let output = tokio::process::Command::new("ssh")
-            .args(&[
+            .args([
                 "-o", "StrictHostKeyChecking=no",
                 "-o", "UserKnownHostsFile=/dev/null",
                 &format!("builder@{}", node.ip_address),
@@ -641,7 +641,7 @@ impl ImageBuilder {
     /// Run SSH command silently (for status checks)
     async fn run_ssh_command_silent(&self, node: &NodeInfo, command: &str) -> Result<String> {
         let output = tokio::process::Command::new("ssh")
-            .args(&[
+            .args([
                 "-o", "StrictHostKeyChecking=no",
                 "-o", "UserKnownHostsFile=/dev/null",
                 "-o", "ConnectTimeout=5",
@@ -687,7 +687,7 @@ impl ImageBuilder {
         
         // Shutdown VM
         let _ = tokio::process::Command::new("virsh")
-            .args(&["shutdown", vm_name])
+            .args(["shutdown", vm_name])
             .output()
             .await;
 
@@ -698,7 +698,7 @@ impl ImageBuilder {
         let disk_path = format!("/var/lib/libvirt/images/{}.qcow2", vm_name);
         
         tokio::process::Command::new("sudo")
-            .args(&["cp", &disk_path, path.to_str().unwrap()])
+            .args(["cp", &disk_path, path.to_str().unwrap()])
             .output()
             .await
             .map_err(|e| Error::Backend(format!("Failed to save intermediate: {}", e)))?;
@@ -707,7 +707,7 @@ impl ImageBuilder {
 
         // Restart VM
         tokio::process::Command::new("virsh")
-            .args(&["start", vm_name])
+            .args(["start", vm_name])
             .output()
             .await
             .map_err(|e| Error::Backend(format!("Failed to restart VM: {}", e)))?;
@@ -740,7 +740,7 @@ impl ImageBuilder {
     fn get_vnc_display(&self, vm_name: &str) -> Result<String> {
         // Try with sudo first
         let output = std::process::Command::new("sudo")
-            .args(&["virsh", "vncdisplay", vm_name])
+            .args(["virsh", "vncdisplay", vm_name])
             .output()
             .map_err(|e| Error::Backend(format!("Failed to get VNC display: {}", e)))?;
 
@@ -760,7 +760,7 @@ impl ImageBuilder {
         // Fallback 1: Try without sudo
         debug!("Trying VNC detection without sudo...");
         let output2 = std::process::Command::new("virsh")
-            .args(&["vncdisplay", vm_name])
+            .args(["vncdisplay", vm_name])
             .output();
             
         if let Ok(out) = output2 {
@@ -780,7 +780,7 @@ impl ImageBuilder {
         // Fallback 2: Parse XML for graphics port
         debug!("Trying to parse VM XML for VNC port...");
         let xml_output = std::process::Command::new("sudo")
-            .args(&["virsh", "dumpxml", vm_name])
+            .args(["virsh", "dumpxml", vm_name])
             .output();
             
         if let Ok(xml) = xml_output {
@@ -813,7 +813,7 @@ impl ImageBuilder {
         
         // Shutdown
         let _ = tokio::process::Command::new("virsh")
-            .args(&["shutdown", vm_name])
+            .args(["shutdown", vm_name])
             .output()
             .await;
 
@@ -826,26 +826,26 @@ impl ImageBuilder {
         // Sparsify
         info!("Optimizing template...");
         tokio::process::Command::new("sudo")
-            .args(&["virt-sparsify", "--in-place", &disk_path])
+            .args(["virt-sparsify", "--in-place", &disk_path])
             .output()
             .await
             .map_err(|e| Error::Backend(format!("Failed to sparsify: {}", e)))?;
 
         // Copy to final location
         tokio::process::Command::new("sudo")
-            .args(&["cp", &disk_path, &template_path])
+            .args(["cp", &disk_path, &template_path])
             .output()
             .await
             .map_err(|e| Error::Backend(format!("Failed to copy template: {}", e)))?;
 
         // Set permissions
         tokio::process::Command::new("sudo")
-            .args(&["chown", "libvirt-qemu:kvm", &template_path])
+            .args(["chown", "libvirt-qemu:kvm", &template_path])
             .output()
             .await?;
 
         tokio::process::Command::new("sudo")
-            .args(&["chmod", "644", &template_path])
+            .args(["chmod", "644", &template_path])
             .output()
             .await?;
 
@@ -860,6 +860,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(feature = "libvirt")]
     fn test_builder_creation() {
         let builder = ImageBuilder::new("test-image").unwrap();
         assert_eq!(builder.name, "test-image");
@@ -868,6 +869,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "libvirt")]
     fn test_builder_configuration() {
         let builder = ImageBuilder::new("test")
             .unwrap()
@@ -881,6 +883,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "libvirt")]
     fn test_build_steps() {
         let builder = ImageBuilder::new("test")
             .unwrap()

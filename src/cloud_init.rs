@@ -125,7 +125,7 @@ impl NetworkConfig {
     /// Generate network-config YAML for cloud-init
     pub fn to_network_config_yaml(&self) -> String {
         format!(
-            r#"version: 2
+            r"version: 2
 ethernets:
   {}:
     addresses:
@@ -133,7 +133,7 @@ ethernets:
     gateway4: {}
     nameservers:
       addresses: [{}]
-"#,
+",
             self.interface,
             self.address,
             self.gateway,

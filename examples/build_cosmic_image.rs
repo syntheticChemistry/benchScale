@@ -22,8 +22,9 @@ async fn main() -> anyhow::Result<()> {
     println!();
 
     // Configuration
-    let base_image = PathBuf::from("../agentReagents/images/cloud/ubuntu-24.04-server-cloudimg-amd64.img");
-    
+    let base_image =
+        PathBuf::from("../agentReagents/images/cloud/ubuntu-24.04-server-cloudimg-amd64.img");
+
     if !base_image.exists() {
         eprintln!("❌ Base image not found: {}", base_image.display());
         eprintln!("   Run: cd ../agentReagents/scripts && ./download-cloud-images.sh");
@@ -31,12 +32,13 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Setup cloud-init with SSH key
-    let ssh_key = std::env::var("SSH_PUBLIC_KEY")
+    let ssh_key = std::env::var("SSH_PUBLIC_KEY").ok().or_else(|| {
+        std::fs::read_to_string(format!(
+            "{}/.ssh/id_rsa.pub",
+            std::env::var("HOME").unwrap()
+        ))
         .ok()
-        .or_else(|| {
-            std::fs::read_to_string(format!("{}/.ssh/id_rsa.pub", std::env::var("HOME").unwrap()))
-                .ok()
-        });
+    });
 
     let cloud_init = CloudInit::builder()
         .hostname("cosmic-builder")
@@ -51,7 +53,7 @@ async fn main() -> anyhow::Result<()> {
         .with_vcpus(2)
         .with_disk_size(35)
         .with_cloud_init(cloud_init)
-        
+
         // Step 1: Wait for cloud-init to finish (handles apt locks!)
         .add_step(BuildStep::WaitForCloudInit)
         
@@ -138,7 +140,10 @@ Please verify the desktop environment is working:
     println!("   let backend = LibvirtBackend::new()?;");
     println!("   let vm = backend.create_from_template(");
     println!("       \"my-vm\",");
-    println!("       &PathBuf::from(\"{}\"),", result.template_path.display());
+    println!(
+        "       &PathBuf::from(\"{}\"),",
+        result.template_path.display()
+    );
     println!("       Some(&cloud_init),");
     println!("       4096, 2, false");
     println!("   ).await?;");
@@ -146,4 +151,3 @@ Please verify the desktop environment is working:
 
     Ok(())
 }
-
