@@ -280,10 +280,11 @@ impl LibvirtBackend {
         username: &str,
         password: &str,
         timeout: Duration,
+        static_ip: Option<String>, // New parameter for deep debt solution
     ) -> Result<NodeInfo> {
         // Create the VM
         let node = self
-            .create_desktop_vm(name, base_image, cloud_init, memory_mb, vcpus, disk_size_gb)
+            .create_desktop_vm(name, base_image, cloud_init, memory_mb, vcpus, disk_size_gb, static_ip)
             .await?;
 
         // Wait for cloud-init to complete with known static IP

@@ -8,14 +8,69 @@ use crate::Result;
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::time::Duration;
-use tracing::{info, warn};
+use tracing::{info, warn, debug};
 
+use virt::connect::Connect;
 use virt::domain::Domain;
 use virt::network::Network;
 
 use super::ssh::SshClient;
 use super::vm_utils;
 use super::LibvirtBackend;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DEEP DEBT FIX: Domain Lookup Helper (Evolution #16)
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Problem: create_desktop_vm calls delete_node(name) with a VM name, but
+// delete_node expects a UUID. This causes silent failures in cleanup.
+//
+// Solution: Idiomatic Rust helper that tries UUID first, then name lookup.
+// This provides a single source of truth for domain lookups.
+
+/// Look up a libvirt domain by UUID or name
+///
+/// This helper provides idiomatic error handling for domain lookups.
+/// It first attempts UUID lookup (fast), then falls back to name lookup.
+///
+/// # Arguments
+/// * `conn` - Libvirt connection
+/// * `id_or_name` - Either a UUID string or VM name
+///
+/// # Returns
+/// * `Ok(Domain)` if found
+/// * `Err` with descriptive message if not found
+///
+/// # Example
+/// ```rust
+/// let domain = lookup_domain(&conn, "my-vm-name")?;
+/// let domain = lookup_domain(&conn, "550e8400-e29b-41d4-a716-446655440000")?;
+/// ```
+fn lookup_domain(conn: &Connect, id_or_name: &str) -> Result<Domain> {
+    // Try UUID lookup first (most common case for Backend trait methods)
+    match Domain::lookup_by_uuid_string(conn, id_or_name) {
+        Ok(domain) => {
+            debug!("Found domain by UUID: {}", id_or_name);
+            Ok(domain)
+        }
+        Err(uuid_err) => {
+            // UUID lookup failed, try name lookup
+            match Domain::lookup_by_name(conn, id_or_name) {
+                Ok(domain) => {
+                    debug!("Found domain by name: {}", id_or_name);
+                    Ok(domain)
+                }
+                Err(name_err) => {
+                    // Neither worked - provide detailed error
+                    Err(crate::Error::Backend(format!(
+                        "Failed to find domain '{}': UUID lookup failed ({}), name lookup failed ({})",
+                        id_or_name, uuid_err, name_err
+                    )))
+                }
+            }
+        }
+    }
+}
 
 #[async_trait]
 impl Backend for LibvirtBackend {
@@ -57,7 +112,7 @@ impl Backend for LibvirtBackend {
   </ip>
 </network>",
             name = name,
-            bridge = name.replace("-", ""),
+            bridge = name.replace('-', ""),
             gateway = gateway,
             dhcp_start = dhcp_start,
             dhcp_end = dhcp_end,
@@ -192,8 +247,7 @@ impl Backend for LibvirtBackend {
         info!("Starting VM: {}", node_id);
 
         let conn = self.conn.lock().await;
-        let domain = Domain::lookup_by_uuid_string(&conn, node_id)
-            .map_err(|e| crate::Error::Backend(format!("Failed to lookup domain: {}", e)))?;
+        let domain = lookup_domain(&conn, node_id)?;
 
         domain
             .create()
@@ -206,8 +260,7 @@ impl Backend for LibvirtBackend {
         info!("Stopping VM: {}", node_id);
 
         let conn = self.conn.lock().await;
-        let domain = Domain::lookup_by_uuid_string(&conn, node_id)
-            .map_err(|e| crate::Error::Backend(format!("Failed to lookup domain: {}", e)))?;
+        let domain = lookup_domain(&conn, node_id)?;
 
         domain
             .shutdown()
@@ -223,53 +276,99 @@ impl Backend for LibvirtBackend {
 
         info!("Deleting VM: {}", node_id);
 
-        // Get node info first to clean up disk overlay and release IP
-        let node_info = self.get_node(node_id).await.ok();
-        let node_name = node_info.as_ref().map(|n| n.name.as_str());
+        // EVOLUTION #16: Idiomatic Rust error handling
+        // Use explicit match instead of .ok() to provide better observability
+        let conn = self.conn.lock().await;
+        let domain = lookup_domain(&conn, node_id)?;
 
-        // Release IP back to pool if it's a valid IPv4 address
-        if let Some(ref info) = node_info {
-            if let Ok(ip) = Ipv4Addr::from_str(&info.ip_address) {
-                self.ip_pool.release(ip).await;
-                info!("Released IP {} back to pool", ip);
+        // Get VM name before deletion (needed for disk cleanup)
+        let vm_name = match domain.get_name() {
+            Ok(name) => {
+                debug!("VM name: {}", name);
+                Some(name)
+            }
+            Err(e) => {
+                warn!("Failed to get VM name for {}: {}", node_id, e);
+                None
+            }
+        };
+
+        // Get UUID for IP pool cleanup
+        let vm_uuid = match domain.get_uuid_string() {
+            Ok(uuid) => Some(uuid),
+            Err(e) => {
+                warn!("Failed to get VM UUID for {}: {}", node_id, e);
+                None
+            }
+        };
+
+        // Try to get node info for IP release (best-effort)
+        if let Some(ref uuid) = vm_uuid {
+            if let Ok(info) = self.get_node(uuid).await {
+                if let Ok(ip) = Ipv4Addr::from_str(&info.ip_address) {
+                    self.ip_pool.release(ip).await;
+                    info!("  Released IP {} back to pool", ip);
+                }
             }
         }
 
-        let conn = self.conn.lock().await;
-        let domain = Domain::lookup_by_uuid_string(&conn, node_id)
-            .map_err(|e| crate::Error::Backend(format!("Failed to lookup domain: {}", e)))?;
-
-        if domain.is_active().unwrap_or(false) {
-            domain
-                .destroy()
-                .map_err(|e| crate::Error::Backend(format!("Failed to destroy domain: {}", e)))?;
+        // Destroy VM if running
+        match domain.is_active() {
+            Ok(true) => {
+                info!("  VM is active, destroying...");
+                domain
+                    .destroy()
+                    .map_err(|e| crate::Error::Backend(format!("Failed to destroy domain: {}", e)))?;
+                info!("  ✅ VM destroyed");
+            }
+            Ok(false) => {
+                debug!("  VM is not active, skipping destroy");
+            }
+            Err(e) => {
+                warn!("  Failed to check VM state: {}, attempting destroy anyway", e);
+                // Try to destroy anyway
+                if let Err(e) = domain.destroy() {
+                    debug!("  Destroy failed (VM may already be stopped): {}", e);
+                }
+            }
         }
 
+        // Undefine the domain
+        info!("  Undefining VM...");
         domain
             .undefine()
             .map_err(|e| crate::Error::Backend(format!("Failed to undefine domain: {}", e)))?;
+        info!("  ✅ VM undefined");
 
         drop(conn);
 
-        // Clean up disk overlay
-        if let Some(name) = node_name {
+        // Clean up disk overlay (best-effort)
+        if let Some(name) = vm_name {
+            info!("  Cleaning up disk overlay for {}...", name);
             let disk_mgr = DiskManager::new(&self.config.overlay_dir);
-            if let Err(e) = disk_mgr.delete_overlay(name).await {
-                warn!("Failed to delete disk overlay for {}: {}", name, e);
+            match disk_mgr.delete_overlay(&name).await {
+                Ok(_) => info!("  ✅ Disk overlay cleaned up"),
+                Err(e) => warn!("  ⚠️  Failed to delete disk overlay: {}", e),
             }
+        } else {
+            warn!("  ⚠️  VM name unknown, cannot clean up disk overlay");
         }
 
+        info!("✅ VM deletion complete: {}", node_id);
         Ok(())
     }
 
     async fn get_node(&self, node_id: &str) -> Result<NodeInfo> {
         let conn = self.conn.lock().await;
-        let domain = Domain::lookup_by_uuid_string(&conn, node_id)
-            .map_err(|e| crate::Error::Backend(format!("Failed to lookup domain: {}", e)))?;
+        let domain = lookup_domain(&conn, node_id)?;
 
         let name = domain
             .get_name()
             .map_err(|e| crate::Error::Backend(format!("Failed to get domain name: {}", e)))?;
+
+        let uuid = domain
+            .get_uuid_string()
+            .map_err(|e| crate::Error::Backend(format!("Failed to get domain UUID: {}", e)))?;
 
         let is_active = domain
             .is_active()
@@ -282,9 +381,9 @@ impl Backend for LibvirtBackend {
         };
 
         Ok(NodeInfo {
-            id: node_id.to_string(),
+            id: uuid.clone(),
             name,
-            container_id: node_id.to_string(),
+            container_id: uuid,
             ip_address: "unknown".to_string(),
             network: "default".to_string(),
             status,
@@ -349,7 +448,7 @@ impl Backend for LibvirtBackend {
         ssh.disconnect().await?;
 
         Ok(ExecResult {
-            exit_code: exit_code as i64,
+            exit_code: i64::from(exit_code),
             stdout,
             stderr,
         })

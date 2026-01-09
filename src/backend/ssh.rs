@@ -4,7 +4,7 @@
 
 use crate::{Error, Result};
 use russh::client::AuthResult;
-use russh::*;
+use russh::{client, ChannelMsg, Disconnect};
 use std::sync::Arc;
 use tracing::{debug, info};
 

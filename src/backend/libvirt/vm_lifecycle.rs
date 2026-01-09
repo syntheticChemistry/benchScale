@@ -107,10 +107,16 @@ impl LibvirtBackend {
         memory_mb: u32,
         vcpus: u32,
         disk_size_gb: u32,
+        static_ip: Option<String>, // New parameter for deep debt solution
     ) -> Result<NodeInfo> {
         info!("Creating desktop VM: {}", name);
 
-        // 0. Check if VM exists and clean up (auto VM cleanup)
+        // 0a. EVOLUTION #20: Pre-flight infrastructure health check
+        // Ensures libvirt is stable before attempting VM creation
+        // This prevents wasted time on corrupted infrastructure
+        self.ensure_healthy().await?;
+
+        // 0b. Check if VM exists and clean up (auto VM cleanup)
         if let Ok(_existing) = self.get_node(name).await {
             warn!(
                 "VM '{}' already exists, cleaning up before creating new one...",
@@ -127,9 +133,17 @@ impl LibvirtBackend {
             tokio::time::sleep(Duration::from_millis(500)).await;
         }
 
-        // 1. Allocate static IP from pool (eliminates DHCP race conditions)
-        let static_ip = self.ip_pool.allocate().await?;
-        info!("  Allocated static IP {} for VM {}", static_ip, name);
+        // 1. Allocate static IP - either from parameter (deep debt) or pool (default)
+        let (allocated_ip, from_pool) = if let Some(requested_ip) = static_ip {
+            // DEEP DEBT SOLUTION: Use provided static IP from agentReagents manifest
+            info!("  Using requested static IP {} for VM {}", requested_ip, name);
+            (requested_ip, false)
+        } else {
+            // Default: Allocate from pool (convert Ipv4Addr to String)
+            let ip = self.ip_pool.allocate().await?;
+            info!("  Allocated static IP {} from pool for VM {}", ip, name);
+            (ip.to_string(), true)
+        };
 
         // 2. Create disk from base image (using discovered storage path)
         let disk_path = self
@@ -142,8 +156,14 @@ impl LibvirtBackend {
             .ok_or_else(|| crate::Error::Backend("Invalid disk path".to_string()))?;
 
         info!("  Copying base image to {}", disk_path_str);
-        let output = Command::new("sudo")
-            .args(["cp", base_image.to_str().unwrap(), disk_path_str])
+        
+        // Phase 1A: Proper error handling for path conversion
+        let base_image_str = base_image
+            .to_str()
+            .ok_or_else(|| crate::Error::Backend(format!("Invalid base image path (non-UTF8): {:?}", base_image)))?;
+        
+        let output = Command::new("cp")
+            .args([base_image_str, disk_path_str])
             .output()
             .map_err(|e| crate::Error::Backend(format!("Failed to copy image: {}", e)))?;
 
@@ -156,9 +176,8 @@ impl LibvirtBackend {
 
         // Resize disk
         info!("  Resizing disk to {}GB", disk_size_gb);
-        let output = Command::new("sudo")
+        let output = Command::new("qemu-img")
             .args([
-                "qemu-img",
                 "resize",
                 disk_path_str,
                 &format!("{}G", disk_size_gb),
@@ -180,23 +199,33 @@ impl LibvirtBackend {
         let mut cloud_init_with_ip = cloud_init.clone();
 
         // Add static IP network configuration using discovered capabilities
+        // No renderer specified - let netplan choose appropriate default
+        // NetworkManager is prevented from managing interfaces via unmanaged-devices config
         cloud_init_with_ip.network_config = Some(crate::cloud_init::NetworkConfig::new(
             &self.capabilities.network.default_interface, // Discovered interface name
-            format!("{}/{}", static_ip, self.capabilities.network.netmask_bits), // IP with discovered netmask
+            format!("{}/{}", allocated_ip, self.capabilities.network.netmask_bits), // IP with discovered netmask
             &self.capabilities.network.gateway, // Discovered gateway
         ));
 
         let user_data = match cloud_init_with_ip.to_user_data() {
             Ok(data) => data,
             Err(e) => {
-                // Release IP on failure
-                self.ip_pool.release(static_ip).await;
+                // Release IP on failure (only if from pool)
+                if from_pool {
+                    if let Ok(ip_addr) = allocated_ip.parse::<std::net::Ipv4Addr>() {
+                        self.ip_pool.release(ip_addr).await;
+                    }
+                }
                 return Err(crate::Error::Backend(format!(
                     "Failed to generate cloud-init: {}",
                     e
                 )));
             }
         };
+
+        // Create cloud-init directory first (BEFORE writing any files)
+        std::fs::create_dir_all(&self.capabilities.storage.cloud_init_dir)
+            .map_err(|e| crate::Error::Backend(format!("Failed to create cloud-init dir: {}", e)))?;
 
         // Use discovered cloud-init directory
         let user_data_path = self
@@ -205,8 +234,12 @@ impl LibvirtBackend {
             .cloud_init_dir
             .join(format!("user-data-{}", name));
         if let Err(e) = std::fs::write(&user_data_path, &user_data) {
-            // Release IP on failure
-            self.ip_pool.release(static_ip).await;
+            // Release IP on failure (only if from pool)
+            if from_pool {
+                if let Ok(ip_addr) = allocated_ip.parse::<std::net::Ipv4Addr>() {
+                    self.ip_pool.release(ip_addr).await;
+                }
+            }
             return Err(crate::Error::Backend(format!(
                 "Failed to write user-data: {}",
                 e
@@ -224,11 +257,29 @@ impl LibvirtBackend {
         // Write with standard cloud-init filenames (not VM-specific names)
         let meta_data_path = temp_dir.join("meta-data");
         let user_data_final_path = temp_dir.join("user-data");
+        let _network_config_path = temp_dir.join("network-config");
 
         std::fs::write(&meta_data_path, meta_data)
             .map_err(|e| crate::Error::Backend(format!("Failed to write meta-data: {}", e)))?;
         std::fs::copy(&user_data_path, &user_data_final_path)
             .map_err(|e| crate::Error::Backend(format!("Failed to copy user-data: {}", e)))?;
+
+        // EVOLUTION #10: Use DHCP instead of static IP for fractal scaling
+        // Static IP configuration doesn't persist after reboot, and prevents
+        // location-agnostic deployment. Let cloud-init use DHCP (its default).
+        // We'll discover the actual IP from libvirt DHCP leases after boot.
+        //
+        // This enables true fractal scaling: VMs self-configure on any network.
+        //
+        // NOTE: network-config file is intentionally NOT written.
+        // Cloud-init will default to DHCP, which persists across reboots.
+        info!("  Using DHCP for network configuration (fractal scaling mode)");
+        if let Some(ref network_cfg) = cloud_init_with_ip.network_config {
+            info!(
+                "  Note: Pool allocated IP {} will be discovered from DHCP leases",
+                network_cfg.address
+            );
+        }
 
         let user_data_final_path_str = user_data_final_path
             .to_str()
@@ -247,10 +298,11 @@ impl LibvirtBackend {
             .to_str()
             .ok_or_else(|| crate::Error::Backend("Invalid ISO path".to_string()))?;
 
-        info!("  Creating cloud-init ISO");
-        let output = Command::new("sudo")
+        // Evolution #10: Create cloud-init ISO WITHOUT network-config (DHCP mode)
+        // Only include user-data and meta-data. Cloud-init will default to DHCP.
+        info!("  Creating cloud-init ISO (DHCP mode - no network-config)");
+        let output = Command::new("genisoimage")
             .args([
-                "genisoimage",
                 "-output",
                 iso_path_str,
                 "-volid",
@@ -259,6 +311,7 @@ impl LibvirtBackend {
                 "-rock",
                 user_data_final_path_str,
                 meta_data_path_str,
+                // Evolution #10: network-config intentionally EXCLUDED for DHCP
             ])
             .output()
             .map_err(|e| crate::Error::Backend(format!("Failed to create ISO: {}", e)))?;
@@ -272,9 +325,25 @@ impl LibvirtBackend {
 
         // 4. Define and start VM
         info!("  Defining VM in libvirt");
-        let output = Command::new("sudo")
+        
+        // Evolution #12: Generate deterministic MAC address for DHCP discovery
+        // Format: 52:54:00:XX:XX:XX (QEMU range)
+        // Use a hash of the VM name to make it deterministic and avoid conflicts
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        let mut hasher = DefaultHasher::new();
+        name.hash(&mut hasher);
+        let hash = hasher.finish();
+        let mac_address = format!(
+            "52:54:00:{:02x}:{:02x}:{:02x}",
+            (hash >> 16) & 0xFF,
+            (hash >> 8) & 0xFF,
+            hash & 0xFF
+        );
+        info!("  Generated MAC address: {} (for DHCP discovery)", mac_address);
+        
+        let output = Command::new("virt-install")
             .args([
-                "virt-install",
                 "--name",
                 name,
                 "--memory",
@@ -288,7 +357,7 @@ impl LibvirtBackend {
                 "--os-variant",
                 "ubuntu22.04",
                 "--network",
-                "network=default",
+                &format!("network=default,mac={}", mac_address), // Specify MAC for DHCP discovery
                 "--graphics",
                 "vnc,listen=0.0.0.0",
                 "--noautoconsole",
@@ -296,35 +365,83 @@ impl LibvirtBackend {
             ])
             .output()
             .map_err(|e| {
-                // Release IP on failure
-                let ip = static_ip;
-                let pool = self.ip_pool.clone();
-                tokio::spawn(async move {
-                    let _ = pool.release(ip).await;
-                });
+                // Release IP on failure (only if from pool)
+                if from_pool {
+                    if let Ok(ip_addr) = allocated_ip.parse::<std::net::Ipv4Addr>() {
+                        let pool = self.ip_pool.clone();
+                        tokio::spawn(async move {
+                            pool.release(ip_addr).await;
+                        });
+                    }
+                }
                 crate::Error::Backend(format!("Failed to create VM: {}", e))
             })?;
 
         if !output.status.success() {
-            // Release IP on failure (ignore release errors, prioritize VM creation error)
-            let _ = self.ip_pool.release(static_ip).await;
+            // Release IP on failure (only if from pool)
+            if from_pool {
+                if let Ok(ip_addr) = allocated_ip.parse::<std::net::Ipv4Addr>() {
+                    self.ip_pool.release(ip_addr).await;
+                }
+            }
             return Err(crate::Error::Backend(format!(
                 "Failed to create VM: {}",
                 String::from_utf8_lossy(&output.stderr)
             )));
         }
 
-        info!("  VM created with static IP {}", static_ip);
+        info!("  VM created successfully, discovering DHCP IP...");
+        
+        // Evolution #12: Discover actual DHCP-assigned IP
+        use crate::backend::libvirt::dhcp_discovery::{discover_dhcp_ip, DiscoveryConfig};
+        let dhcp_config = DiscoveryConfig {
+            max_wait_secs: 60,
+            retry_interval_secs: 2,
+            network_name: "default",
+        };
+        
+        let actual_ip = discover_dhcp_ip(&mac_address, dhcp_config)
+            .await
+            .map_err(|e| {
+                // Release pool IP on failure
+                if from_pool {
+                    if let Ok(ip_addr) = allocated_ip.parse::<std::net::Ipv4Addr>() {
+                        let pool = self.ip_pool.clone();
+                        tokio::spawn(async move {
+                            pool.release(ip_addr).await;
+                        });
+                    }
+                }
+                crate::Error::Backend(format!(
+                    "VM created but DHCP IP discovery failed: {}",
+                    e
+                ))
+            })?;
+        
+        // Release the pool-allocated IP since VM is using DHCP
+        if from_pool {
+            if let Ok(ip_addr) = allocated_ip.parse::<std::net::Ipv4Addr>() {
+                self.ip_pool.release(ip_addr).await;
+                info!(
+                    "  Released pool IP {} (VM using DHCP IP {} instead)",
+                    allocated_ip, actual_ip
+                );
+            }
+        }
 
-        // 5. Return NodeInfo with pre-assigned IP (no DHCP wait needed!)
+        // 5. Return NodeInfo with discovered DHCP IP
+        let mut metadata = HashMap::new();
+        metadata.insert("mac_address".to_string(), mac_address.clone());
+        metadata.insert("dhcp_mode".to_string(), "true".to_string());
+        
         Ok(NodeInfo {
             id: name.to_string(),
             name: name.to_string(),
             container_id: name.to_string(),
-            ip_address: static_ip.to_string(),
+            ip_address: actual_ip,
             network: "default".to_string(),
             status: NodeStatus::Running,
-            metadata: HashMap::new(),
+            metadata,
         })
     }
 
@@ -386,16 +503,20 @@ impl LibvirtBackend {
             .ok_or_else(|| crate::Error::Backend("Invalid disk path".to_string()))?;
 
         info!("  Creating CoW disk from template");
-        let output = Command::new("sudo")
+            // Phase 1A: Proper error handling for path conversion
+            let template_path_str = template_path
+                .to_str()
+                .ok_or_else(|| crate::Error::Backend(format!("Invalid template path (non-UTF8): {:?}", template_path)))?;
+            
+            let output = Command::new("qemu-img")
             .args([
-                "qemu-img",
                 "create",
                 "-f",
                 "qcow2",
                 "-F",
                 "qcow2",
                 "-b",
-                template_path.to_str().unwrap(),
+                template_path_str,
                 disk_path_str,
             ])
             .output()
@@ -484,7 +605,7 @@ impl LibvirtBackend {
             virt_install_args.push(arg);
         }
 
-        let output = Command::new("sudo")
+        let output = Command::new("virt-install")
             .args(&virt_install_args)
             .output()
             .map_err(|e| crate::Error::Backend(format!("Failed to create VM: {}", e)))?;
@@ -523,8 +644,13 @@ impl LibvirtBackend {
             let intermediate_path =
                 intermediate_dir.join(format!("{}-intermediate-{}.qcow2", name, timestamp));
 
-            let output = Command::new("sudo")
-                .args(["cp", disk_path_str, intermediate_path.to_str().unwrap()])
+            // Phase 1A: Proper error handling for path conversion
+            let intermediate_path_str = intermediate_path
+                .to_str()
+                .ok_or_else(|| crate::Error::Backend(format!("Invalid intermediate path (non-UTF8): {:?}", intermediate_path)))?;
+
+            let output = Command::new("cp")
+                .args([disk_path_str, intermediate_path_str])
                 .output()
                 .map_err(|e| {
                     crate::Error::Backend(format!("Failed to save intermediate: {}", e))

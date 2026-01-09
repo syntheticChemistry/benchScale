@@ -176,7 +176,9 @@ impl NetworkCapabilities {
         let netmask_bits = Self::netmask_to_cidr(&netmask);
 
         // Extract prefix from gateway (e.g., "192.168.122" from "192.168.122.1")
-        let prefix = gateway.rsplit_once('.').map(|x| x.0)
+        let prefix = gateway
+            .rsplit_once('.')
+            .map(|x| x.0)
             .unwrap_or("192.168.122")
             .to_string();
 
@@ -211,7 +213,9 @@ impl NetworkCapabilities {
         let gateway = std::env::var("BENCHSCALE_GATEWAY")
             .map_err(|_| crate::Error::Backend("No BENCHSCALE_GATEWAY".to_string()))?;
 
-        let prefix = gateway.rsplit_once('.').map(|x| x.0)
+        let prefix = gateway
+            .rsplit_once('.')
+            .map(|x| x.0)
             .ok_or_else(|| crate::Error::Backend("Invalid gateway format".to_string()))?
             .to_string();
 

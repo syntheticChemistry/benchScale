@@ -27,13 +27,13 @@ pub mod network {
 
     /// Primary DNS nameserver (Google Public DNS)
     pub const DEFAULT_DNS_PRIMARY: &str = "8.8.8.8";
-    
+
     /// Secondary DNS nameserver (Google Public DNS)
     pub const DEFAULT_DNS_SECONDARY: &str = "8.8.4.4";
 
     /// VNC listen on all interfaces (for remote access)
     pub const VNC_LISTEN_ALL: &str = "0.0.0.0";
-    
+
     /// VNC listen on localhost only (for local access)
     pub const VNC_LISTEN_LOCAL: &str = "127.0.0.1";
 }

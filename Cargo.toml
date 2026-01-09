@@ -54,8 +54,13 @@ sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite"], optiona
 log = "0.4.29"
 env_logger = "0.11.8"
 
+# Primal substrate for discovery and vendor agnosticism
+primal-substrate = { path = "../primal-substrate" }
+
 [dev-dependencies]
 tokio-test = "0.4"
+tempfile = "3.8"
+clap = { version = "4.5", features = ["derive"] }
 
 [lib]
 name = "benchscale"

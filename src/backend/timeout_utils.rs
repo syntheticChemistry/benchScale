@@ -232,7 +232,9 @@ where
         return if check().await {
             Ok(())
         } else {
-            Err(Error::Backend("Condition not met (0 attempts configured)".to_string()))
+            Err(Error::Backend(
+                "Condition not met (0 attempts configured)".to_string(),
+            ))
         };
     }
 

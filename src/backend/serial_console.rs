@@ -71,7 +71,7 @@ pub fn extract_errors(log_content: &str) -> Vec<String> {
     log_content
         .lines()
         .filter(|line| line.contains("[Error]"))
-        .map(|line| line.to_string())
+        .map(std::string::ToString::to_string)
         .collect()
 }
 

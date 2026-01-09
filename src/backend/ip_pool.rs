@@ -510,7 +510,7 @@ mod tests {
         assert_eq!(pool.allocated_count().await, 1);
         assert_eq!(pool.available_count().await, capacity - 1);
 
-        let ip2 = pool.allocate().await.unwrap();
+        let _ip2 = pool.allocate().await.unwrap();
         assert_eq!(pool.allocated_count().await, 2);
         assert_eq!(pool.available_count().await, capacity - 2);
 
@@ -530,9 +530,9 @@ mod tests {
         .unwrap();
 
         // Allocate all IPs
-        let ip1 = pool.allocate().await.unwrap();
+        let _ip1 = pool.allocate().await.unwrap();
         let ip2 = pool.allocate().await.unwrap();
-        let ip3 = pool.allocate().await.unwrap();
+        let _ip3 = pool.allocate().await.unwrap();
 
         // Try to allocate one more - should fail
         let result = pool.allocate().await;

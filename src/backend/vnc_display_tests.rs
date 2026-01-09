@@ -5,7 +5,7 @@
 
 #[cfg(test)]
 mod vnc_display_tests {
-    use super::*;
+    
 
     #[test]
     fn test_vnc_graphics_argument() {
@@ -202,7 +202,7 @@ mod vnc_display_tests {
 
 #[cfg(test)]
 mod libvirt_integration_tests {
-    use super::*;
+    
 
     #[test]
     fn test_virsh_vncdisplay_command() {

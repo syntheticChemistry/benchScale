@@ -4,7 +4,7 @@
 
 #![cfg(test)]
 
-use benchscale::{BuildResult, BuildStep, CloudInit, ImageBuilder};
+use benchscale::{BuildStep, CloudInit, ImageBuilder};
 use std::path::PathBuf;
 
 #[tokio::test]
@@ -178,9 +178,7 @@ async fn test_apt_lock_handling() -> anyhow::Result<()> {
     }
 
     let cloud_init = CloudInit::builder()
-        .hostname("apt-lock-test")
-        .add_user("builder", None)
-        .password("builder", "builder")
+        .add_user("builder", "")  // Empty SSH key (will use password)
         // Add packages in cloud-init to create apt lock situation
         .package("htop")
         .package("tree")

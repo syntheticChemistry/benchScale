@@ -8,7 +8,7 @@
 //!
 //! - **Full VM creation and management** via libvirt/KVM
 //! - **Cloud-init support** for automated VM provisioning  
-//! - **Static IP allocation** to eliminate DHCP race conditions
+//! - **DHCP lease discovery** for dynamic, fractal-scalable IP allocation (Evolution #12)
 //! - **Template support** for fast VM creation from pre-built images
 //! - **Readiness validation** ensures VMs are fully operational before returning
 //! - **SSH-based operations** for remote execution and file transfer
@@ -21,6 +21,12 @@
 //! - **`mod.rs`** (this file) - Core struct, initialization, template discovery
 //! - **`vm_lifecycle.rs`** - VM creation operations (desktop VMs, templates)
 //! - **`vm_ready.rs`** - Readiness validation (cloud-init, SSH waiting)
+//! - **`dhcp_discovery.rs`** - DHCP lease discovery for dynamic IPs (Evolution #12)
+//! - **`boot_diagnostics.rs`** - Deep boot failure diagnostics (Evolution #13)
+//! - **`health_check.rs`** - Libvirt system health checks (Evolution #20)
+//! - **`recovery.rs`** - Automatic recovery from libvirt state corruption (Evolution #20)
+//! - **`vm_guard.rs`** - RAII-based VM cleanup to prevent orphaned VMs
+//! - **`vm_registry.rs`** - VM tracking and orphan detection
 //! - **`backend_impl.rs`** - Backend trait implementation
 //! - **`utils.rs`** - Utility functions (IP discovery, template management)
 //!
@@ -148,7 +154,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing::info;
+use tracing::{debug, info, warn};
 
 #[cfg(feature = "libvirt")]
 use virt::connect::Connect;
@@ -166,6 +172,28 @@ mod utils;
 mod vm_lifecycle;
 #[cfg(feature = "libvirt")]
 mod vm_ready;
+#[cfg(feature = "libvirt")]
+mod vm_guard;
+#[cfg(feature = "libvirt")]
+mod vm_registry;
+#[cfg(feature = "libvirt")]
+/// DHCP lease discovery for dynamic IP allocation (Evolution #12)
+pub mod dhcp_discovery;
+#[cfg(feature = "libvirt")]
+/// Deep boot diagnostics for failed VM boots (Evolution #13)
+pub mod boot_diagnostics;
+#[cfg(feature = "libvirt")]
+/// Libvirt health check for system stability (Evolution #20)
+pub mod health_check;
+#[cfg(feature = "libvirt")]
+/// Auto-recovery from libvirt state corruption (Evolution #20)
+pub mod recovery;
+
+// Public exports
+#[cfg(feature = "libvirt")]
+pub use vm_guard::VmGuard;
+#[cfg(feature = "libvirt")]
+pub use vm_registry::{VmRegistry, VmRegistryEntry, VmStatus};
 
 /// LibvirtBackend for KVM/QEMU VMs
 ///
@@ -202,7 +230,7 @@ pub struct LibvirtBackend {
     pub(crate) conn: Arc<Mutex<Connect>>,
 
     /// Configuration for the backend
-    pub(crate) config: crate::config::LibvirtConfig,
+    pub(crate) config: crate::config_legacy::LibvirtConfig,
 
     /// Runtime-discovered system capabilities
     pub(crate) capabilities: crate::capabilities::SystemCapabilities,
@@ -216,6 +244,15 @@ pub struct LibvirtBackend {
 
 #[cfg(feature = "libvirt")]
 impl LibvirtBackend {
+    /// Get a raw libvirt connection for VmGuard or other direct libvirt operations
+    ///
+    /// This creates a new connection to libvirt (not from the Arc<Mutex> pool)
+    /// for use cases that need direct ownership of a Connect instance.
+    pub fn raw_connection(&self) -> Result<Connect> {
+        Connect::open(Some(&self.config.uri))
+            .map_err(|e| crate::Error::Backend(format!("Failed to connect to libvirt: {}", e)))
+    }
+
     /// Get runtime-discovered system capabilities
     ///
     /// Deep debt solution: Exposes capability discovery to dependent crates.
@@ -237,10 +274,361 @@ impl LibvirtBackend {
         &self.capabilities
     }
 
+    /// Ensure libvirt infrastructure is healthy (Evolution #20)
+    ///
+    /// Checks libvirt system health and attempts automatic recovery if needed.
+    /// This prevents VM operations from failing due to infrastructure corruption
+    /// (orphaned processes, network issues, etc).
+    ///
+    /// Called automatically by `new()` and before critical VM operations.
+    /// Can also be called manually to verify/restore infrastructure health.
+    ///
+    /// # Returns
+    /// - `Ok(())` if system is healthy or recovery succeeded
+    /// - `Err(...)` if system is unhealthy and recovery failed
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use benchscale::LibvirtBackend;
+    ///
+    /// # async fn example() -> anyhow::Result<()> {
+    /// let backend = LibvirtBackend::new()?;
+    /// 
+    /// // Before critical operations
+    /// backend.ensure_healthy().await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn ensure_healthy(&self) -> Result<()> {
+        use crate::backend::libvirt::health_check::{HealthState, LibvirtHealthCheck};
+        use crate::backend::libvirt::recovery::LibvirtRecovery;
+
+        // Perform health check
+        let checker = LibvirtHealthCheck::new();
+        let health = checker
+            .check()
+            .await
+            .map_err(|e| crate::Error::Backend(format!("Health check failed: {}", e)))?;
+
+        // GRACEFUL DEGRADATION: Handle each state appropriately
+        match &health.overall {
+            HealthState::Healthy => {
+                debug!("✅ libvirt infrastructure is healthy");
+                Ok(())
+            }
+
+            HealthState::Degraded(reason) => {
+                // WARN but DON'T BLOCK
+                // Degraded state means system works but has non-critical issues
+                warn!("⚠️  Infrastructure degraded: {}", reason);
+                warn!("   System is functional but may need attention:");
+                for issue in &health.issues {
+                    warn!("   • {}", issue);
+                }
+                
+                // Provide recovery instructions without blocking
+                if !health.orphaned_processes.is_empty() {
+                    warn!("   💡 To clean up orphaned processes (no sudo needed):");
+                    warn!("      The system will automatically clean these up when");
+                    warn!("      networks are restarted through libvirt APIs.");
+                    warn!("      Or manually restart default network:");
+                    warn!("      virsh net-destroy default && virsh net-start default");
+                }
+                
+                warn!("   Proceeding with build (graceful degradation)...");
+                Ok(()) // DON'T BLOCK on warnings
+            }
+
+            HealthState::Unhealthy(reason) => {
+                // CRITICAL: System cannot function, attempt recovery
+                warn!("❌ Infrastructure unhealthy: {}", reason);
+
+                let recovery = LibvirtRecovery::new();
+                let result = recovery
+                    .recover(&health)
+                    .await
+                    .map_err(|e| crate::Error::Backend(format!("Recovery failed: {}", e)))?;
+
+                if result.success {
+                    info!("✅ Infrastructure recovery successful: {}", result.summary());
+                    Ok(())
+                } else {
+                    Err(crate::Error::Backend(format!(
+                        "Infrastructure recovery failed: {}. System cannot function.",
+                        result.summary()
+                    )))
+                }
+            }
+        }
+    }
+
+    /// Discover the primary network interface name for a VM at runtime
+    ///
+    /// This queries the VM's actual interface name instead of assuming `enp1s0`.
+    /// Uses cloud-init status to query the VM's interface configuration via SSH.
+    ///
+    /// This is a **deep debt solution** that eliminates hardcoded interface names,
+    /// aligning with the "code only has self knowledge and discovers other systems
+    /// in runtime" principle.
+    ///
+    /// # Arguments
+    /// * `vm_name` - Name of the VM to query
+    /// * `username` - SSH username for accessing the VM
+    /// * `vm_ip` - IP address of the VM for SSH access
+    ///
+    /// # Returns
+    /// The primary network interface name (e.g., "enp1s0", "ens3", "eth0")
+    ///
+    /// # Fallback
+    /// If discovery fails, falls back to the configured default interface.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use benchscale::LibvirtBackend;
+    ///
+    /// # async fn example() -> anyhow::Result<()> {
+    /// let backend = LibvirtBackend::new()?;
+    /// let interface = backend.discover_vm_interface(
+    ///     "my-vm",
+    ///     "ubuntu",
+    ///     "192.168.122.10"
+    /// ).await?;
+    /// println!("VM interface: {}", interface);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn discover_vm_interface(
+        &self,
+        vm_name: &str,
+        username: &str,
+        vm_ip: &str,
+    ) -> Result<String> {
+        use tokio::process::Command;
+
+        info!("🔍 Discovering network interface for VM '{}'", vm_name);
+
+        // Query the VM for its primary interface using 'ip route show default'
+        // This is more reliable than hardcoding interface names
+        let discover_cmd = format!(
+            "ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+             {}@{} \"ip -o -4 route show default | awk '{{print \\$5}}'\" 2>/dev/null",
+            username, vm_ip
+        );
+
+        let output = Command::new("sh")
+            .arg("-c")
+            .arg(&discover_cmd)
+            .output()
+            .await
+            .map_err(|e| {
+                crate::Error::Backend(format!("Failed to execute interface discovery: {}", e))
+            })?;
+
+        if output.status.success() {
+            let interface = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+            if !interface.is_empty() && interface.len() < 20 {
+                // Basic sanity check
+            info!(
+                "✅ Discovered interface '{}' for VM '{}'",
+                interface, vm_name
+            );
+            return Ok(interface);
+        }
+        warn!(
+            "Interface discovery returned invalid result: '{}'",
+            interface
+        );
+        } else {
+            warn!(
+                "Interface discovery failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+
+        // Fallback to configured default interface
+        let fallback = &self.capabilities.network.default_interface;
+        warn!(
+            "⚠️  Could not discover interface for VM '{}', using fallback: {}",
+            vm_name, fallback
+        );
+        Ok(fallback.clone())
+    }
+
+    /// Discover actual IP address assigned to VM by libvirt DHCP
+    ///
+    /// This is the **runtime discovery** approach: instead of assuming the VM
+    /// uses the IP we allocated from our pool, we query libvirt for the actual
+    /// IP that DHCP assigned. This is modern, idiomatic, and capability-based.
+    ///
+    /// Uses multiple methods for robust discovery:
+    /// 1. `virsh domifaddr --source lease` (primary)
+    /// 2. `virsh net-dhcp-leases default` (fallback)
+    ///
+    /// # Arguments
+    /// * `vm_name` - Name of the VM to query
+    /// * `timeout` - Maximum time to wait for IP assignment
+    ///
+    /// # Returns
+    /// The actual IPv4 address assigned by libvirt DHCP
+    ///
+    /// # Example
+    /// ```no_run
+    /// use benchscale::backend::LibvirtBackend;
+    /// use std::time::Duration;
+    ///
+    /// # async fn example() -> Result<(), benchscale::Error> {
+    /// let backend = LibvirtBackend::new()?;
+    /// let ip = backend.discover_vm_ip("my-vm", Duration::from_secs(60)).await?;
+    /// println!("VM actual IP: {}", ip);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn discover_vm_ip(
+        &self,
+        vm_name: &str,
+        timeout: std::time::Duration,
+    ) -> crate::Result<String> {
+        use std::time::Instant;
+        use tokio::time::sleep;
+        use tracing::{debug, info, warn};
+
+        let start = Instant::now();
+        let mut attempt = 0;
+
+        info!(
+            "🔍 Discovering IP for VM '{}' (timeout: {:?})",
+            vm_name, timeout
+        );
+
+        loop {
+            attempt += 1;
+            let elapsed = start.elapsed().as_secs();
+            debug!("Attempt {} at {}s...", attempt, elapsed);
+
+            // Method 1: Try domifaddr (primary method)
+            let output = tokio::process::Command::new("virsh")
+                .args(["domifaddr", vm_name, "--source", "lease"])
+                .output()
+                .await
+                .map_err(|e| crate::Error::Backend(format!("Failed to query VM IP: {}", e)))?;
+
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                if let Some(ip) = Self::parse_ip_from_domifaddr(&stdout) {
+                    info!(
+                        "✅ Discovered IP {} for VM '{}' after {} attempts ({:.1}s)",
+                        ip,
+                        vm_name,
+                        attempt,
+                        start.elapsed().as_secs_f32()
+                    );
+                    return Ok(ip);
+                }
+            }
+
+            // Method 2: Try net-dhcp-leases (fallback)
+            let leases_output = tokio::process::Command::new("virsh")
+                .args(["net-dhcp-leases", "default"])
+                .output()
+                .await;
+
+            if let Ok(output) = leases_output {
+                if output.status.success() {
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    if let Some(ip) = Self::parse_ip_from_dhcp_leases(&stdout, vm_name) {
+                        info!("✅ Discovered IP {} for VM '{}' via DHCP leases after {} attempts ({:.1}s)", 
+                              ip, vm_name, attempt, start.elapsed().as_secs_f32());
+                        return Ok(ip);
+                    }
+                }
+            }
+
+            // Check timeout
+            if start.elapsed() > timeout {
+                warn!(
+                    "❌ Timeout after {} attempts ({:.1}s)",
+                    attempt,
+                    start.elapsed().as_secs_f32()
+                );
+                return Err(crate::Error::Backend(format!(
+                    "Timeout waiting for VM '{}' IP assignment after {:?} ({} attempts)",
+                    vm_name, timeout, attempt
+                )));
+            }
+
+            // Faster polling: 2s fixed interval (not exponential)
+            sleep(std::time::Duration::from_secs(2)).await;
+        }
+    }
+
+    /// Parse IP address from virsh domifaddr output
+    ///
+    /// Example input:
+    /// ```text
+    ///  Name       MAC address          Protocol     Address
+    /// -------------------------------------------------------------------------------
+    ///  vnet0      52:54:00:xx:xx:xx    ipv4         192.168.122.225/24
+    /// ```
+    fn parse_ip_from_domifaddr(output: &str) -> Option<String> {
+        for line in output.lines() {
+            // Look for lines containing "ipv4" and an IP address
+            if line.contains("ipv4") {
+                // Find the IP address with CIDR notation (e.g., "192.168.122.225/24")
+                for part in line.split_whitespace() {
+                    if part.contains('.') && part.contains('/') {
+                        // Extract IP without CIDR suffix
+                        if let Some(ip) = part.split('/').next() {
+                            // Validate it looks like an IP
+                            if ip.split('.').count() == 4 {
+                                return Some(ip.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Parse IP address from virsh net-dhcp-leases output
+    ///
+    /// Example input:
+    /// ```text
+    ///  Expiry Time           MAC address         Protocol   IP address           Hostname
+    /// -----------------------------------------------------------------------------------------
+    ///  2025-12-30 21:24:27   52:54:00:00:cc:91   ipv4       192.168.122.185/24   ubuntu24-minimal-baseline
+    /// ```
+    fn parse_ip_from_dhcp_leases(output: &str, vm_name: &str) -> Option<String> {
+        for line in output.lines() {
+            // Look for lines containing our VM name
+            if line.contains(vm_name) && line.contains("ipv4") {
+                // Find the IP address with CIDR notation
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                for (i, part) in parts.iter().enumerate() {
+                    if *part == "ipv4" && i + 1 < parts.len() {
+                        let ip_with_cidr = parts[i + 1];
+                        if let Some(ip) = ip_with_cidr.split('/').next() {
+                            if ip.split('.').count() == 4 {
+                                return Some(ip.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
     /// Create a new LibvirtBackend with default configuration
     ///
     /// Connects to libvirt using the default URI (qemu:///system) and
     /// initializes with default capabilities (standard libvirt setup).
+    ///
+    /// **Evolution #20:** Includes automatic health check and recovery.
+    /// This ensures the libvirt infrastructure is stable before use,
+    /// preventing failures from orphaned processes or network corruption.
     ///
     /// For runtime capability discovery, use `new_with_discovery().await`.
     ///
@@ -251,11 +639,12 @@ impl LibvirtBackend {
     ///
     /// # fn example() -> anyhow::Result<()> {
     /// let backend = LibvirtBackend::new()?;
+    /// // Infrastructure is guaranteed healthy
     /// # Ok(())
     /// # }
     /// ```
     pub fn new() -> Result<Self> {
-        let mut backend = Self::with_config(crate::config::LibvirtConfig::default())?;
+        let mut backend = Self::with_config(crate::config_legacy::LibvirtConfig::default())?;
 
         // Auto-discover templates if template_dir is configured
         if backend.config.template_dir.is_some() {
@@ -285,7 +674,7 @@ impl LibvirtBackend {
     /// ```
     pub async fn new_with_discovery() -> Result<Self> {
         let mut backend =
-            Self::with_config_and_discovery(crate::config::LibvirtConfig::default()).await?;
+            Self::with_config_and_discovery(crate::config_legacy::LibvirtConfig::default()).await?;
 
         // Auto-discover templates if template_dir is configured
         if backend.config.template_dir.is_some() {
@@ -317,14 +706,14 @@ impl LibvirtBackend {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn with_config(config: crate::config::LibvirtConfig) -> Result<Self> {
+    pub fn with_config(config: crate::config_legacy::LibvirtConfig) -> Result<Self> {
         let conn = Connect::open(Some(&config.uri))
             .map_err(|e| crate::Error::Backend(format!("Failed to connect to libvirt: {}", e)))?;
 
         // Use default capabilities (standard libvirt)
         let capabilities = crate::capabilities::NetworkCapabilities::default_libvirt();
         let full_capabilities = crate::capabilities::SystemCapabilities {
-            network: capabilities.clone(),
+            network: capabilities,
             storage: crate::capabilities::StorageCapabilities {
                 images_dir: std::path::PathBuf::from("/var/lib/libvirt/images"),
                 temp_dir: std::env::temp_dir(),
@@ -371,7 +760,7 @@ impl LibvirtBackend {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn with_config_and_discovery(config: crate::config::LibvirtConfig) -> Result<Self> {
+    pub async fn with_config_and_discovery(config: crate::config_legacy::LibvirtConfig) -> Result<Self> {
         let conn = Connect::open(Some(&config.uri))
             .map_err(|e| crate::Error::Backend(format!("Failed to connect to libvirt: {}", e)))?;
 

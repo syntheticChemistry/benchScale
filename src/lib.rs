@@ -61,7 +61,10 @@ pub mod capabilities;
 pub mod cloud_init;
 /// Simplified cloud-init configuration for common use cases
 pub mod cloud_init_simplified;
+/// Phase 2: New configuration system
 pub mod config;
+/// Legacy configuration (backward compatibility)
+pub mod config_legacy;
 pub mod constants;
 pub mod error;
 pub mod image_builder;
@@ -76,7 +79,10 @@ pub mod persistence;
 // Re-exports
 pub use backend::{Backend, DockerBackend};
 pub use cloud_init::{CloudInit, CloudInitBuilder, CloudInitFile, CloudInitUser};
-pub use config::Config;
+// Phase 2: New configuration system
+pub use config::{BenchScaleConfig, MonitoringConfig, TimeoutConfig};
+// Legacy config for backward compatibility
+pub use config_legacy::Config;
 pub use error::{Error, Result};
 pub use image_builder::{BuildResult, BuildStep, ImageBuilder};
 pub use lab::{Lab, LabHandle, LabMetadata, LabRegistry, LabStatus};

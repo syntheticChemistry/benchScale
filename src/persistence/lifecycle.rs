@@ -34,16 +34,28 @@ pub struct VmConfig {
 ///
 /// Manages complete VM lifecycle with persistence, recovery, and handoff support.
 ///
-/// # Example
+/// **Vendor-Agnostic**: Works with any `Backend` implementation (libvirt, VMware, AWS, etc.)
+///
+/// # Example with Discovery (Recommended)
 /// ```no_run
 /// use benchscale::persistence::{LifecycleManager, VmRegistry, VmConfig};
-/// use benchscale::backend::LibvirtBackend;
-/// use std::sync::Arc;
+/// use benchscale::backend::VmProvider;
+/// use primal_substrate::{Discovery, Capability};
 ///
 /// # async fn example() -> anyhow::Result<()> {
 /// let registry = VmRegistry::new("vms.db").await?;
-/// let backend = Arc::new(LibvirtBackend::new()?);
-/// let manager = LifecycleManager::new(registry, backend).await;
+///
+/// // Discover any VM provider (zero hardcoding!)
+/// let discovery = Discovery::new().await?;
+/// let service = discovery.find_capability(Capability::VmProvisioning).await?;
+/// // TODO: Connect to discovered service
+/// // For now, use libvirt directly
+/// # #[cfg(feature = "libvirt")]
+/// # {
+/// use benchscale::backend::LibvirtBackend;
+/// use std::sync::Arc;
+/// let backend = Arc::new(LibvirtBackend::new()?) as Arc<dyn benchscale::backend::Backend>;
+/// let manager = LifecycleManager::new(registry, backend);
 ///
 /// // Create VM with full lifecycle tracking
 /// let vm_id = manager.create_vm(VmConfig {
@@ -55,6 +67,22 @@ pub struct VmConfig {
 /// }).await?;
 ///
 /// // VM is now tracked in persistent storage
+/// # }
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Example with Specific Backend
+/// ```no_run
+/// use benchscale::persistence::{LifecycleManager, VmRegistry, VmConfig};
+/// use benchscale::backend::LibvirtBackend;
+/// use std::sync::Arc;
+///
+/// # async fn example() -> anyhow::Result<()> {
+/// let registry = VmRegistry::new("vms.db").await?;
+/// let backend = Arc::new(LibvirtBackend::new()?) as Arc<dyn benchscale::backend::Backend>;
+/// let manager = LifecycleManager::new(registry, backend);
+/// // Works with any Backend!
 /// # Ok(())
 /// # }
 /// ```
@@ -68,7 +96,7 @@ impl<B: Backend> LifecycleManager<B> {
     ///
     /// # Arguments
     /// * `registry` - VM registry for persistent state
-    /// * `backend` - Backend implementation (e.g., LibvirtBackend)
+    /// * `backend` - Any Backend implementation (libvirt, VMware, AWS, etc.)
     pub fn new(registry: VmRegistry, backend: Arc<B>) -> Self {
         Self { registry, backend }
     }

@@ -9,6 +9,9 @@ use crate::Result;
 pub mod docker;
 pub use docker::DockerBackend;
 
+pub mod provider;
+pub use provider::VmProvider;
+
 #[cfg(feature = "libvirt")]
 pub mod libvirt;
 #[cfg(feature = "libvirt")]
@@ -25,6 +28,14 @@ pub mod serial_console;
 
 #[cfg(feature = "libvirt")]
 pub mod health;
+pub mod senescence;
+pub mod cleanup;
+
+//#[cfg(feature = "libvirt")]
+//pub mod lab;
+
+//#[cfg(feature = "libvirt")]
+//pub use lab::{LabHygiene, LabStatus, LabExperiment, VmLabStatus, CleanupReport};
 
 #[cfg(feature = "libvirt")]
 pub use health::{HealthCheck, HealthMonitor, HealthStatus};
@@ -144,6 +155,67 @@ pub trait Backend: Send + Sync {
 
     /// Check if backend is available
     async fn is_available(&self) -> Result<bool>;
+
+    /// Create a desktop VM with GUI support
+    ///
+    /// This is an optional method for backends that support creating VMs with
+    /// desktop environments and VNC/SPICE display capabilities.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - VM name
+    /// * `image` - Path to base image
+    /// * `cloud_init` - Cloud-init configuration
+    /// * `memory_mb` - Memory in MB
+    /// * `vcpus` - Number of virtual CPUs
+    /// * `disk_size_gb` - Disk size in GB
+    ///
+    /// # Returns
+    ///
+    /// Returns `NodeInfo` with VM details including VNC display information.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if:
+    /// - Backend doesn't support desktop VMs
+    /// - VM creation fails
+    /// - Resource allocation fails
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use benchscale::backend::Backend;
+    /// # use std::path::Path;
+    /// # async fn example(backend: &dyn Backend) -> benchscale::Result<()> {
+    /// let cloud_init = benchscale::CloudInit::builder()
+    ///     .add_user("user", "ssh-key")
+    ///     .build();
+    ///
+    /// let vm = backend.create_desktop_vm(
+    ///     "my-desktop",
+    ///     Path::new("/var/lib/libvirt/images/base.qcow2"),
+    ///     &cloud_init,
+    ///     4096,  // 4GB RAM
+    ///     2,     // 2 vCPUs
+    ///     20,    // 20GB disk
+    /// ).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    async fn create_desktop_vm(
+        &self,
+        _name: &str,
+        _image: &std::path::Path,
+        _cloud_init: &crate::CloudInit,
+        _memory_mb: u32,
+        _vcpus: u32,
+        _disk_size_gb: u32,
+    ) -> Result<NodeInfo> {
+        // Default implementation: not supported
+        Err(crate::Error::Backend(
+            "Desktop VM creation not supported by this backend".to_string(),
+        ))
+    }
 }
 
 /// Result of executing a command

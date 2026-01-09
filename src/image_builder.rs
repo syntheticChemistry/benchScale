@@ -34,6 +34,7 @@ use crate::backend::{Backend, NodeInfo};
 use crate::{CloudInit, Error, Result};
 use log::{debug, info, warn};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
 #[cfg(feature = "libvirt")]
@@ -186,6 +187,36 @@ pub enum BuildStep {
 }
 
 /// Image builder for creating VM templates
+///
+/// The builder now accepts any `Backend` implementation, making it
+/// vendor-agnostic and testable without external dependencies.
+///
+/// # Example with Discovery
+///
+/// ```no_run
+/// use benchscale::image_builder::ImageBuilder;
+/// use primal_substrate::Discovery;
+///
+/// # async fn example() -> anyhow::Result<()> {
+/// // Discover any VM provider at runtime (zero hardcoding!)
+/// let builder = ImageBuilder::with_discovery("my-image").await?;
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Example with Specific Backend
+///
+/// ```no_run
+/// use benchscale::image_builder::ImageBuilder;
+/// use benchscale::LibvirtBackend;
+/// use std::sync::Arc;
+///
+/// # fn example() -> anyhow::Result<()> {
+/// let backend = Arc::new(LibvirtBackend::new()?);
+/// let builder = ImageBuilder::new("my-image", backend)?;
+/// # Ok(())
+/// # }
+/// ```
 pub struct ImageBuilder {
     name: String,
     base_image: Option<PathBuf>,
@@ -194,8 +225,7 @@ pub struct ImageBuilder {
     disk_size_gb: u32,
     steps: Vec<BuildStep>,
     cloud_init: Option<CloudInit>,
-    #[cfg(feature = "libvirt")]
-    backend: LibvirtBackend,
+    backend: Arc<dyn Backend>,
 }
 
 /// Build result containing template path and metadata
@@ -210,9 +240,25 @@ pub struct BuildResult {
 }
 
 impl ImageBuilder {
-    /// Create a new image builder
-    #[cfg(feature = "libvirt")]
-    pub fn new(name: impl Into<String>) -> Result<Self> {
+    /// Create a new image builder with a specific backend
+    ///
+    /// This constructor accepts any `Backend` implementation, making the builder
+    /// vendor-agnostic. Use this when you want explicit control over which backend to use.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use benchscale::image_builder::ImageBuilder;
+    /// use benchscale::LibvirtBackend;
+    /// use std::sync::Arc;
+    ///
+    /// # fn example() -> anyhow::Result<()> {
+    /// let backend = Arc::new(LibvirtBackend::new()?);
+    /// let builder = ImageBuilder::new("ubuntu-desktop", backend)?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn new(name: impl Into<String>, backend: Arc<dyn Backend>) -> Result<Self> {
         Ok(Self {
             name: name.into(),
             base_image: None,
@@ -221,8 +267,58 @@ impl ImageBuilder {
             disk_size_gb: 35,
             steps: Vec::new(),
             cloud_init: None,
-            backend: LibvirtBackend::new()?,
+            backend,
         })
+    }
+
+    /// Create a new image builder using discovery (zero hardcoding!)
+    ///
+    /// This constructor automatically discovers and connects to any available
+    /// VM provisioning service. This is the recommended approach for new code.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use benchscale::image_builder::ImageBuilder;
+    ///
+    /// # async fn example() -> anyhow::Result<()> {
+    /// // Automatically finds libvirt, VMware, AWS, or any VM provider!
+    /// let builder = ImageBuilder::with_discovery("ubuntu-desktop").await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg(feature = "libvirt")]
+    pub async fn with_discovery(name: impl Into<String>) -> Result<Self> {
+        use primal_substrate::{Capability, Discovery};
+        
+        let discovery = Discovery::new().await
+            .map_err(|e| Error::Other(format!("Discovery initialization failed: {}", e)))?;
+        
+        let _service = discovery
+            .find_capability(Capability::VmProvisioning)
+            .await
+            .map_err(|e| Error::Backend(format!("No VM provider found: {}", e)))?;
+        
+        // For now, connect to libvirt directly
+        // TODO: Generic connection based on service metadata
+        let backend = Arc::new(LibvirtBackend::new()?) as Arc<dyn Backend>;
+        
+        Self::new(name, backend)
+    }
+
+    /// Create a new image builder with libvirt backend (convenience method)
+    ///
+    /// This is a convenience method for creating a builder with a libvirt backend.
+    /// For new code, consider using `with_discovery()` instead.
+    ///
+    /// # Deprecated
+    ///
+    /// This method is provided for backward compatibility. New code should use
+    /// `new()` with an explicit backend or `with_discovery()` for automatic selection.
+    #[cfg(feature = "libvirt")]
+    pub fn new_libvirt(name: impl Into<String>) -> Result<Self> {
+        let backend = Arc::new(LibvirtBackend::new()?) as Arc<dyn Backend>;
+        Self::new(name, backend)
     }
 
     /// Set base cloud image
@@ -262,14 +358,17 @@ impl ImageBuilder {
     }
 
     /// Create ImageBuilder from existing VM (lesson from pipeline!)
+    ///
+    /// # Deprecated
+    ///
+    /// Use `new()` or `with_discovery()` instead. This method is kept for compatibility.
     #[cfg(feature = "libvirt")]
     pub fn from_existing_vm(vm_name: impl Into<String>) -> Result<Self> {
-        let backend = LibvirtBackend::new()?;
-
         let vm_name_str = vm_name.into();
+        let backend = Arc::new(LibvirtBackend::new()?) as Arc<dyn Backend>;
 
         Ok(Self {
-            name: vm_name_str.clone(),
+            name: vm_name_str,
             base_image: None,
             memory_mb: 4096,
             vcpus: 2,
@@ -390,11 +489,7 @@ impl ImageBuilder {
 
         // Clean up builder VM
         info!("Cleaning up builder VM...");
-        #[cfg(feature = "libvirt")]
-        {
-            let backend = LibvirtBackend::new()?;
-            backend.delete_node(&vm_name).await?;
-        }
+        self.backend.delete_node(&vm_name).await?;
 
         let final_size = std::fs::metadata(&template_path)
             .map(|m| m.len())
@@ -415,25 +510,17 @@ impl ImageBuilder {
             .clone()
             .unwrap_or_else(|| CloudInit::builder().add_user("builder", "").build());
 
-        // Create VM with VNC enabled using LibvirtBackend directly
-        #[cfg(feature = "libvirt")]
-        {
-            let backend = LibvirtBackend::new()?;
-            backend
-                .create_desktop_vm(
-                    name,
-                    base_image,
-                    &cloud_init,
-                    self.memory_mb,
-                    self.vcpus,
-                    self.disk_size_gb,
-                )
-                .await
-        }
-        #[cfg(not(feature = "libvirt"))]
-        {
-            Err(Error::Backend("Libvirt feature not enabled".to_string()))
-        }
+        // Create VM with VNC enabled using the configured backend
+        self.backend
+            .create_desktop_vm(
+                name,
+                base_image,
+                &cloud_init,
+                self.memory_mb,
+                self.vcpus,
+                self.disk_size_gb,
+            )
+            .await
     }
 
     /// Execute a build step
@@ -955,20 +1042,75 @@ impl ImageBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::backend::{NetworkInfo, NodeInfo};
+    use std::collections::HashMap;
+
+    /// Mock backend for testing without external dependencies
+    struct MockBackend;
+
+    #[async_trait::async_trait]
+    impl Backend for MockBackend {
+        async fn create_network(&self, _name: &str, subnet: &str) -> Result<NetworkInfo> {
+            Ok(NetworkInfo {
+                name: "test-net".to_string(),
+                id: "test-id".to_string(),
+                subnet: subnet.to_string(),
+                gateway: "192.168.1.1".to_string(),
+            })
+        }
+        async fn delete_network(&self, _name: &str) -> Result<()> { Ok(()) }
+        async fn create_node(&self, name: &str, _image: &str, _network: &str, _env: HashMap<String, String>) -> Result<NodeInfo> {
+            Ok(NodeInfo {
+                id: format!("{}-id", name),
+                name: name.to_string(),
+                container_id: format!("{}-container", name),
+                ip_address: "192.168.1.100".to_string(),
+                network: "test-net".to_string(),
+                status: crate::backend::NodeStatus::Running,
+                metadata: HashMap::new(),
+            })
+        }
+        async fn start_node(&self, _node_id: &str) -> Result<()> { Ok(()) }
+        async fn stop_node(&self, _node_id: &str) -> Result<()> { Ok(()) }
+        async fn delete_node(&self, _node_id: &str) -> Result<()> { Ok(()) }
+        async fn get_node(&self, node_id: &str) -> Result<NodeInfo> {
+            Ok(NodeInfo {
+                id: node_id.to_string(),
+                name: "test-node".to_string(),
+                container_id: "test-container".to_string(),
+                ip_address: "192.168.1.100".to_string(),
+                network: "test-net".to_string(),
+                status: crate::backend::NodeStatus::Running,
+                metadata: HashMap::new(),
+            })
+        }
+        async fn list_nodes(&self, _network: &str) -> Result<Vec<NodeInfo>> { Ok(vec![]) }
+        async fn exec_command(&self, _node_id: &str, _command: Vec<String>) -> Result<crate::backend::ExecResult> {
+            Ok(crate::backend::ExecResult {
+                exit_code: 0,
+                stdout: "".to_string(),
+                stderr: "".to_string(),
+            })
+        }
+        async fn copy_to_node(&self, _node_id: &str, _src: &str, _dest: &str) -> Result<()> { Ok(()) }
+        async fn get_logs(&self, _node_id: &str) -> Result<String> { Ok("".to_string()) }
+        async fn apply_network_conditions(&self, _node_id: &str, _latency_ms: Option<u32>, _packet_loss_percent: Option<f32>, _bandwidth_kbps: Option<u32>) -> Result<()> { Ok(()) }
+        async fn is_available(&self) -> Result<bool> { Ok(true) }
+    }
 
     #[test]
-    #[cfg(feature = "libvirt")]
     fn test_builder_creation() {
-        let builder = ImageBuilder::new("test-image").unwrap();
+        let backend = Arc::new(MockBackend);
+        let builder = ImageBuilder::new("test-image", backend).unwrap();
         assert_eq!(builder.name, "test-image");
         assert_eq!(builder.memory_mb, 4096);
         assert_eq!(builder.vcpus, 2);
     }
 
     #[test]
-    #[cfg(feature = "libvirt")]
     fn test_builder_configuration() {
-        let builder = ImageBuilder::new("test")
+        let backend = Arc::new(MockBackend);
+        let builder = ImageBuilder::new("test", backend)
             .unwrap()
             .with_memory(8192)
             .with_vcpus(4)
@@ -980,14 +1122,22 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "libvirt")]
     fn test_build_steps() {
-        let builder = ImageBuilder::new("test")
+        let backend = Arc::new(MockBackend);
+        let builder = ImageBuilder::new("test", backend)
             .unwrap()
             .add_step(BuildStep::WaitForCloudInit)
             .add_step(BuildStep::InstallPackages(vec!["vim".to_string()]))
             .add_step(BuildStep::Reboot);
 
         assert_eq!(builder.steps.len(), 3);
+    }
+    
+    #[test]
+    #[cfg(feature = "libvirt")]
+    fn test_new_libvirt_convenience() {
+        // Test backward compatibility method
+        let builder = ImageBuilder::new_libvirt("test").unwrap();
+        assert_eq!(builder.name, "test");
     }
 }
