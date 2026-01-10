@@ -9,8 +9,12 @@ use crate::Result;
 pub mod docker;
 pub use docker::DockerBackend;
 
-pub mod provider;
-pub use provider::VmProvider;
+// Discovery: No custom provider module - use standard service discovery
+// For runtime discovery, consumers should use:
+// - mDNS/DNS-SD: Local network service discovery
+// - Consul: Distributed service registry
+// - Environment variables: Explicit configuration
+// This follows primal philosophy: use existing capabilities, don't reinvent
 
 #[cfg(feature = "libvirt")]
 pub mod libvirt;

@@ -188,23 +188,19 @@ pub enum BuildStep {
 
 /// Image builder for creating VM templates
 ///
-/// The builder now accepts any `Backend` implementation, making it
+/// The builder accepts any `Backend` implementation, making it
 /// vendor-agnostic and testable without external dependencies.
 ///
-/// # Example with Discovery
+/// # Service Discovery
 ///
-/// ```no_run
-/// use benchscale::image_builder::ImageBuilder;
-/// use primal_substrate::Discovery;
+/// **Note**: benchScale does NOT provide custom service discovery.
 ///
-/// # async fn example() -> anyhow::Result<()> {
-/// // Discover any VM provider at runtime (zero hardcoding!)
-/// let builder = ImageBuilder::with_discovery("my-image").await?;
-/// # Ok(())
-/// # }
-/// ```
+/// For runtime backend selection, use standard solutions:
+/// - **mDNS/DNS-SD**: Local network discovery (Avahi, Bonjour)
+/// - **Consul**: Distributed service registry  
+/// - **Environment variables**: Explicit configuration (recommended)
 ///
-/// # Example with Specific Backend
+/// # Example with Explicit Backend
 ///
 /// ```no_run
 /// use benchscale::image_builder::ImageBuilder;
@@ -271,50 +267,20 @@ impl ImageBuilder {
         })
     }
 
-    /// Create a new image builder using discovery (zero hardcoding!)
+    /// Create a new image builder with libvirt backend (convenience method)
     ///
-    /// This constructor automatically discovers and connects to any available
-    /// VM provisioning service. This is the recommended approach for new code.
+    /// This is a convenience method for creating a builder with a libvirt backend.
     ///
     /// # Example
     ///
     /// ```no_run
     /// use benchscale::image_builder::ImageBuilder;
     ///
-    /// # async fn example() -> anyhow::Result<()> {
-    /// // Automatically finds libvirt, VMware, AWS, or any VM provider!
-    /// let builder = ImageBuilder::with_discovery("ubuntu-desktop").await?;
+    /// # fn example() -> anyhow::Result<()> {
+    /// let builder = ImageBuilder::new_libvirt("ubuntu-desktop")?;
     /// # Ok(())
     /// # }
     /// ```
-    #[cfg(feature = "libvirt")]
-    pub async fn with_discovery(name: impl Into<String>) -> Result<Self> {
-        use primal_substrate::{Capability, Discovery};
-        
-        let discovery = Discovery::new().await
-            .map_err(|e| Error::Other(format!("Discovery initialization failed: {}", e)))?;
-        
-        let _service = discovery
-            .find_capability(Capability::VmProvisioning)
-            .await
-            .map_err(|e| Error::Backend(format!("No VM provider found: {}", e)))?;
-        
-        // For now, connect to libvirt directly
-        // TODO: Generic connection based on service metadata
-        let backend = Arc::new(LibvirtBackend::new()?) as Arc<dyn Backend>;
-        
-        Self::new(name, backend)
-    }
-
-    /// Create a new image builder with libvirt backend (convenience method)
-    ///
-    /// This is a convenience method for creating a builder with a libvirt backend.
-    /// For new code, consider using `with_discovery()` instead.
-    ///
-    /// # Deprecated
-    ///
-    /// This method is provided for backward compatibility. New code should use
-    /// `new()` with an explicit backend or `with_discovery()` for automatic selection.
     #[cfg(feature = "libvirt")]
     pub fn new_libvirt(name: impl Into<String>) -> Result<Self> {
         let backend = Arc::new(LibvirtBackend::new()?) as Arc<dyn Backend>;
@@ -361,7 +327,7 @@ impl ImageBuilder {
     ///
     /// # Deprecated
     ///
-    /// Use `new()` or `with_discovery()` instead. This method is kept for compatibility.
+    /// Use `new()` with explicit backend instead. This method is kept for compatibility.
     #[cfg(feature = "libvirt")]
     pub fn from_existing_vm(vm_name: impl Into<String>) -> Result<Self> {
         let vm_name_str = vm_name.into();

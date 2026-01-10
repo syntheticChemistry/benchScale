@@ -10,7 +10,8 @@ keywords = ["testing", "distributed", "docker", "containers", "laboratory"]
 categories = ["development-tools::testing", "network-programming"]
 
 [workspace]
-# This is a separate workspace from biomeOS
+# This is a standalone project, NOT part of a parent workspace
+# Each syntheticChemistry project is sovereign and independently versioned
 
 [dependencies]
 # Docker API client (pure Rust)
@@ -54,8 +55,12 @@ sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite"], optiona
 log = "0.4.29"
 env_logger = "0.11.8"
 
-# Primal substrate for discovery and vendor agnosticism
-primal-substrate = { path = "../primal-substrate" }
+# Discovery: Use standard solutions (mDNS, DNS-SD, Consul)
+# NOT creating custom substrate - primal philosophy is to use existing capabilities
+# For service discovery, consumers should use:
+# - mDNS/DNS-SD for local network discovery
+# - Consul for distributed service discovery
+# - Environment variables for explicit configuration
 
 [dev-dependencies]
 tokio-test = "0.4"
