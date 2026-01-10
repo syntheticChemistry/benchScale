@@ -836,16 +836,22 @@ impl ImageBuilder {
         // Wait for shutdown
         tokio::time::sleep(Duration::from_secs(30)).await;
 
-        // Copy disk
-        let disk_path = format!("/var/lib/libvirt/images/{}.qcow2", vm_name);
+        // Evolution #24: Capability-based path resolution
+        // Get images directory from environment variable or use default
+        let images_dir = std::env::var("BENCHSCALE_VM_IMAGES_DIR")
+            .unwrap_or_else(|_| "/var/lib/libvirt/images".to_string());
+        
+        let disk_path = format!("{}/{}.qcow2", images_dir, vm_name);
 
         let path_str = path
             .to_str()
             .ok_or_else(|| Error::Backend("Invalid UTF-8 in path".to_string()))?;
 
-        tokio::process::Command::new("sudo")
-            .args(["cp", &disk_path, path_str])
-            .output()
+        // Evolution #24: No sudo for user-writable directories
+        // If user has write access to images_dir, sudo is not needed
+        info!("Copying VM disk from {} to {}", disk_path, path_str);
+        
+        tokio::fs::copy(&disk_path, path_str)
             .await
             .map_err(|e| Error::Backend(format!("Failed to save intermediate: {}", e)))?;
 
@@ -970,21 +976,37 @@ impl ImageBuilder {
         // Wait for shutdown
         tokio::time::sleep(Duration::from_secs(30)).await;
 
-        let disk_path = format!("/var/lib/libvirt/images/{}.qcow2", vm_name);
-        let template_path = format!("/var/lib/libvirt/images/{}-template.qcow2", self.name);
+        // Evolution #24: Capability-based path resolution
+        let images_dir = std::env::var("BENCHSCALE_VM_IMAGES_DIR")
+            .unwrap_or_else(|_| "/var/lib/libvirt/images".to_string());
+        
+        let disk_path = format!("{}/{}.qcow2", images_dir, vm_name);
+        let template_path = format!("{}/{}-template.qcow2", images_dir, self.name);
 
         // Sparsify
         info!("Optimizing template...");
-        tokio::process::Command::new("sudo")
-            .args(["virt-sparsify", "--in-place", &disk_path])
+        
+        // Evolution #24: Check if virt-sparsify is available, skip if not
+        // This allows user session libvirt to work without virt-sparsify
+        let sparsify_result = tokio::process::Command::new("which")
+            .arg("virt-sparsify")
             .output()
-            .await
-            .map_err(|e| Error::Backend(format!("Failed to sparsify: {}", e)))?;
+            .await;
+        
+        if sparsify_result.is_ok() && sparsify_result.unwrap().status.success() {
+            info!("Running virt-sparsify to optimize disk...");
+            tokio::process::Command::new("virt-sparsify")
+                .args(["--in-place", &disk_path])
+                .output()
+                .await
+                .map_err(|e| Error::Backend(format!("Failed to sparsify: {}", e)))?;
+        } else {
+            info!("virt-sparsify not available, skipping optimization");
+        }
 
-        // Copy to final location
-        tokio::process::Command::new("sudo")
-            .args(["cp", &disk_path, &template_path])
-            .output()
+        // Copy to final location (Evolution #24: No sudo)
+        info!("Copying to template location...");
+        tokio::fs::copy(&disk_path, &template_path)
             .await
             .map_err(|e| Error::Backend(format!("Failed to copy template: {}", e)))?;
 
