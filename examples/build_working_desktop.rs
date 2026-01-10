@@ -4,8 +4,9 @@
 //! This demonstrates ImageBuilder with a working desktop environment
 //! (Using Ubuntu Desktop since COSMIC repo isn't publicly available yet)
 
-use benchscale::{BuildStep, CloudInit, ImageBuilder};
+use benchscale::{BuildStep, CloudInit, ImageBuilder, LibvirtBackend};
 use std::path::PathBuf;
+use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -38,8 +39,11 @@ async fn main() -> anyhow::Result<()> {
         .add_user("desktop", ssh_key.as_deref().unwrap_or(""))
         .build();
 
+    // Evolution #24: Create backend explicitly
+    let backend = Arc::new(LibvirtBackend::new()?);
+
     // Build template with ImageBuilder
-    let builder = ImageBuilder::new("ubuntu-desktop-rustdesk")?
+    let builder = ImageBuilder::new("ubuntu-desktop-rustdesk", backend)?
         .from_cloud_image(base_image)
         .with_memory(4096)
         .with_vcpus(2)
