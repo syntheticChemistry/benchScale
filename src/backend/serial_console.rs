@@ -88,7 +88,7 @@ mod tests {
 [2025-12-27 10:23:45] [Info] Filesystem: rootfs mounted (rw)
 [2025-12-27 10:23:46] [Info] Network: eth0 configured (10.42.0.10/24)
 [2025-12-27 10:23:47] [Warn] Optional service skipped
-[2025-12-27 10:23:48] [Info] Primal: Songbird started (PID 234)
+[2025-12-27 10:23:48] [Info] Application service started successfully (PID 234)
 [2025-12-27 10:23:49] [Success] BiomeOS Init Complete (178ms)"#;
 
     #[test]

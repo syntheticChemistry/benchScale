@@ -45,17 +45,41 @@ impl DockerBackend {
         })
     }
 
-    /// Get the appropriate image name (hardened or standard)
+    /// Resolve hardened image from env `BENCHSCALE_HARDENED_IMAGE_<BASE>` (e.g. `UBUNTU` for tag `ubuntu`).
+    fn hardened_image_from_env(base_image: &str) -> Option<String> {
+        let key = format!(
+            "BENCHSCALE_HARDENED_IMAGE_{}",
+            base_image
+                .chars()
+                .map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_uppercase() } else { '_' })
+                .collect::<String>()
+        );
+        std::env::var(key).ok()
+    }
+
+    /// Get the appropriate image name (hardened or standard).
+    ///
+    /// When hardened mode is on: checks `BENCHSCALE_HARDENED_IMAGE_*` first, then (if the
+    /// `docker-hardened-catalog` feature is enabled) maps short names to Docker Hardened images;
+    /// otherwise the base name is used as-is (caller should pass a full image ref).
     fn get_image(&self, base_image: &str) -> String {
-        if self.use_hardened {
-            // Use Docker hardened images when available
+        if !self.use_hardened {
+            return base_image.to_string();
+        }
+        if let Some(img) = Self::hardened_image_from_env(base_image) {
+            return img;
+        }
+        #[cfg(feature = "docker-hardened-catalog")]
+        {
             match base_image {
                 "ubuntu" => "docker.io/dockerhardened/ubuntu:latest".to_string(),
                 "alpine" => "docker.io/dockerhardened/alpine:latest".to_string(),
                 "debian" => "docker.io/dockerhardened/debian:latest".to_string(),
                 _ => base_image.to_string(),
             }
-        } else {
+        }
+        #[cfg(not(feature = "docker-hardened-catalog"))]
+        {
             base_image.to_string()
         }
     }

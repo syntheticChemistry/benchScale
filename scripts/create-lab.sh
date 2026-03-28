@@ -16,7 +16,7 @@ NC='\033[0m'
 # Default values
 TOPOLOGY=""
 LAB_NAME=""
-HYPERVISOR="lxd"  # lxd, docker, qemu
+HYPERVISOR="docker"  # docker, lxd, qemu
 VERBOSE=false
 
 # Script directory
@@ -167,87 +167,171 @@ case $HYPERVISOR in
         ;;
 esac
 
-# Parse topology (simplified for now - would use yq in production)
+# ── YAML parsing helpers ─────────────────────────────────────────────────────
+# Minimal YAML parsing without yq dependency — extracts node names, images,
+# env vars, and network conditions from benchScale topology YAML.
+
+get_topology_network_name() {
+    grep -E '^\s+name:' "$TOPOLOGY_FILE" | head -1 | sed 's/.*name:\s*//' | tr -d '"' | tr -d "'"
+}
+
+get_topology_subnet() {
+    grep -E '^\s+subnet:' "$TOPOLOGY_FILE" | head -1 | sed 's/.*subnet:\s*//' | tr -d '"' | tr -d "'"
+}
+
+get_node_names() {
+    grep -E '^\s+-\s+name:' "$TOPOLOGY_FILE" | sed 's/.*name:\s*//' | tr -d '"' | tr -d "'"
+}
+
+get_node_image() {
+    local node="$1"
+    awk -v node="$node" '
+        /^\s+-?\s*name:/ { current = $NF; gsub(/["'"'"']/, "", current) }
+        current == node && /^\s+image:/ { gsub(/["'"'"']/, "", $2); print $2 }
+    ' "$TOPOLOGY_FILE"
+}
+
+get_node_env_block() {
+    local node="$1"
+    awk -v node="$node" '
+        /^\s+-?\s*name:/ { current = $NF; gsub(/["'"'"']/, "", current); in_env=0 }
+        current == node && /^\s+env:/ { in_env=1; next }
+        current == node && in_env && /^\s+[A-Z_]+:/ {
+            key = $1; gsub(/:$/, "", key)
+            val = $2; for(i=3;i<=NF;i++) val = val " " $i
+            gsub(/["'"'"']/, "", val)
+            printf "%s=%s\n", key, val
+        }
+        current == node && in_env && /^\s+[a-z]/ && !/^\s+[A-Z_]+:/ { in_env=0 }
+    ' "$TOPOLOGY_FILE"
+}
+
+get_node_network_conditions() {
+    local node="$1"
+    awk -v node="$node" '
+        /^\s+-?\s*name:/ { current = $NF; gsub(/["'"'"']/, "", current); in_nc=0 }
+        current == node && /network_conditions:/ { in_nc=1; next }
+        current == node && in_nc && /latency_ms:/ { gsub(/["'"'"']/, "", $2); print "latency_ms=" $2 }
+        current == node && in_nc && /packet_loss_percent:/ { gsub(/["'"'"']/, "", $2); print "loss=" $2 }
+        current == node && in_nc && /bandwidth_kbps:/ { gsub(/["'"'"']/, "", $2); print "bw=" $2 }
+        current == node && in_nc && /jitter_ms:/ { gsub(/["'"'"']/, "", $2); print "jitter=" $2 }
+        current == node && in_nc && /^\s+[a-z]/ && !/^\s+(latency|packet|bandwidth|jitter|preset)/ { in_nc=0 }
+    ' "$TOPOLOGY_FILE"
+}
+
 log "Parsing topology: $TOPOLOGY_FILE"
 
-# For now, we'll create a simple implementation
-# In production, this would parse YAML and create VMs dynamically
+# ── Generic topology-driven lab creation ─────────────────────────────────────
 
-case $TOPOLOGY in
-    simple-lan)
-        log "Creating simple LAN topology (2 nodes)..."
-        
-        if [ "$HYPERVISOR" = "lxd" ]; then
-            log "Creating node-1..."
-            lxc launch ubuntu:22.04 "$LAB_NAME-node-1" || true
-            
-            log "Creating node-2..."
-            lxc launch ubuntu:22.04 "$LAB_NAME-node-2" || true
-            
-            # Wait for containers to start
-            sleep 5
-            
-            # Configure network (simplified)
-            log "Configuring network..."
-            lxc exec "$LAB_NAME-node-1" -- ip addr add 192.168.100.10/24 dev eth0 || true
-            lxc exec "$LAB_NAME-node-2" -- ip addr add 192.168.100.20/24 dev eth0 || true
-        fi
+NETWORK_NAME="${LAB_NAME}-net"
+NODE_NAMES=()
+NODE_IDS=()
+
+while IFS= read -r node; do
+    [ -z "$node" ] && continue
+    NODE_NAMES+=("$node")
+done < <(get_node_names)
+
+NODE_COUNT=${#NODE_NAMES[@]}
+if [ "$NODE_COUNT" -eq 0 ]; then
+    log_error "No nodes found in topology: $TOPOLOGY_FILE"
+    exit 1
+fi
+
+log "Found $NODE_COUNT nodes in topology"
+
+case $HYPERVISOR in
+    docker)
+        log "Creating Docker network: $NETWORK_NAME"
+        docker network create "$NETWORK_NAME" --driver bridge 2>/dev/null || \
+            log_warn "Network $NETWORK_NAME may already exist"
+
+        for node in "${NODE_NAMES[@]}"; do
+            local_image="$(get_node_image "$node")"
+            local_image="${local_image:-ubuntu}"
+
+            case "$local_image" in
+                ubuntu) docker_image="ubuntu:24.04" ;;
+                alpine) docker_image="alpine:latest" ;;
+                *)      docker_image="$local_image" ;;
+            esac
+
+            container_name="${LAB_NAME}-${node}"
+            log "Creating container: $container_name (image: $docker_image)"
+
+            env_args=()
+            while IFS='=' read -r key val; do
+                [ -z "$key" ] && continue
+                env_args+=("-e" "${key}=${val}")
+            done < <(get_node_env_block "$node")
+
+            docker run -d \
+                --name "$container_name" \
+                --network "$NETWORK_NAME" \
+                --hostname "$node" \
+                --cap-add=NET_ADMIN \
+                "${env_args[@]}" \
+                "$docker_image" \
+                sleep infinity 2>/dev/null && \
+                log "  + $container_name" || \
+                log_warn "  ! $container_name (may already exist)"
+
+            NODE_IDS+=("$container_name")
+
+            # Apply network conditions via tc if specified
+            latency="" ; loss="" ; bw="" ; jitter=""
+            while IFS='=' read -r nc_key nc_val; do
+                case "$nc_key" in
+                    latency_ms) latency="$nc_val" ;;
+                    loss)       loss="$nc_val" ;;
+                    bw)         bw="$nc_val" ;;
+                    jitter)     jitter="$nc_val" ;;
+                esac
+            done < <(get_node_network_conditions "$node")
+
+            if [ -n "$latency" ] && [ "$latency" != "0" ]; then
+                tc_cmd="tc qdisc add dev eth0 root netem delay ${latency}ms"
+                [ -n "$jitter" ] && [ "$jitter" != "0" ] && tc_cmd="$tc_cmd ${jitter}ms"
+                [ -n "$loss" ] && [ "$loss" != "0" ] && [ "$loss" != "0.0" ] && tc_cmd="$tc_cmd loss ${loss}%"
+                docker exec "$container_name" sh -c "$tc_cmd" 2>/dev/null && \
+                    log "  tc: ${latency}ms latency, ${loss:-0}% loss" || \
+                    log_warn "  tc: could not apply (may need iproute2 in image)"
+            fi
+        done
+
+        log "Waiting for containers to stabilize..."
+        sleep 2
         ;;
-    
-    p2p-3-tower)
-        log "Creating 3-tower P2P topology (3 nodes)..."
-        
-        if [ "$HYPERVISOR" = "lxd" ]; then
-            log "Creating sf-tower..."
-            lxc launch ubuntu:22.04 "$LAB_NAME-sf-tower" || true
-            
-            log "Creating ny-tower..."
-            lxc launch ubuntu:22.04 "$LAB_NAME-ny-tower" || true
-            
-            log "Creating london-tower..."
-            lxc launch ubuntu:22.04 "$LAB_NAME-london-tower" || true
-            
-            # Wait for containers to start
-            sleep 5
-            
-            # Configure network
-            log "Configuring network..."
-            lxc exec "$LAB_NAME-sf-tower" -- ip addr add 192.168.100.10/24 dev eth0 || true
-            lxc exec "$LAB_NAME-ny-tower" -- ip addr add 192.168.100.20/24 dev eth0 || true
-            lxc exec "$LAB_NAME-london-tower" -- ip addr add 192.168.100.30/24 dev eth0 || true
-            
-            # Add latency simulation using tc (traffic control)
-            log "Configuring network latency..."
-            lxc exec "$LAB_NAME-sf-tower" -- tc qdisc add dev eth0 root netem delay 20ms || true
-            lxc exec "$LAB_NAME-ny-tower" -- tc qdisc add dev eth0 root netem delay 20ms || true
-            lxc exec "$LAB_NAME-london-tower" -- tc qdisc add dev eth0 root netem delay 70ms || true
-        fi
+
+    lxd)
+        for node in "${NODE_NAMES[@]}"; do
+            container_name="${LAB_NAME}-${node}"
+            log "Creating LXD container: $container_name"
+            lxc launch ubuntu:24.04 "$container_name" || true
+            NODE_IDS+=("$container_name")
+        done
+
+        sleep 5
+
+        for node in "${NODE_NAMES[@]}"; do
+            container_name="${LAB_NAME}-${node}"
+            local latency=""
+            while IFS='=' read -r nc_key nc_val; do
+                case "$nc_key" in
+                    latency_ms) latency="$nc_val" ;;
+                esac
+            done < <(get_node_network_conditions "$node")
+
+            if [ -n "$latency" ] && [ "$latency" != "0" ]; then
+                lxc exec "$container_name" -- tc qdisc add dev eth0 root netem delay "${latency}ms" 2>/dev/null || true
+            fi
+        done
         ;;
-    
-    nat-traversal)
-        log "Creating NAT traversal topology (4 nodes)..."
-        
-        if [ "$HYPERVISOR" = "lxd" ]; then
-            log "Creating relay-node..."
-            lxc launch ubuntu:22.04 "$LAB_NAME-relay-node" || true
-            
-            log "Creating client-1..."
-            lxc launch ubuntu:22.04 "$LAB_NAME-client-1" || true
-            
-            log "Creating client-2..."
-            lxc launch ubuntu:22.04 "$LAB_NAME-client-2" || true
-            
-            log "Creating client-3..."
-            lxc launch ubuntu:22.04 "$LAB_NAME-client-3" || true
-            
-            sleep 5
-        fi
-        ;;
-    
-    *)
-        log_warn "Custom topology: $TOPOLOGY"
-        log_warn "Generic lab creation not yet implemented"
-        log_warn "Please create VMs manually or use a predefined topology"
+
+    qemu)
+        log_warn "QEMU/KVM lab creation requires the benchscale Rust CLI"
+        log_warn "Use: benchscale create $LAB_NAME $TOPOLOGY_FILE"
+        log_warn "Or use --hypervisor docker for container-based labs"
         ;;
 esac
 
@@ -257,9 +341,14 @@ cat > "$STATE_DIR/$LAB_NAME/info.yaml" <<EOF
 name: $LAB_NAME
 topology: $TOPOLOGY
 hypervisor: $HYPERVISOR
+network: $NETWORK_NAME
+node_count: $NODE_COUNT
 created: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
 status: created
 EOF
+
+# Write node list for destroy-lab.sh
+printf '%s\n' "${NODE_IDS[@]}" > "$STATE_DIR/$LAB_NAME/nodes.txt"
 
 # Summary
 echo ""
@@ -272,10 +361,9 @@ log_info "Topology:  $TOPOLOGY"
 log_info "Hypervisor: $HYPERVISOR"
 echo ""
 log_info "Next steps:"
-echo "  1. Deploy primals: ./deploy-to-lab.sh --lab $LAB_NAME --manifest <manifest.yaml>"
-echo "  2. Run tests:      ./run-tests.sh --lab $LAB_NAME --test <test-name>"
-echo "  3. Monitor:        ./monitor-lab.sh --lab $LAB_NAME"
-echo "  4. Tear down:      ./destroy-lab.sh --lab $LAB_NAME"
+echo "  1. Deploy primals: ./deploy-ecoprimals.sh --lab $LAB_NAME"
+echo "  2. Run validation: ../../springs/primalSpring/scripts/validate_local_lab.sh --topology $TOPOLOGY"
+echo "  3. Tear down:      ./destroy-lab.sh --lab $LAB_NAME"
 echo ""
 log_info "Lab state saved to: $STATE_DIR/$LAB_NAME/"
 echo ""

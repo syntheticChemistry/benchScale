@@ -2,9 +2,9 @@
 
 **Production-ready Rust framework for distributed system testing**
 
-🟢 **Status**: Production Ready - Evolutions #20-#23 Complete  
-📅 **Last Updated**: January 8, 2026  
-🧪 **Tests**: 215/215 passing (100%)  
+🟢 **Status**: Production Ready — v3.0.0 (Evolutions #20-#23 Complete)  
+📅 **Last Updated**: March 28, 2026  
+🧪 **Tests**: 212/212 passing (100%)  
 🔒 **Safety**: Zero unsafe code
 
 ---
@@ -193,7 +193,7 @@ Multi-method verification with rich diagnostics:
 - **Zero production mocks** (all isolated to tests)
 - **Modern async/await** throughout
 - **Type-safe APIs** with compile-time guarantees
-- **215 tests passing** (100%)
+- **212 tests passing** (100%)
 
 ### 🧬 Primal Philosophy
 
@@ -322,33 +322,9 @@ export BENCHSCALE_DEFAULT_OS_VARIANT="ubuntu24.04"
 export BENCHSCALE_VNC_BASE_PORT=5900
 ```
 
-### Configuration File (Future)
+### Configuration file (`BenchScaleConfig`)
 
-```yaml
-# ~/.config/benchscale/config.yaml
-monitoring:
-  check_interval_secs: 10
-  stall_threshold_secs: 60
-  max_failures: 180
-  ip_rediscovery_interval: 100
-
-timeouts:
-  cloud_init_secs: 1800
-  ssh_secs: 300
-  boot_secs: 300
-
-network:
-  name: "default"
-  dhcp_range:
-    start: "192.168.122.2"
-    end: "192.168.122.254"
-  ssh_port: 22
-
-storage:
-  vm_images_dir: "/var/lib/libvirt/images"
-  max_disk_size_gb: 500
-  min_free_space_gb: 20
-```
+Runtime settings are merged from defaults, **environment variables** (see above), and an optional YAML file loaded via `BenchScaleConfig::from_file("benchscale.yaml")`. The same structure serializes to YAML; use `src/config/` for field documentation and validation.
 
 ---
 
@@ -528,8 +504,8 @@ cargo test --test evolution_integration_tests
 | **Health Check** | 6 | ✅ 100% |
 | **DHCP Discovery** | 4 | ✅ 100% |
 | **Integration** | 12 | ✅ 100% |
-| **Unit Tests** | 104 | ✅ 100% |
-| **Total** | **215** | ✅ **100%** |
+| **Unit Tests** | 101 | ✅ 100% |
+| **Total** | **212** | ✅ **100%** |
 
 ---
 
@@ -582,7 +558,7 @@ cargo test --test evolution_integration_tests
 
 | Metric | Value | Status |
 |--------|-------|--------|
-| **Tests** | 215/215 | ✅ 100% |
+| **Tests** | 212/212 | ✅ 100% |
 | **Unsafe code** | 0 | ✅ Enforced |
 | **Production mocks** | 0 | ✅ Isolated |
 | **Hardcoded values** | Minimal | ✅ Capability-based |
@@ -616,7 +592,7 @@ benchScale embodies **primal principles**:
 
 - **[agentReagents](../agentReagents/)** - Template-driven VM image builder (consumer)
 - **[ionChannel](../ionChannel/)** - Remote desktop portal and A/B testing
-- **[syntheticChemistry](../)** - Parent project and ecosystem
+- **[ecoPrimals](../)** - Parent project and ecosystem
 
 ---
 
@@ -640,6 +616,6 @@ benchScale embodies **primal principles**:
 
 **benchScale** - *Type-safe VM orchestration for modern infrastructure*
 
-Production-ready • 215 tests passing • Zero unsafe code • Primal architecture
+Production-ready • 212 tests passing • Zero unsafe code • Primal architecture
 
-Made with 🦀 by the syntheticChemistry ecosystem
+Made with 🦀 by the ecoPrimals ecosystem

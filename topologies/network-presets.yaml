@@ -1,0 +1,53 @@
+# Network condition presets for ecoPrimals ecosystem scenarios
+#
+# These presets map to real-world deployment conditions for primal compositions.
+# Reference from topology YAML files via network_conditions_preset field,
+# or copy values directly into per-node network_conditions blocks.
+#
+# Each preset corresponds to a primalSpring multi-node deploy graph:
+#   basement_lan   -> basement_hpc_covalent.toml (same rack)
+#   home_lan       -> three_node_covalent_cross_network.toml (home network)
+#   friend_wan     -> friend_remote_covalent.toml (cross-city)
+#   mobile_cell    -> mobile gateway (Pixel over cellular)
+#   satellite      -> remote/rural gate (high latency)
+
+presets:
+  basement_lan:
+    description: "Same-rack covalent mesh — HPC/server room"
+    latency_ms: 0.5
+    packet_loss_percent: 0.0
+    bandwidth_kbps: 10000000  # 10 Gbps
+    jitter_ms: 0.1
+    scenario: "All nodes on same switch, minimal hop"
+
+  home_lan:
+    description: "Home network gates — WiFi or ethernet"
+    latency_ms: 2
+    packet_loss_percent: 0.01
+    bandwidth_kbps: 1000000  # 1 Gbps
+    jitter_ms: 1
+    scenario: "Desktop to NAS to Pixel, same home network"
+
+  friend_wan:
+    description: "Friend remote covalent — cross-city or cross-state"
+    latency_ms: 50
+    packet_loss_percent: 0.5
+    bandwidth_kbps: 100000  # 100 Mbps
+    jitter_ms: 10
+    scenario: "Friend's gate connected over broadband WAN"
+
+  mobile_cell:
+    description: "Pixel over cellular — degraded mobile connection"
+    latency_ms: 100
+    packet_loss_percent: 2.0
+    bandwidth_kbps: 10000  # 10 Mbps
+    jitter_ms: 30
+    scenario: "Phone on LTE/5G, variable conditions, possible NAT"
+
+  satellite:
+    description: "Remote/rural gate — high latency satellite link"
+    latency_ms: 600
+    packet_loss_percent: 5.0
+    bandwidth_kbps: 5000  # 5 Mbps
+    jitter_ms: 50
+    scenario: "Starlink or geostationary — extreme latency, lossy"

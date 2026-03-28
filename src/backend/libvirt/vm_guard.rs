@@ -1,5 +1,5 @@
 use anyhow::Result;
-use log::{error, info, warn, debug};
+use tracing::{error, info, warn, debug};
 use std::path::PathBuf;
 use virt::connect::Connect;
 use virt::domain::Domain;

@@ -5,6 +5,20 @@ All notable changes to benchScale will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] - 2026-03-28
+
+### Changed
+
+- Replaced deprecated `serde_yaml` with `yaml_serde` (official maintained fork).
+- Unified logging on `tracing` (removed `log` + `env_logger`).
+- Wired **clap** CLI with derive macros.
+- **Capability-based config**: hardcoded paths, IPs, and OS defaults are env-overridable.
+- Deprecated `config_legacy.rs` in favor of `config::BenchScaleConfig`.
+- Fixed production `unwrap()` calls.
+- Extracted test modules from four large files (**212 tests** pass).
+- Removed orphan Rust files and fake `run-tests.sh`.
+- Renamed `pub mod tests` → `scenarios`.
+
 ## [2.0.0] - 2025-12-27
 
 ### 🎉 Production Ready Release
@@ -110,7 +124,8 @@ This release achieves **A+ quality (98/100)** with 90.24% test coverage and comp
 
 ## Version History
 
-- **[2.0.0]** - Production Ready (December 27, 2025) ← Current
+- **[3.0.0]** - Modernization release (March 28, 2026) ← Current
+- **[2.0.0]** - Production Ready (December 27, 2025)
 - **[1.0.0]** - Initial Release (December 15, 2025)
 
 ---
@@ -136,7 +151,7 @@ cargo install benchscale --force
 # or download from GitHub releases
 
 # Verify
-benchscale --version  # Should show 2.0.0
+benchscale --version  # Should show 3.0.0
 
 # Test
 benchscale create test-lab topologies/simple-lan.yaml

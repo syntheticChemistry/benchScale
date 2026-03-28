@@ -32,7 +32,7 @@
 
 use crate::backend::{Backend, NodeInfo};
 use crate::{CloudInit, Error, Result};
-use log::{debug, info, warn};
+use tracing::{debug, info, warn};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -992,16 +992,19 @@ impl ImageBuilder {
             .arg("virt-sparsify")
             .output()
             .await;
-        
-        if sparsify_result.is_ok() && sparsify_result.unwrap().status.success() {
-            info!("Running virt-sparsify to optimize disk...");
-            tokio::process::Command::new("virt-sparsify")
-                .args(["--in-place", &disk_path])
-                .output()
-                .await
-                .map_err(|e| Error::Backend(format!("Failed to sparsify: {}", e)))?;
-        } else {
-            info!("virt-sparsify not available, skipping optimization");
+
+        match sparsify_result {
+            Ok(output) if output.status.success() => {
+                info!("Running virt-sparsify to optimize disk...");
+                tokio::process::Command::new("virt-sparsify")
+                    .args(["--in-place", &disk_path])
+                    .output()
+                    .await
+                    .map_err(|e| Error::Backend(format!("Failed to sparsify: {}", e)))?;
+            }
+            _ => {
+                info!("virt-sparsify not available, skipping optimization");
+            }
         }
 
         // Copy to final location (Evolution #24: No sudo)

@@ -90,25 +90,57 @@ if [ "$FORCE" != "true" ]; then
     fi
 fi
 
-# Destroy VMs
-log "Destroying VMs..."
+# Destroy nodes
+log "Destroying nodes..."
 
-if [ "$HYPERVISOR" = "lxd" ]; then
-    # List all containers for this lab
-    CONTAINERS=$(lxc list --format csv -c n | grep "^${LAB_NAME}-" || true)
-    
-    if [ -n "$CONTAINERS" ]; then
-        while IFS= read -r container; do
-            log "Stopping $container..."
-            lxc stop "$container" --force || log_warn "Could not stop $container"
-            
-            log "Deleting $container..."
-            lxc delete "$container" || log_warn "Could not delete $container"
-        done <<< "$CONTAINERS"
-    else
-        log_warn "No containers found for lab: $LAB_NAME"
-    fi
-fi
+NODES_FILE="$STATE_DIR/$LAB_NAME/nodes.txt"
+NETWORK_NAME=$(grep "^network:" "$STATE_DIR/$LAB_NAME/info.yaml" 2>/dev/null | awk '{print $2}')
+
+case "$HYPERVISOR" in
+    docker)
+        if [ -f "$NODES_FILE" ]; then
+            while IFS= read -r container; do
+                [ -z "$container" ] && continue
+                log "Removing $container..."
+                docker rm -f "$container" 2>/dev/null || log_warn "Could not remove $container"
+            done < "$NODES_FILE"
+        else
+            CONTAINERS=$(docker ps -a --filter "name=^${LAB_NAME}-" --format '{{.Names}}' 2>/dev/null || true)
+            if [ -n "$CONTAINERS" ]; then
+                while IFS= read -r container; do
+                    log "Removing $container..."
+                    docker rm -f "$container" 2>/dev/null || log_warn "Could not remove $container"
+                done <<< "$CONTAINERS"
+            else
+                log_warn "No containers found for lab: $LAB_NAME"
+            fi
+        fi
+
+        if [ -n "$NETWORK_NAME" ]; then
+            log "Removing network: $NETWORK_NAME"
+            docker network rm "$NETWORK_NAME" 2>/dev/null || log_warn "Could not remove network"
+        fi
+        ;;
+
+    lxd)
+        CONTAINERS=$(lxc list --format csv -c n 2>/dev/null | grep "^${LAB_NAME}-" || true)
+        if [ -n "$CONTAINERS" ]; then
+            while IFS= read -r container; do
+                log "Stopping $container..."
+                lxc stop "$container" --force 2>/dev/null || log_warn "Could not stop $container"
+                log "Deleting $container..."
+                lxc delete "$container" 2>/dev/null || log_warn "Could not delete $container"
+            done <<< "$CONTAINERS"
+        else
+            log_warn "No containers found for lab: $LAB_NAME"
+        fi
+        ;;
+
+    *)
+        log_warn "Unsupported hypervisor for automated destroy: $HYPERVISOR"
+        log_warn "Manual cleanup may be required"
+        ;;
+esac
 
 # Remove lab state
 log "Removing lab state..."

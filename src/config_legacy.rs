@@ -2,12 +2,17 @@
 //!
 //! Provides centralized configuration with environment variable support
 //! and no hardcoded values in production code.
+#![allow(deprecated)] // This module defines the deprecated `Config`; suppress self-referential noise
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::Duration;
 
 /// Global configuration for benchScale
+#[deprecated(
+    since = "2.1.0",
+    note = "Use config::BenchScaleConfig instead"
+)]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
     /// Docker configuration
@@ -216,14 +221,15 @@ mod defaults {
     }
 
     fn discover_agentreagents_templates() -> Result<PathBuf, ()> {
-        // Common locations relative to benchScale
-        let search_paths = vec![
-            PathBuf::from("../primalTools/agentReagents/images/templates"),
-            PathBuf::from("../../primalTools/agentReagents/images/templates"),
-            PathBuf::from("../agentReagents/images/templates"),
-            PathBuf::from("../../agentReagents/images/templates"),
-            PathBuf::from("./agentReagents/images/templates"),
-        ];
+        // Explicit search list (colon-separated), e.g. export BENCHSCALE_AGENTREAGENTS_TEMPLATE_PATHS="../tools/templates:./vendor/templates"
+        if let Ok(paths) = std::env::var("BENCHSCALE_AGENTREAGENTS_TEMPLATE_PATHS") {
+            for p in paths.split(':').map(str::trim).filter(|p| !p.is_empty()) {
+                let path = PathBuf::from(p);
+                if path.exists() && path.is_dir() {
+                    return Ok(path);
+                }
+            }
+        }
 
         // Also check AGENTREAGENTS_PATH if set
         if let Ok(base) = std::env::var("AGENTREAGENTS_PATH") {
@@ -234,7 +240,13 @@ mod defaults {
             }
         }
 
-        // Try relative paths
+        // Generic relative locations (no ecosystem-specific path segments)
+        let search_paths = [
+            PathBuf::from("../agentReagents/images/templates"),
+            PathBuf::from("../../agentReagents/images/templates"),
+            PathBuf::from("./agentReagents/images/templates"),
+        ];
+
         for path in search_paths {
             if path.exists() && path.is_dir() {
                 return Ok(path);

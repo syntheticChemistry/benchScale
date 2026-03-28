@@ -14,7 +14,7 @@ use std::path::PathBuf;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    tracing_subscriber::fmt::init();
 
     println!("╔══════════════════════════════════════════════════════════════════════════╗");
     println!("║  Building Pop!_OS COSMIC + RustDesk Template (benchScale)               ║");

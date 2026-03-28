@@ -8,12 +8,12 @@
 
 use crate::backend::Backend;
 use crate::persistence::registry::{VmFilter, VmRecord, VmRegistry};
-use crate::persistence::state::{EventType, VmState};
+use crate::persistence::state::VmState;
 use anyhow::{Context, Result};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
 /// VM configuration for lifecycle-managed VMs
 #[derive(Debug, Clone)]
@@ -36,28 +36,19 @@ pub struct VmConfig {
 ///
 /// **Vendor-Agnostic**: Works with any `Backend` implementation (libvirt, VMware, AWS, etc.)
 ///
-/// # Example with Discovery (Recommended)
+/// # Example with libvirt backend
 /// ```no_run
 /// use benchscale::persistence::{LifecycleManager, VmRegistry, VmConfig};
-/// use benchscale::backend::VmProvider;
-/// use primal_substrate::{Discovery, Capability};
-///
-/// # async fn example() -> anyhow::Result<()> {
-/// let registry = VmRegistry::new("vms.db").await?;
-///
-/// // Discover any VM provider (zero hardcoding!)
-/// let discovery = Discovery::new().await?;
-/// let service = discovery.find_capability(Capability::VmProvisioning).await?;
-/// // TODO: Connect to discovered service
-/// // For now, use libvirt directly
-/// # #[cfg(feature = "libvirt")]
-/// # {
 /// use benchscale::backend::LibvirtBackend;
 /// use std::sync::Arc;
+///
+/// # async fn example() -> anyhow::Result<()> {
+/// # #[cfg(feature = "libvirt")]
+/// # {
+/// let registry = VmRegistry::new("vms.db").await?;
 /// let backend = Arc::new(LibvirtBackend::new()?) as Arc<dyn benchscale::backend::Backend>;
 /// let manager = LifecycleManager::new(registry, backend);
 ///
-/// // Create VM with full lifecycle tracking
 /// let vm_id = manager.create_vm(VmConfig {
 ///     name: "web-server".to_string(),
 ///     owner: Some("alice".to_string()),
@@ -65,8 +56,6 @@ pub struct VmConfig {
 ///     tags: vec!["production".to_string()],
 ///     backend_config: serde_json::json!({}),
 /// }).await?;
-///
-/// // VM is now tracked in persistent storage
 /// # }
 /// # Ok(())
 /// # }
@@ -404,6 +393,7 @@ impl<B: Backend> LifecycleManager<B> {
 mod tests {
     use super::*;
     use crate::backend::{ExecResult, NetworkInfo, NodeInfo, NodeStatus};
+    use crate::persistence::state::EventType;
     use async_trait::async_trait;
 
     // Mock backend for testing

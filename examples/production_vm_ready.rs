@@ -7,7 +7,7 @@
 //   cargo run --example production_vm_ready --features libvirt
 
 use benchscale::{CloudInit, LibvirtBackend};
-use std::path::Path;
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 #[tokio::main]
@@ -22,7 +22,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "production-ready-{}",
         chrono::Utc::now().format("%Y%m%d-%H%M%S")
     );
-    let base_image = Path::new("/home/nestgate/Development/syntheticChemistry/agentReagents/images/cloud/ubuntu-22.04-server-cloudimg-amd64.img");
+    let base_image = PathBuf::from(
+        std::env::var("BENCHSCALE_BASE_IMAGE")
+            .unwrap_or_else(|_| "ubuntu-24.04-server-cloudimg-amd64.img".to_string()),
+    );
     let ssh_public_key = std::env::var("SSH_PUBLIC_KEY").unwrap_or_else(|_| {
         // Fallback to reading from default SSH key
         std::fs::read_to_string(std::env::var("HOME").unwrap() + "/.ssh/id_rsa.pub")
@@ -31,7 +34,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("🔧 Configuration");
     println!("   VM Name: {}", vm_name);
-    println!("   Image: ubuntu-22.04-server-cloudimg-amd64.img");
+    println!("   Image: {}", base_image.display());
     println!("   Memory: 2048 MB (2 GB)");
     println!("   vCPUs: 2");
     println!("   Disk: 15 GB");
@@ -106,7 +109,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let result = backend
         .create_desktop_vm_ready(
             &vm_name,
-            base_image,
+            &base_image,
             &cloud_init,
             2048, // 2GB RAM
             2,    // 2 vCPUs

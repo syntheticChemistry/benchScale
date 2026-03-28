@@ -1,6 +1,6 @@
 [package]
 name = "benchscale"
-version = "2.0.0"
+version = "3.0.0"
 edition = "2021"
 authors = ["ecoPrimals <dev@ecoprimals.org>"]
 license = "MIT OR Apache-2.0"
@@ -10,8 +10,7 @@ keywords = ["testing", "distributed", "docker", "containers", "laboratory"]
 categories = ["development-tools::testing", "network-programming"]
 
 [workspace]
-# This is a standalone project, NOT part of a parent workspace
-# Each syntheticChemistry project is sovereign and independently versioned
+# Standalone project — independently versioned within ecoPrimals/infra
 
 [dependencies]
 # Docker API client (pure Rust)
@@ -23,7 +22,7 @@ async-trait = "0.1"
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
-serde_yaml = "0.9"
+serde_yaml = { package = "yaml_serde", version = "0.10" }
 serde_json = "1.0"
 
 # Error handling
@@ -52,8 +51,9 @@ data-encoding = { version = "2.6", optional = true }
 
 # Persistence (for lifecycle management)
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite"], optional = true }
-log = "0.4.29"
-env_logger = "0.11.8"
+
+# CLI
+clap = { version = "4.5", features = ["derive"] }
 
 # Discovery: Use standard solutions (mDNS, DNS-SD, Consul)
 # NOT creating custom substrate - primal philosophy is to use existing capabilities
@@ -65,7 +65,6 @@ env_logger = "0.11.8"
 [dev-dependencies]
 tokio-test = "0.4"
 tempfile = "3.8"
-clap = { version = "4.5", features = ["derive"] }
 
 [lib]
 name = "benchscale"
@@ -78,8 +77,10 @@ path = "src/bin/main.rs"
 [build-dependencies]
 
 [features]
-default = ["docker"]
+default = ["docker", "docker-hardened-catalog"]
 docker = []
+# Built-in docker.io/dockerhardened/* short-name mappings; disable to require full refs or env overrides only
+docker-hardened-catalog = []
 hardened = []  # Use Docker hardened images
 libvirt = ["dep:virt", "dep:russh", "dep:russh-keys", "dep:data-encoding"]  # Libvirt/KVM backend for VM testing
 persistence = ["dep:sqlx"]  # VM lifecycle persistence and state management

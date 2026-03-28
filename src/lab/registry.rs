@@ -44,6 +44,7 @@ impl LabRegistry {
     }
 
     /// Create a lab registry from configuration
+    #[allow(deprecated)]
     pub fn from_config(config: &crate::Config) -> Self {
         Self::new(config.lab.state_dir.clone())
     }
@@ -616,6 +617,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(deprecated)]
     async fn test_registry_from_config() {
         let config = crate::Config::default();
         let registry = LabRegistry::from_config(&config);

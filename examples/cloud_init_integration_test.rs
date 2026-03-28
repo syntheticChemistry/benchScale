@@ -4,7 +4,7 @@
 // and validates that SSH is immediately accessible.
 
 use benchscale::{CloudInit, LibvirtBackend};
-use std::path::Path;
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 #[tokio::main]
@@ -17,7 +17,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Test configuration
     let test_id = chrono::Utc::now().format("%Y%m%d-%H%M%S").to_string();
     let vm_name = format!("cloud-init-test-{}", test_id);
-    let base_image = Path::new("/home/nestgate/Development/syntheticChemistry/agentReagents/images/cloud/ubuntu-22.04-server-cloudimg-amd64.img");
+    let base_image = PathBuf::from(
+        std::env::var("BENCHSCALE_BASE_IMAGE")
+            .unwrap_or_else(|_| "ubuntu-24.04-server-cloudimg-amd64.img".to_string()),
+    );
 
     println!("🔧 Test Configuration");
     println!("   VM Name: {}", vm_name);
@@ -57,7 +60,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let node = backend
         .create_desktop_vm(
             &vm_name,
-            base_image,
+            &base_image,
             &cloud_init,
             2048, // 2GB RAM
             2,    // 2 vCPUs

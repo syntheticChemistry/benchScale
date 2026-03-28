@@ -1,0 +1,73 @@
+metadata:
+  name: ecoprimals-wan-federation
+  description: "WAN federation: same NUCLEUS + Springs + mobile nodes but with internet-like conditions — tests BirdSong beacon exchange, STUN, mesh formation under degradation"
+  version: "2.0"
+  tags: ["ecoprimals", "wan", "federation", "degradation", "birdsong", "stun"]
+
+network:
+  name: ecoprimals-wan-net
+  subnet: "10.62.0.0/24"
+
+nodes:
+  # Primary NUCLEUS: sits on a good connection but with WAN-like base latency
+  - name: node-primary
+    image: ubuntu
+    env:
+      ROLE: nucleus-primary
+      NODE_ID: "1"
+      PRIMALS: "beardog songbird nestgate toadstool squirrel biomeos"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      NESTGATE_PORT: "9300"
+      TOADSTOOL_PORT: "9400"
+      SQUIRREL_PORT: "9500"
+      BIOMEOS_PORT: "9800"
+      FAMILY_ID: "benchscale-wan-federation"
+    network_conditions:
+      preset: friend_wan  # see network-presets.yaml
+      latency_ms: 50
+      packet_loss_percent: 0.5
+      bandwidth_kbps: 100000  # 100 Mbps — broadband
+      jitter_ms: 10
+
+  # Spring primals node — remote friend covalent link
+  - name: node-springs
+    image: ubuntu
+    env:
+      ROLE: spring-primals
+      NODE_ID: "2"
+      PRIMALS: "groundspring healthspring_primal neuralspring wetspring ludospring"
+      GROUNDSPRING_PORT: "9110"
+      HEALTHSPRING_PRIMAL_PORT: "9120"
+      NEURALSPRING_PORT: "9130"
+      WETSPRING_PORT: "9140"
+      LUDOSPRING_PORT: "9150"
+      FAMILY_ID: "benchscale-wan-federation"
+      TOWER_HOST: "node-primary"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      BIOMEOS_PORT: "9800"
+    network_conditions:
+      preset: mobile_cell  # see network-presets.yaml
+      latency_ms: 100
+      packet_loss_percent: 2.0
+      bandwidth_kbps: 10000  # 10 Mbps — WAN link
+      jitter_ms: 30
+
+  # Mobile node — cellular degradation with satellite-like conditions
+  - name: node-mobile
+    image: ubuntu
+    env:
+      ROLE: mobile-degraded
+      NODE_ID: "3"
+      PRIMALS: "songbird"
+      SONGBIRD_PORT: "9200"
+      BEHIND_NAT: "true"
+      FAMILY_ID: "benchscale-wan-federation"
+      TOWER_HOST: "node-primary"
+    network_conditions:
+      preset: satellite  # see network-presets.yaml
+      latency_ms: 600
+      packet_loss_percent: 5.0
+      bandwidth_kbps: 5000  # 5 Mbps — satellite/rural
+      jitter_ms: 50

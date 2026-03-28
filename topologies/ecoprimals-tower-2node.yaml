@@ -1,0 +1,46 @@
+metadata:
+  name: ecoprimals-tower-2node
+  description: "Minimal 2-node Tower cross-gate: core primals + biomeOS on node-tower, spring primals on node-spring"
+  version: "2.0"
+  tags: ["ecoprimals", "tower", "cross-gate", "springs", "lan"]
+
+network:
+  name: ecoprimals-tower-lan
+  subnet: "10.60.0.0/24"
+  preset: home_lan  # see network-presets.yaml
+  conditions:
+    latency_ms: 2
+    packet_loss_percent: 0.01
+    bandwidth_kbps: 1000000  # 1 Gbps — home LAN baseline
+    jitter_ms: 1
+
+nodes:
+  # Tower + biomeOS substrate: beardog (9100), songbird (9200), biomeos (9800)
+  - name: node-tower
+    image: ubuntu
+    env:
+      ROLE: tower-substrate
+      NODE_ID: "1"
+      PRIMALS: "beardog songbird biomeos"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      BIOMEOS_PORT: "9800"
+      FAMILY_ID: "benchscale-tower-2node"
+
+  # Spring primals: groundspring, healthspring, neuralspring, wetspring, ludospring
+  - name: node-spring
+    image: ubuntu
+    env:
+      ROLE: spring-primals
+      NODE_ID: "2"
+      PRIMALS: "groundspring healthspring_primal neuralspring wetspring ludospring"
+      GROUNDSPRING_PORT: "9110"
+      HEALTHSPRING_PRIMAL_PORT: "9120"
+      NEURALSPRING_PORT: "9130"
+      WETSPRING_PORT: "9140"
+      LUDOSPRING_PORT: "9150"
+      FAMILY_ID: "benchscale-tower-2node"
+      TOWER_HOST: "node-tower"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      BIOMEOS_PORT: "9800"

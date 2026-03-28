@@ -1,104 +1,92 @@
-//! benchScale CLI
+//! benchScale CLI — typed argument parsing via clap
+#![allow(deprecated)] // CLI still uses legacy `Config` until migrated to BenchScaleConfig
 
 use benchscale::{init, Backend, Config, DockerBackend, Lab, LabRegistry, Topology};
+use clap::{Parser, Subcommand};
 use tracing::{error, info};
+
+#[derive(Parser)]
+#[command(
+    name = "benchscale",
+    about = "Pure Rust laboratory substrate for distributed system testing",
+    version = benchscale::VERSION,
+)]
+struct Cli {
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Create a new lab from a topology file
+    Create {
+        /// Lab name
+        name: String,
+        /// Path to topology YAML file
+        topology: String,
+        /// Backend to use
+        #[arg(long, default_value = "docker")]
+        backend: String,
+    },
+    /// Destroy an existing lab
+    Destroy {
+        /// Lab name
+        name: String,
+        /// Force destroy without confirmation
+        #[arg(long)]
+        force: bool,
+    },
+    /// List all active labs
+    List,
+    /// Show detailed status of a lab
+    Status {
+        /// Lab name
+        name: String,
+    },
+    /// Show version information
+    Version,
+}
 
 #[tokio::main]
 async fn main() {
     init();
+    let cli = Cli::parse();
 
-    let args: Vec<String> = std::env::args().collect();
-
-    if args.len() < 2 {
-        print_usage();
-        std::process::exit(1);
-    }
-
-    let command = &args[1];
-
-    match command.as_str() {
-        "create" => {
-            if args.len() < 4 {
-                eprintln!("Usage: benchscale create <lab-name> <topology-file>");
-                std::process::exit(1);
-            }
-            let lab_name = &args[2];
-            let topology_file = &args[3];
-
-            if let Err(e) = create_lab(lab_name, topology_file).await {
-                error!("Failed to create lab: {}", e);
-                std::process::exit(1);
-            }
-        }
-        "destroy" => {
-            if args.len() < 3 {
-                eprintln!("Usage: benchscale destroy <lab-name>");
-                std::process::exit(1);
-            }
-            let lab_name = &args[2];
-
-            if let Err(e) = destroy_lab(lab_name).await {
-                error!("Failed to destroy lab: {}", e);
-                std::process::exit(1);
-            }
-        }
-        "list" => {
-            if let Err(e) = list_labs().await {
-                error!("Failed to list labs: {}", e);
-                std::process::exit(1);
-            }
-        }
-        "status" => {
-            if args.len() < 3 {
-                eprintln!("Usage: benchscale status <lab-name>");
-                std::process::exit(1);
-            }
-            let lab_name = &args[2];
-
-            if let Err(e) = show_status(lab_name).await {
-                error!("Failed to get status: {}", e);
-                std::process::exit(1);
-            }
-        }
-        "version" | "--version" | "-v" => {
+    let result = match cli.command {
+        Command::Create {
+            name,
+            topology,
+            backend: _,
+        } => create_lab(&name, &topology).await,
+        Command::Destroy { name, force: _ } => destroy_lab(&name).await,
+        Command::List => list_labs().await,
+        Command::Status { name } => show_status(&name).await,
+        Command::Version => {
             println!("benchScale v{}", benchscale::VERSION);
+            Ok(())
         }
-        "help" | "--help" | "-h" => {
-            print_usage();
-        }
-        _ => {
-            eprintln!("Unknown command: {}", command);
-            print_usage();
-            std::process::exit(1);
-        }
+    };
+
+    if let Err(e) = result {
+        error!("{e}");
+        std::process::exit(1);
     }
 }
 
 async fn create_lab(lab_name: &str, topology_file: &str) -> anyhow::Result<()> {
-    info!(
-        "Creating lab '{}' from topology '{}'",
-        lab_name, topology_file
-    );
+    info!("Creating lab '{lab_name}' from topology '{topology_file}'");
 
-    // Load configuration
     let config = Config::from_env();
-
-    // Load topology
     let topology = Topology::from_file(topology_file).await?;
     info!("Loaded topology: {}", topology.metadata.name);
 
-    // Create Docker backend
     let backend = DockerBackend::new()?;
-
-    // Check if Docker is available
     if !backend.is_available().await? {
-        anyhow::bail!("Docker is not available. Please ensure Docker is installed and running.");
+        anyhow::bail!("Docker is not available. Ensure Docker is installed and running.");
     }
 
-    // Create lab
     let lab = Lab::create(lab_name, topology.clone(), backend).await?;
 
-    // Register lab in registry
     let registry = LabRegistry::from_config(&config);
     registry
         .register_lab(
@@ -109,54 +97,44 @@ async fn create_lab(lab_name: &str, topology_file: &str) -> anyhow::Result<()> {
         )
         .await?;
 
-    info!("Lab '{}' created successfully!", lab_name);
-    info!("Lab ID: {}", lab.id());
-    info!("Nodes:");
+    info!("Lab '{lab_name}' created — ID: {}", lab.id());
     for node in lab.nodes().await {
-        info!("  - {} ({}): {:?}", node.name, node.ip_address, node.status);
+        info!("  {} ({}): {:?}", node.name, node.ip_address, node.status);
     }
 
     Ok(())
 }
 
 async fn destroy_lab(lab_name: &str) -> anyhow::Result<()> {
-    info!("Destroying lab '{}'", lab_name);
+    info!("Destroying lab '{lab_name}'");
 
-    // Load configuration
     let config = Config::from_env();
     let registry = LabRegistry::from_config(&config);
-
-    // Load lab metadata
     let metadata = registry.load_lab_by_name(lab_name).await?;
 
     info!("Found lab: {} (ID: {})", metadata.name, metadata.id);
 
-    // Recreate backend (we don't have the Lab object anymore)
     let backend = DockerBackend::new()?;
 
-    // Delete all nodes
     for node_id in &metadata.node_ids {
-        info!("Deleting node: {}", node_id);
+        info!("Deleting node: {node_id}");
         if let Err(e) = backend.delete_node(node_id).await {
-            error!("Failed to delete node {}: {}", node_id, e);
+            error!("Failed to delete node {node_id}: {e}");
         }
     }
 
-    // Delete network
     if let Some(network_id) = &metadata.network_id {
-        info!("Deleting network: {}", network_id);
+        info!("Deleting network: {network_id}");
         if let Err(e) = backend
             .delete_network(&metadata.topology.network.name)
             .await
         {
-            error!("Failed to delete network: {}", e);
+            error!("Failed to delete network: {e}");
         }
     }
 
-    // Remove from registry
     registry.delete_lab(&metadata.id).await?;
-
-    info!("Lab '{}' destroyed successfully", lab_name);
+    info!("Lab '{lab_name}' destroyed");
 
     Ok(())
 }
@@ -164,7 +142,6 @@ async fn destroy_lab(lab_name: &str) -> anyhow::Result<()> {
 async fn list_labs() -> anyhow::Result<()> {
     let config = Config::from_env();
     let registry = LabRegistry::from_config(&config);
-
     let labs = registry.list_labs().await?;
 
     if labs.is_empty() {
@@ -173,27 +150,18 @@ async fn list_labs() -> anyhow::Result<()> {
     }
 
     println!("\nActive Labs:");
-    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    println!("{}", "━".repeat(54));
 
     for lab in labs {
-        let status_icon = match lab.status {
-            benchscale::LabStatus::Creating => "🔄",
-            benchscale::LabStatus::Running => "✅",
-            benchscale::LabStatus::Destroying => "⏳",
-            benchscale::LabStatus::Destroyed => "💀",
-            benchscale::LabStatus::Failed => "❌",
-        };
-
-        println!(
-            "{} {} ({})",
-            status_icon,
-            lab.name,
-            format!("{:?}", lab.status).to_lowercase()
-        );
+        let status_str = format!("{:?}", lab.status).to_lowercase();
+        println!("{} ({})", lab.name, status_str);
         println!("   ID: {}", lab.id);
         println!("   Backend: {}", lab.backend_type);
         println!("   Nodes: {}", lab.node_ids.len());
-        println!("   Created: {}", lab.created_at.format("%Y-%m-%d %H:%M:%S"));
+        println!(
+            "   Created: {}",
+            lab.created_at.format("%Y-%m-%d %H:%M:%S")
+        );
         println!();
     }
 
@@ -203,22 +171,21 @@ async fn list_labs() -> anyhow::Result<()> {
 async fn show_status(lab_name: &str) -> anyhow::Result<()> {
     let config = Config::from_env();
     let registry = LabRegistry::from_config(&config);
-
     let metadata = registry.load_lab_by_name(lab_name).await?;
 
-    println!("\nLab Status: {}", metadata.name);
-    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    println!("ID: {}", metadata.id);
-    println!("Status: {:?}", metadata.status);
-    println!("Backend: {}", metadata.backend_type);
+    println!("\nLab: {}", metadata.name);
+    println!("{}", "━".repeat(54));
+    println!("ID:       {}", metadata.id);
+    println!("Status:   {:?}", metadata.status);
+    println!("Backend:  {}", metadata.backend_type);
     println!("Topology: {}", metadata.topology.metadata.name);
-    println!("Network: {}", metadata.topology.network.name);
-    println!("Nodes: {}", metadata.node_ids.len());
+    println!("Network:  {}", metadata.topology.network.name);
+    println!("Nodes:    {}", metadata.node_ids.len());
 
     if !metadata.node_ids.is_empty() {
         println!("\nNodes:");
         for node_id in &metadata.node_ids {
-            println!("  - {}", node_id);
+            println!("  - {node_id}");
         }
     }
 
@@ -232,35 +199,4 @@ async fn show_status(lab_name: &str) -> anyhow::Result<()> {
     );
 
     Ok(())
-}
-
-fn print_usage() {
-    println!(
-        r#"
-benchScale v{} - Pure Rust Laboratory Substrate
-
-USAGE:
-    benchscale <COMMAND> [OPTIONS]
-
-COMMANDS:
-    create <name> <topology>    Create a new lab from a topology file
-    destroy <name>              Destroy an existing lab
-    list                        List all active labs
-    version                     Show version information
-    help                        Show this help message
-
-EXAMPLES:
-    # Create a lab from a topology file
-    benchscale create my-lab topologies/simple-lan.yaml
-    
-    # Destroy a lab
-    benchscale destroy my-lab
-    
-    # List all labs
-    benchscale list
-
-For more information, visit: https://github.com/ecoPrimals/benchScale
-"#,
-        benchscale::VERSION
-    );
 }

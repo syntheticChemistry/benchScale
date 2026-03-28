@@ -70,7 +70,7 @@ pub mod error;
 pub mod image_builder;
 pub mod lab;
 pub mod network;
-pub mod tests;
+pub mod scenarios;
 pub mod topology;
 
 #[cfg(feature = "persistence")]
@@ -82,12 +82,13 @@ pub use cloud_init::{CloudInit, CloudInitBuilder, CloudInitFile, CloudInitUser};
 // Phase 2: New configuration system
 pub use config::{BenchScaleConfig, MonitoringConfig, TimeoutConfig};
 // Legacy config for backward compatibility
+#[allow(deprecated)]
 pub use config_legacy::Config;
 pub use error::{Error, Result};
 pub use image_builder::{BuildResult, BuildStep, ImageBuilder};
 pub use lab::{Lab, LabHandle, LabMetadata, LabRegistry, LabStatus};
 pub use network::{NetworkConditions, NetworkSimulator};
-pub use tests::{TestResult, TestRunner, TestScenario};
+pub use scenarios::{TestResult, TestRunner, TestScenario};
 pub use topology::{NodeConfig, Topology, TopologyConfig};
 
 #[cfg(feature = "libvirt")]

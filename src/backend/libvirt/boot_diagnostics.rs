@@ -36,26 +36,33 @@ pub fn extract_journal_from_disk(disk_path: &Path) -> Result<String> {
     info!("📖 Extracting systemd journal from disk: {:?}", disk_path);
     
     // Create temporary mount point
-    let mount_point = std::env::temp_dir().join(format!("vm-diag-{}", 
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs()));
-    
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .context("system clock is before UNIX epoch")?
+        .as_secs();
+    let mount_point = std::env::temp_dir().join(format!("vm-diag-{secs}"));
+
     std::fs::create_dir_all(&mount_point)
         .context("Failed to create mount point")?;
-    
+
     info!("   📁 Mount point: {:?}", mount_point);
-    
+
+    let disk_path_str = disk_path
+        .to_str()
+        .context("disk path is not valid UTF-8")?;
+    let mount_point_str = mount_point
+        .to_str()
+        .context("mount point path is not valid UTF-8")?;
+
     // Find the partition with the root filesystem
     // Use guestmount (libguestfs) to mount the qcow2 image
     info!("   🔍 Mounting disk image (this may take a moment)...");
     let mount_output = Command::new("guestmount")
         .args([
-            "-a", disk_path.to_str().unwrap(),
+            "-a", disk_path_str,
             "-m", "/dev/sda1",  // Usually the first partition
             "--ro",              // Read-only
-            mount_point.to_str().unwrap(),
+            mount_point_str,
         ])
         .output()
         .context("Failed to mount disk image")?;
@@ -64,10 +71,10 @@ pub fn extract_journal_from_disk(disk_path: &Path) -> Result<String> {
         // Try alternative partition naming
         let mount_output = Command::new("guestmount")
             .args([
-                "-a", disk_path.to_str().unwrap(),
+                "-a", disk_path_str,
                 "-m", "/dev/vda1",
                 "--ro",
-                mount_point.to_str().unwrap(),
+                mount_point_str,
             ])
             .output()
             .context("Failed to mount disk image (second attempt)")?;
@@ -87,10 +94,13 @@ pub fn extract_journal_from_disk(disk_path: &Path) -> Result<String> {
     
     if journal_dir.exists() {
         info!("   📊 Reading systemd journal...");
+        let journal_dir_str = journal_dir
+            .to_str()
+            .context("journal directory path is not valid UTF-8")?;
         // Use journalctl to read the journal from the mounted filesystem
         let journal_output = Command::new("journalctl")
             .args([
-                "--directory", journal_dir.to_str().unwrap(),
+                "--directory", journal_dir_str,
                 "--no-pager",
                 "--boot", "-0",  // Last boot
                 "--priority", "warning",  // Warning and above
@@ -114,7 +124,7 @@ pub fn extract_journal_from_disk(disk_path: &Path) -> Result<String> {
     // Unmount
     info!("   🧹 Unmounting disk...");
     let unmount_output = Command::new("guestunmount")
-        .arg(mount_point.to_str().unwrap())
+        .arg(mount_point_str)
         .output();
     
     match unmount_output {

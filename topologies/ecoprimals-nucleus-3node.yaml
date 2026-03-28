@@ -1,0 +1,74 @@
+metadata:
+  name: ecoprimals-nucleus-3node
+  description: "Full NUCLEUS + NAT: primary node with Tower + storage + compute, spring node, and degraded mobile-like node behind NAT"
+  version: "2.0"
+  tags: ["ecoprimals", "nucleus", "nat", "cross-gate", "springs", "mobile"]
+
+network:
+  name: ecoprimals-nucleus-net
+  subnet: "10.61.0.0/24"
+
+nodes:
+  # Primary NUCLEUS: all core primals + biomeOS substrate
+  - name: node-primary
+    image: ubuntu
+    env:
+      ROLE: nucleus-primary
+      NODE_ID: "1"
+      PRIMALS: "beardog songbird nestgate toadstool squirrel biomeos"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      NESTGATE_PORT: "9300"
+      TOADSTOOL_PORT: "9400"
+      SQUIRREL_PORT: "9500"
+      BIOMEOS_PORT: "9800"
+      FAMILY_ID: "benchscale-nucleus-3node"
+    network_conditions:
+      preset: basement_lan  # see network-presets.yaml
+      latency_ms: 0.5
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 10000000  # 10 Gbps
+      jitter_ms: 0.1
+
+  # Spring primals node
+  - name: node-springs
+    image: ubuntu
+    env:
+      ROLE: spring-primals
+      NODE_ID: "2"
+      PRIMALS: "groundspring healthspring_primal neuralspring wetspring ludospring"
+      GROUNDSPRING_PORT: "9110"
+      HEALTHSPRING_PRIMAL_PORT: "9120"
+      NEURALSPRING_PORT: "9130"
+      WETSPRING_PORT: "9140"
+      LUDOSPRING_PORT: "9150"
+      FAMILY_ID: "benchscale-nucleus-3node"
+      TOWER_HOST: "node-primary"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      BIOMEOS_PORT: "9800"
+    network_conditions:
+      preset: home_lan  # see network-presets.yaml
+      latency_ms: 2
+      packet_loss_percent: 0.01
+      bandwidth_kbps: 1000000  # 1 Gbps
+      jitter_ms: 1
+
+  # Degraded mobile-like node (simulates Pixel behind NAT)
+  # Only songbird in TCP --listen mode, no Unix sockets
+  - name: node-mobile
+    image: ubuntu
+    env:
+      ROLE: mobile-degraded
+      NODE_ID: "3"
+      PRIMALS: "songbird"
+      SONGBIRD_PORT: "9200"
+      BEHIND_NAT: "true"
+      FAMILY_ID: "benchscale-nucleus-3node"
+      TOWER_HOST: "node-primary"
+    network_conditions:
+      preset: mobile_cell  # see network-presets.yaml
+      latency_ms: 100
+      packet_loss_percent: 2.0
+      bandwidth_kbps: 10000  # 10 Mbps
+      jitter_ms: 30
