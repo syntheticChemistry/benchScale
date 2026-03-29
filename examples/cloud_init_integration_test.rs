@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 // Integration test demonstrating benchScale cloud-init validation
 //
 // This test creates a real VM using the new wait_for_cloud_init() API

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Unit tests for libvirt display and VNC configuration
 //!
 //! These tests validate that VNC and display options are correctly configured

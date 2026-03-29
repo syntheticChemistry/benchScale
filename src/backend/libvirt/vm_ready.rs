@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! VM readiness validation for LibvirtBackend
 //!
 //! This module provides functions to wait for VMs to become fully operational,

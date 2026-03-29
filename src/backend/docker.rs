@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Docker backend implementation using bollard
 
 use async_trait::async_trait;
@@ -109,6 +110,51 @@ impl DockerBackend {
         }
 
         Ok(())
+    }
+
+    /// Ensure `tc` (iproute2) is available inside the container.
+    ///
+    /// Tries `tc -Version` first. If it fails, attempts to install
+    /// `iproute2` via apt-get or apk (Alpine). This makes tc-based
+    /// network presets work in stock Ubuntu/Debian/Alpine images.
+    pub async fn ensure_tc_available(&self, container_id: &str) -> Result<()> {
+        let check = self
+            .exec_command(container_id, vec!["tc".into(), "-Version".into()])
+            .await?;
+        if check.success() {
+            return Ok(());
+        }
+
+        info!("tc not found in {container_id}, attempting iproute2 install");
+
+        let apt = self
+            .exec_command(
+                container_id,
+                vec![
+                    "sh".into(), "-c".into(),
+                    "apt-get update -qq && apt-get install -y -qq iproute2 2>/dev/null".into(),
+                ],
+            )
+            .await?;
+
+        if apt.success() {
+            return Ok(());
+        }
+
+        let apk = self
+            .exec_command(
+                container_id,
+                vec!["apk".into(), "add".into(), "--no-cache".into(), "iproute2".into()],
+            )
+            .await?;
+
+        if apk.success() {
+            return Ok(());
+        }
+
+        Err(Error::Backend(format!(
+            "cannot install iproute2 in container {container_id} — tc unavailable"
+        )))
     }
 
     /// Apply network conditions using tc (traffic control)
@@ -245,8 +291,7 @@ impl Backend for DockerBackend {
         let env_vec: Vec<String> = env.iter().map(|(k, v)| format!("{}={}", k, v)).collect();
 
         let _endpoint_config: HashMap<String, bollard::models::EndpointSettings> =
-            [(network.to_string(), bollard::models::EndpointSettings::default())]
-                .into_iter()
+            std::iter::once((network.to_string(), bollard::models::EndpointSettings::default()))
                 .collect();
 
         let config = Config {
@@ -277,7 +322,7 @@ impl Backend for DockerBackend {
                 network,
                 ConnectNetworkOptions {
                     container: response.id.as_str(),
-                    endpoint_config: Default::default(),
+                    endpoint_config: bollard::models::EndpointSettings::default(),
                 },
             )
             .await?;
@@ -368,17 +413,13 @@ impl Backend for DockerBackend {
 
         let mut nodes = vec![];
         for container in containers {
-            if let Some(network_settings) = container.network_settings {
-                if let Some(networks) = network_settings.networks {
-                    if networks.contains_key(network) {
-                        if let Some(id) = container.id {
-                            if let Ok(node) = self.get_node(&id).await {
+            if let Some(network_settings) = container.network_settings
+                && let Some(networks) = network_settings.networks
+                    && networks.contains_key(network)
+                        && let Some(id) = container.id
+                            && let Ok(node) = self.get_node(&id).await {
                                 nodes.push(node);
                             }
-                        }
-                    }
-                }
-            }
         }
 
         Ok(nodes)
@@ -512,11 +553,5 @@ impl Backend for DockerBackend {
             Ok(_) => Ok(true),
             Err(_) => Ok(false),
         }
-    }
-}
-
-impl Default for DockerBackend {
-    fn default() -> Self {
-        Self::new().expect("Failed to create Docker backend")
     }
 }

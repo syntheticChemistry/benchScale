@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 use anyhow::Result;
 use tracing::{error, info, warn, debug};
 use std::path::PathBuf;

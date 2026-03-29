@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Configuration system for benchScale
 //!
 //! Provides centralized configuration with environment variable support
@@ -110,6 +111,54 @@ pub struct LabConfig {
     /// Auto-cleanup failed labs
     #[serde(default = "defaults::auto_cleanup")]
     pub auto_cleanup: bool,
+}
+
+/// PCI device for VFIO passthrough into a VM
+///
+/// Represents a host PCI device to pass through to a guest VM using
+/// libvirt's `<hostdev>` / virt-install's `--hostdev`. The device must
+/// be bound to `vfio-pci` on the host before VM creation.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PciPassthroughDevice {
+    /// PCI bus/device/function in domain:bus:slot.function format (e.g., "0000:4d:00.0")
+    pub bdf: String,
+}
+
+impl PciPassthroughDevice {
+    /// Parse BDF into (domain, bus, slot, function) for libvirt XML.
+    /// Returns `None` if the format is invalid.
+    pub fn parse_bdf(&self) -> Option<(u16, u8, u8, u8)> {
+        let parts: Vec<&str> = self.bdf.split(':').collect();
+        if parts.len() != 3 {
+            return None;
+        }
+        let domain = u16::from_str_radix(parts[0], 16).ok()?;
+        let bus = u8::from_str_radix(parts[1], 16).ok()?;
+        let slot_fn: Vec<&str> = parts[2].split('.').collect();
+        if slot_fn.len() != 2 {
+            return None;
+        }
+        let slot = u8::from_str_radix(slot_fn[0], 16).ok()?;
+        let function = u8::from_str_radix(slot_fn[1], 16).ok()?;
+        Some((domain, bus, slot, function))
+    }
+
+    /// Generate libvirt `<hostdev>` XML element for this device
+    pub fn to_libvirt_xml(&self) -> Option<String> {
+        let (domain, bus, slot, function) = self.parse_bdf()?;
+        Some(format!(
+            r"    <hostdev mode='subsystem' type='pci' managed='yes'>
+      <source>
+        <address domain='0x{domain:04x}' bus='0x{bus:02x}' slot='0x{slot:02x}' function='0x{function:x}'/>
+      </source>
+    </hostdev>",
+        ))
+    }
+
+    /// Format BDF for virt-install `--hostdev` flag (underscore-separated nodedev name)
+    pub fn to_virt_install_arg(&self) -> String {
+        self.bdf.clone()
+    }
 }
 
 /// Default values module
@@ -357,14 +406,16 @@ impl Config {
 }
 
 #[cfg(test)]
+#[allow(unsafe_code)]
 mod tests {
     use super::*;
 
-    /// Helper to clear all BENCHSCALE environment variables
+    /// Helper to clear all BENCHSCALE environment variables.
+    /// Uses unsafe env manipulation (thread-unsafe in Rust 2024 edition).
     fn clear_benchscale_env() {
         for (key, _) in std::env::vars() {
             if key.starts_with("BENCHSCALE_") {
-                std::env::remove_var(&key);
+                unsafe { std::env::remove_var(&key) };
             }
         }
     }
@@ -390,11 +441,10 @@ mod tests {
         // Clear environment first
         clear_benchscale_env();
 
-        std::env::set_var("BENCHSCALE_SSH_PORT", "2222");
+        unsafe { std::env::set_var("BENCHSCALE_SSH_PORT", "2222") };
         let config = Config::from_env();
         assert_eq!(config.libvirt.ssh.port, 2222);
 
-        // Cleanup after test
         clear_benchscale_env();
     }
 
@@ -517,7 +567,7 @@ mod tests {
         // Small delay to ensure env is clean
         std::thread::sleep(std::time::Duration::from_millis(10));
 
-        std::env::set_var("BENCHSCALE_SSH_PORT", "2222");
+        unsafe { std::env::set_var("BENCHSCALE_SSH_PORT", "2222") };
 
         let config = Config::from_env();
         assert_eq!(
@@ -532,7 +582,7 @@ mod tests {
     #[test]
     fn test_env_var_docker_hardened() {
         clear_benchscale_env();
-        std::env::set_var("BENCHSCALE_USE_HARDENED", "true");
+        unsafe { std::env::set_var("BENCHSCALE_USE_HARDENED", "true") };
 
         let config = Config::from_env();
         assert!(config.docker.use_hardened_images);
@@ -545,7 +595,7 @@ mod tests {
         clear_benchscale_env();
         std::thread::sleep(std::time::Duration::from_millis(50));
 
-        std::env::set_var("BENCHSCALE_LIBVIRT_URI", "qemu+ssh://host/system");
+        unsafe { std::env::set_var("BENCHSCALE_LIBVIRT_URI", "qemu+ssh://host/system") };
 
         let config = Config::from_env();
         assert_eq!(config.libvirt.uri, "qemu+ssh://host/system");

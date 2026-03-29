@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! VM lifecycle operations for LibvirtBackend
 //!
 //! This module contains VM creation functions that orchestrate the complete
@@ -107,7 +108,25 @@ impl LibvirtBackend {
         memory_mb: u32,
         vcpus: u32,
         disk_size_gb: u32,
-        static_ip: Option<String>, // New parameter for deep debt solution
+        static_ip: Option<String>,
+    ) -> Result<NodeInfo> {
+        self.create_desktop_vm_with_pci(name, base_image, cloud_init, memory_mb, vcpus, disk_size_gb, static_ip, &[]).await
+    }
+
+    /// Create a desktop VM with optional PCI passthrough devices.
+    ///
+    /// `pci_devices` are passed to `virt-install` as `--hostdev` arguments.
+    /// Each device must be bound to `vfio-pci` on the host before calling this.
+    pub async fn create_desktop_vm_with_pci(
+        &self,
+        name: &str,
+        base_image: &std::path::Path,
+        cloud_init: &crate::CloudInit,
+        memory_mb: u32,
+        vcpus: u32,
+        disk_size_gb: u32,
+        static_ip: Option<String>,
+        pci_devices: &[crate::config_legacy::PciPassthroughDevice],
     ) -> Result<NodeInfo> {
         info!("Creating desktop VM: {}", name);
 
@@ -342,27 +361,37 @@ impl LibvirtBackend {
         );
         info!("  Generated MAC address: {} (for DHCP discovery)", mac_address);
         
+        let disk_arg = format!("path={},format=qcow2", disk_path_str);
+        let cdrom_arg = format!("path={},device=cdrom", iso_path_str);
+        let net_arg = format!("network=default,mac={}", mac_address);
+        let mem_str = memory_mb.to_string();
+        let vcpu_str = vcpus.to_string();
+
+        let mut virt_args: Vec<&str> = vec![
+            "--name", name,
+            "--memory", &mem_str,
+            "--vcpus", &vcpu_str,
+            "--disk", &disk_arg,
+            "--disk", &cdrom_arg,
+            "--os-variant", "ubuntu22.04",
+            "--network", &net_arg,
+            "--graphics", "vnc,listen=0.0.0.0",
+            "--noautoconsole",
+            "--import",
+        ];
+
+        let hostdev_bdfs: Vec<String> = pci_devices
+            .iter()
+            .map(crate::config_legacy::PciPassthroughDevice::to_virt_install_arg)
+            .collect();
+        for bdf in &hostdev_bdfs {
+            virt_args.push("--hostdev");
+            virt_args.push(bdf);
+            info!("  PCI passthrough: --hostdev {}", bdf);
+        }
+
         let output = Command::new("virt-install")
-            .args([
-                "--name",
-                name,
-                "--memory",
-                &memory_mb.to_string(),
-                "--vcpus",
-                &vcpus.to_string(),
-                "--disk",
-                &format!("path={},format=qcow2", disk_path_str),
-                "--disk",
-                &format!("path={},device=cdrom", iso_path_str),
-                "--os-variant",
-                "ubuntu22.04",
-                "--network",
-                &format!("network=default,mac={}", mac_address), // Specify MAC for DHCP discovery
-                "--graphics",
-                "vnc,listen=0.0.0.0",
-                "--noautoconsole",
-                "--import",
-            ])
+            .args(&virt_args)
             .output()
             .map_err(|e| {
                 // Release IP on failure (only if from pool)

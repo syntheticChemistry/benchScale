@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 // Integration tests for cloud-init validation helpers
 //
 // These tests verify the behavior of wait_for_cloud_init, wait_for_ssh,

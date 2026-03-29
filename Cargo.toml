@@ -1,9 +1,9 @@
 [package]
 name = "benchscale"
 version = "3.0.0"
-edition = "2021"
+edition = "2024"
 authors = ["ecoPrimals <dev@ecoprimals.org>"]
-license = "MIT OR Apache-2.0"
+license = "AGPL-3.0-only"
 description = "A pure Rust laboratory substrate for distributed system testing"
 repository = "https://github.com/ecoPrimals/benchScale"
 keywords = ["testing", "distributed", "docker", "containers", "laboratory"]
@@ -45,8 +45,8 @@ toml = "0.8"
 dirs = "5.0"
 
 # SSH client (for libvirt backend)
-russh = { version = "0.56", optional = true }
-russh-keys = { version = "0.46", optional = true }
+russh = { version = "0.58", optional = true }
+russh-keys = { version = "0.48", optional = true }
 data-encoding = { version = "2.6", optional = true }
 
 # Persistence (for lifecycle management)

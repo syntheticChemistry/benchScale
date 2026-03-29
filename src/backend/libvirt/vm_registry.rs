@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -23,7 +24,7 @@ pub struct VmRegistryEntry {
     pub updated_at: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum VmStatus {
     Creating,
     Building,
@@ -78,7 +79,7 @@ impl VmRegistry {
     pub fn register(&mut self, name: String, static_ip: Option<String>) -> Result<()> {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_secs();
 
         let entry = VmRegistryEntry {
@@ -102,7 +103,7 @@ impl VmRegistry {
         if let Some(entry) = self.entries.get_mut(name) {
             let now = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
-                .unwrap()
+                .unwrap_or_default()
                 .as_secs();
             
             debug!("Updating VM '{}' status: {:?} -> {:?}", name, entry.status, status);
@@ -145,7 +146,7 @@ impl VmRegistry {
     pub fn find_stale(&self, max_age_secs: u64) -> Vec<&VmRegistryEntry> {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_secs();
 
         self.entries
@@ -198,12 +199,6 @@ impl VmRegistry {
     pub fn clear(&mut self) -> Result<()> {
         self.entries.clear();
         self.save()
-    }
-}
-
-impl Default for VmRegistry {
-    fn default() -> Self {
-        Self::new().expect("Failed to create default VM registry")
     }
 }
 

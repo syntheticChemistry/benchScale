@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Integration Tests for Evolutions #20, #21, #22
 //!
 //! These tests validate the functionality of recent architectural evolutions:

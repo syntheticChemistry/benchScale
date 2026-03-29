@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Libvirt Health Check Module (Evolution #20)
 //!
 //! This module provides automatic detection of libvirt system health issues,
@@ -30,7 +31,6 @@
 //! # }
 //! ```
 
-use std::fs;
 use std::process::Command;
 use std::time::SystemTime;
 use tracing::{debug, info, warn};
@@ -42,7 +42,7 @@ pub struct LibvirtHealthCheck {
 }
 
 /// Overall health status
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HealthState {
     /// System is fully operational
     Healthy,
@@ -194,72 +194,6 @@ impl LibvirtHealthCheck {
     fn find_orphaned_dnsmasq(&self, _issues: &mut Vec<String>) -> Vec<u32> {
         debug!("Orphan detection disabled - daemonization makes parent-based detection unreliable");
         Vec::new() // No false positives!
-    }
-
-    /// Discover the PID of the currently running libvirtd process
-    ///
-    /// **AGNOSTIC**: Works regardless of how libvirtd was started
-    fn discover_libvirtd_pid(&self) -> Option<u32> {
-        let output = Command::new("pgrep")
-            .arg("-x")  // Exact match
-            .arg("libvirtd")
-            .output()
-            .ok()?;
-
-        let pid_str = String::from_utf8_lossy(&output.stdout);
-        pid_str.lines().next()?.trim().parse().ok()
-    }
-
-    /// Discover all dnsmasq process PIDs
-    ///
-    /// **AGNOSTIC**: Just finds processes, doesn't assume ownership
-    fn discover_dnsmasq_pids(&self) -> Result<Vec<u32>, String> {
-        let output = Command::new("pgrep")
-            .arg("dnsmasq")
-            .output()
-            .map_err(|e| format!("pgrep failed: {}", e))?;
-
-        let pids_str = String::from_utf8_lossy(&output.stdout);
-        Ok(pids_str
-            .lines()
-            .filter_map(|line| line.trim().parse().ok())
-            .collect())
-    }
-
-    /// Check if a process is a child (direct or indirect) of another process
-    ///
-    /// **FRACTAL**: Same parent-child pattern applies at all levels
-    fn is_child_of_process(&self, child_pid: u32, parent_pid: u32) -> bool {
-        let mut current_pid = child_pid;
-
-        // Walk up the process tree (max 100 levels to prevent infinite loops)
-        for _ in 0..100 {
-            if current_pid == parent_pid {
-                return true; // Found the parent!
-            }
-
-            // Discover parent of current process
-            let status_path = format!("/proc/{}/status", current_pid);
-            let status = match fs::read_to_string(&status_path) {
-                Ok(s) => s,
-                Err(_) => return false, // Process doesn't exist
-            };
-
-            // Parse PPid from status file
-            let ppid = status
-                .lines()
-                .find(|line| line.starts_with("PPid:"))
-                .and_then(|line| line.split_whitespace().nth(1))
-                .and_then(|pid_str| pid_str.parse::<u32>().ok());
-
-            match ppid {
-                Some(1) | Some(0) => return false, // Reached init/kernel, not a child
-                Some(pid) => current_pid = pid,     // Continue walking up
-                None => return false,                // Couldn't parse PPid
-            }
-        }
-
-        false // Didn't find parent in 100 levels
     }
 
     /// Check if the default libvirt network is active

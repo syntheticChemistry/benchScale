@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Runtime capability discovery for benchScale
 //!
 //! This module implements capability-based configuration: the system discovers
@@ -276,7 +277,6 @@ impl NetworkCapabilities {
     /// Convert netmask to CIDR bits
     fn netmask_to_cidr(netmask: &str) -> u8 {
         match netmask {
-            "255.255.255.0" => 24,
             "255.255.0.0" => 16,
             "255.0.0.0" => 8,
             "255.255.255.128" => 25,
@@ -368,13 +368,11 @@ impl StorageCapabilities {
 
         // Look for <path>/var/lib/libvirt/images</path>
         for line in xml.lines() {
-            if line.contains("<path>") && line.contains("</path>") {
-                if let Some(path_str) = line.split("<path>").nth(1) {
-                    if let Some(path) = path_str.split("</path>").next() {
+            if line.contains("<path>") && line.contains("</path>")
+                && let Some(path_str) = line.split("<path>").nth(1)
+                    && let Some(path) = path_str.split("</path>").next() {
                         return Ok(PathBuf::from(path.trim()));
                     }
-                }
-            }
         }
 
         Err(crate::Error::Backend("No path in pool XML".to_string()))

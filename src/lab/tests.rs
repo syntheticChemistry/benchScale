@@ -1,4 +1,5 @@
-use super::*;
+// SPDX-License-Identifier: AGPL-3.0-only
+    use super::*;
 use crate::scenarios::TestScenario;
 use crate::topology::{NetworkConfig, NodeConfig, TopologyMetadata};
 use async_trait::async_trait;

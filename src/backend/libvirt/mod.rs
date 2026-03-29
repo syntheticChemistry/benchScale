@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! LibvirtBackend - KVM/QEMU backend for benchScale
 //!
 //! This backend allows benchScale to work with libvirt-managed VMs
@@ -781,13 +782,6 @@ impl LibvirtBackend {
             ip_pool,
             templates: HashMap::new(),
         })
-    }
-}
-
-#[cfg(feature = "libvirt")]
-impl Default for LibvirtBackend {
-    fn default() -> Self {
-        Self::new().expect("Failed to create LibvirtBackend")
     }
 }
 

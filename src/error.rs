@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Error types for benchScale
 
 use thiserror::Error;
@@ -48,6 +49,10 @@ pub enum Error {
     #[cfg(feature = "persistence")]
     #[error("Database error: {0}")]
     Database(#[from] sqlx::Error),
+
+    /// Monitoring / senescence errors
+    #[error("Monitoring error: {0}")]
+    Monitoring(String),
 
     /// Generic errors
     #[error("{0}")]

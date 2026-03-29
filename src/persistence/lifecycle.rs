@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Lifecycle Manager - High-level VM orchestration with persistence
 //!
 //! Provides production-grade VM lifecycle management with:

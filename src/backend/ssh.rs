@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! SSH client utilities for LibvirtBackend
 //!
 //! Provides SSH connection management and command execution for VM access.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Configuration Module
 //!
 //! **Phase 2: Configuration Externalization**
@@ -95,7 +96,7 @@ use serde::{Deserialize, Serialize};
 /// let mut config = BenchScaleConfig::default();
 /// config.timeouts.cloud_init_secs = 3600; // 1 hour
 /// ```
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BenchScaleConfig {
     /// Timeout settings
     #[serde(default)]
@@ -114,17 +115,6 @@ pub struct BenchScaleConfig {
     pub storage: StorageConfig,
 }
 
-impl Default for BenchScaleConfig {
-    fn default() -> Self {
-        Self {
-            timeouts: TimeoutConfig::default(),
-            monitoring: MonitoringConfig::default(),
-            network: NetworkConfig::default(),
-            storage: StorageConfig::default(),
-        }
-    }
-}
-
 impl BenchScaleConfig {
     /// Load configuration from a YAML file
     ///
@@ -138,10 +128,10 @@ impl BenchScaleConfig {
     /// ```
     pub fn from_file(path: impl AsRef<std::path::Path>) -> anyhow::Result<Self> {
         let contents = std::fs::read_to_string(path.as_ref())
-            .map_err(|e| anyhow::anyhow!("Failed to read config file {:?}: {}", path.as_ref(), e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to read config file {}: {}", path.as_ref().display(), e))?;
         
         let config: Self = serde_yaml::from_str(&contents)
-            .map_err(|e| anyhow::anyhow!("Failed to parse config file {:?}: {}", path.as_ref(), e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to parse config file {}: {}", path.as_ref().display(), e))?;
         
         config.validate()?;
         Ok(config)
@@ -165,7 +155,7 @@ impl BenchScaleConfig {
             .map_err(|e| anyhow::anyhow!("Failed to serialize config: {}", e))?;
         
         std::fs::write(path.as_ref(), yaml)
-            .map_err(|e| anyhow::anyhow!("Failed to write config file {:?}: {}", path.as_ref(), e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to write config file {}: {}", path.as_ref().display(), e))?;
         
         Ok(())
     }
@@ -227,19 +217,12 @@ impl BenchScaleConfig {
         // Timeouts and monitoring don't need merging - they're fully configurable
     }
 
-    // TODO: Phase 3B - Environment variable support
-    //
-    // /// Load from environment variables (prefix: BENCHSCALE_)
-    // pub fn from_env() -> anyhow::Result<Self> {
-    //     // Implementation would use env vars to override defaults
-    //     Ok(Self::default())
-    // }
+    // NOTE: Optional future enhancement — `from_env()` with prefix `BENCHSCALE_` if needed.
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
 
     #[test]
     fn test_default_config_is_valid() {

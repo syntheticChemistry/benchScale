@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Integration tests for benchScale
 //!
 //! These tests verify basic functionality without requiring actual VMs

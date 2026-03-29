@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Laboratory Hygiene Management for benchScale
 //!
 //! This module provides comprehensive "lab hygiene" capabilities:
@@ -122,7 +122,7 @@ impl LabHygiene {
                     },
                     disk_images,
                     disk_size_mb,
-                    created: None, // TODO: Extract from XML
+                    created: None, // NOTE: Creation time could be parsed from domain XML if needed.
                     vnc_port: qemu.vnc_port,
                 });
             } else {
@@ -380,8 +380,8 @@ impl LabHygiene {
         let total_memory_mb = get_system_memory_mb();
         let memory_mb = ((memory_percent / 100.0) * total_memory_mb as f64) as u64;
 
-        // Runtime calculation would require process start time
-        let runtime_hours = 0.0; // TODO: Calculate from process start time
+        // NOTE: Runtime could be derived from `/proc/{pid}/stat` start time when needed.
+        let runtime_hours = 0.0;
 
         Some(QemuProcess {
             pid,

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! End-to-End RustDesk VM Creation and Validation Tests
 //!
 //! These tests validate the complete workflow of creating a VM with RustDesk

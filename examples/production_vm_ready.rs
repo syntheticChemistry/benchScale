@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 // Production-Ready Example: Cloud-Init VM with Guaranteed SSH Access
 //
 // This example demonstrates the recommended way to create VMs with benchScale,

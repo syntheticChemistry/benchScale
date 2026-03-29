@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Storage Configuration
 //!
 //! **Phase 2C: Configuration Externalization**
@@ -29,7 +30,7 @@ use std::path::PathBuf;
 ///     ..Default::default()
 /// };
 /// ```
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct StorageConfig {
     /// VM disk images directory
     ///
@@ -138,26 +139,22 @@ impl StorageConfig {
         }
 
         // Path validation (if specified)
-        if let Some(ref path) = self.vm_images_dir {
-            if !path.is_absolute() {
+        if let Some(ref path) = self.vm_images_dir
+            && !path.is_absolute() {
                 anyhow::bail!("vm_images_dir must be an absolute path");
             }
-        }
-        if let Some(ref path) = self.base_images_dir {
-            if !path.is_absolute() {
+        if let Some(ref path) = self.base_images_dir
+            && !path.is_absolute() {
                 anyhow::bail!("base_images_dir must be an absolute path");
             }
-        }
-        if let Some(ref path) = self.intermediate_dir {
-            if !path.is_absolute() {
+        if let Some(ref path) = self.intermediate_dir
+            && !path.is_absolute() {
                 anyhow::bail!("intermediate_dir must be an absolute path");
             }
-        }
-        if let Some(ref path) = self.cloud_init_dir {
-            if !path.is_absolute() {
+        if let Some(ref path) = self.cloud_init_dir
+            && !path.is_absolute() {
                 anyhow::bail!("cloud_init_dir must be an absolute path");
             }
-        }
 
         Ok(())
     }
@@ -228,11 +225,10 @@ impl StorageConfig {
         }
 
         // If intermediate_dir not set, default to vm_images_dir/intermediate
-        if self.intermediate_dir.is_none() {
-            if let Some(ref images_dir) = self.vm_images_dir {
+        if self.intermediate_dir.is_none()
+            && let Some(ref images_dir) = self.vm_images_dir {
                 self.intermediate_dir = Some(images_dir.join("intermediate"));
             }
-        }
 
         // If cloud_init_dir not set, use discovered
         if self.cloud_init_dir.is_none() {

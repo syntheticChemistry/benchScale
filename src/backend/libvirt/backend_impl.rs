@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Backend trait implementation for LibvirtBackend
 //!
 //! This module implements the Backend trait for LibvirtBackend, providing
@@ -347,7 +348,7 @@ impl Backend for LibvirtBackend {
             info!("  Cleaning up disk overlay for {}...", name);
             let disk_mgr = DiskManager::new(&self.config.overlay_dir);
             match disk_mgr.delete_overlay(&name).await {
-                Ok(_) => info!("  ✅ Disk overlay cleaned up"),
+                Ok(()) => info!("  ✅ Disk overlay cleaned up"),
                 Err(e) => warn!("  ⚠️  Failed to delete disk overlay: {}", e),
             }
         } else {

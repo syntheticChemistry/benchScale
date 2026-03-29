@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Lab registry for persistent lab state management
 //!
 //! Enables listing, loading, and managing labs across CLI invocations.

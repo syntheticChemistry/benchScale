@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! benchScale CLI — typed argument parsing via clap
 #![allow(deprecated)] // CLI still uses legacy `Config` until migrated to BenchScaleConfig
 
@@ -43,8 +44,35 @@ enum Command {
         /// Lab name
         name: String,
     },
+    /// Start JSON-RPC 2.0 server (UniBin compliance)
+    Server {
+        /// TCP port to listen on
+        #[arg(long)]
+        port: u16,
+        /// Bind address
+        #[arg(long, default_value = "127.0.0.1")]
+        listen: String,
+        /// Run in standalone mode (no Songbird registration)
+        #[arg(long, default_value_t = true)]
+        standalone: bool,
+    },
+    /// Validate IPC compliance of a running primal endpoint
+    Validate {
+        #[command(subcommand)]
+        target: ValidateTarget,
+    },
     /// Show version information
     Version,
+}
+
+/// Validation sub-commands
+#[derive(Subcommand)]
+enum ValidateTarget {
+    /// Check JSON-RPC health compliance at a TCP endpoint
+    Ipc {
+        /// Endpoint address (host:port)
+        endpoint: String,
+    },
 }
 
 #[tokio::main]
@@ -61,6 +89,19 @@ async fn main() {
         Command::Destroy { name, force: _ } => destroy_lab(&name).await,
         Command::List => list_labs().await,
         Command::Status { name } => show_status(&name).await,
+        Command::Server {
+            port,
+            listen,
+            standalone,
+        } => {
+            let addr: std::net::SocketAddr = format!("{listen}:{port}")
+                .parse()
+                .expect("invalid listen address");
+            benchscale::server::run_server(addr, standalone).await
+        }
+        Command::Validate { target } => match target {
+            ValidateTarget::Ipc { endpoint } => validate_ipc(&endpoint).await,
+        },
         Command::Version => {
             println!("benchScale v{}", benchscale::VERSION);
             Ok(())
@@ -197,6 +238,44 @@ async fn show_status(lab_name: &str) -> anyhow::Result<()> {
         "Updated: {}",
         metadata.updated_at.format("%Y-%m-%d %H:%M:%S")
     );
+
+    Ok(())
+}
+
+async fn validate_ipc(endpoint: &str) -> anyhow::Result<()> {
+    let addr: std::net::SocketAddr = endpoint
+        .parse()
+        .map_err(|e| anyhow::anyhow!("invalid endpoint '{endpoint}': {e}"))?;
+
+    info!("Validating IPC compliance at {addr}");
+
+    let validator = benchscale::validation::IpcComplianceValidator::new();
+    let report = validator.validate(addr).await;
+
+    println!("\nIPC Compliance Report: {}", report.endpoint);
+    println!("{}", "━".repeat(54));
+
+    for result in &report.results {
+        let status = if result.passed { "✓" } else { "✗" };
+        println!(
+            "  {status} {} ({}ms)",
+            result.method, result.response_ms
+        );
+        if let Some(ref err) = result.error {
+            println!("    → {err}");
+        }
+    }
+
+    println!();
+    if report.compliant {
+        println!("Result: COMPLIANT");
+    } else {
+        println!("Result: NON-COMPLIANT");
+    }
+
+    if !report.compliant {
+        anyhow::bail!("endpoint {addr} is not IPC-compliant");
+    }
 
     Ok(())
 }

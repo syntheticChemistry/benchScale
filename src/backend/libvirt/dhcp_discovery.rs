@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! DHCP Lease Discovery for Libvirt VMs
 //!
 //! Evolution #12: Robust DHCP IP Discovery

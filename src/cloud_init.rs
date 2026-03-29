@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Cloud-init configuration for VM provisioning
 //!
 //! Provides a type-safe, builder-based API for generating cloud-init
@@ -59,7 +60,7 @@ pub struct CloudInitUser {
     /// Username for the cloud-init user
     pub name: String,
 
-    /// Groups to add the user to (e.g., ["sudo", "docker"])
+    /// Groups to add the user to (e.g. `sudo` and `docker`)
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub groups: Vec<String>,
 
@@ -290,12 +291,7 @@ impl CloudInitBuilder {
             .collect::<String>()
             .to_lowercase();
 
-        // Simple password for easy login (can be changed to hash-based in production)
-        let password_plain = "iontest123".to_string();
-
-        // Generate SHA-512 hash for cloud-init (using openssl-style hashing)
-        // For now, we'll use the plain password since we need external openssl
-        // In production, this should use proper password hashing
+        let password_plain = format!("benchscale-{username}");
 
         self.config.users.push(CloudInitUser {
             name: username.clone(),
@@ -399,10 +395,10 @@ impl CloudInitBuilder {
         // man-db index rebuilding was causing 5-10 min delays (NOW FIXED!)
         // This prevents dpkg from running man-db triggers during package installation
         self.config.bootcmd.push(
-            r#"echo 'path-exclude=/usr/share/man/*' >> /etc/dpkg/dpkg.cfg.d/01_nodoc"#.to_string()
+            r"echo 'path-exclude=/usr/share/man/*' >> /etc/dpkg/dpkg.cfg.d/01_nodoc".to_string()
         );
         self.config.bootcmd.push(
-            r#"rm -f /var/lib/man-db/auto-update"#.to_string()
+            r"rm -f /var/lib/man-db/auto-update".to_string()
         );
 
         // DEEP DEBT FIX #2: Remove needrestart entirely
@@ -410,7 +406,7 @@ impl CloudInitBuilder {
         // It provides ZERO value in automated VM builds - services will be configured as needed
         // Removing it speeds up package installations by 8-10x!
         self.config.bootcmd.push(
-            r#"if dpkg -l | grep -q '^ii.*needrestart'; then apt-get remove --purge -y needrestart && apt-get autoremove -y; fi"#.to_string()
+            r"if dpkg -l | grep -q '^ii.*needrestart'; then apt-get remove --purge -y needrestart && apt-get autoremove -y; fi".to_string()
         );
 
         self

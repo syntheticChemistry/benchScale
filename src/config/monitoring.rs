@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Monitoring Configuration
 //!
 //! **Phase 2: Configuration Externalization**
@@ -30,7 +31,7 @@ use std::time::Duration;
 ///     ..Default::default()
 /// };
 /// ```
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MonitoringConfig {
     /// Health check interval (seconds)
     ///
@@ -123,14 +124,14 @@ impl MonitoringConfig {
     /// Returns the maximum time a VM can be unhealthy before being
     /// declared failed (max_failures × check_interval).
     pub fn failure_tolerance(&self) -> Duration {
-        Duration::from_secs(self.check_interval_secs * self.max_failures as u64)
+        Duration::from_secs(self.check_interval_secs * u64::from(self.max_failures))
     }
 
     /// Calculate IP re-discovery interval duration
     ///
     /// Returns how often IP re-discovery happens in real time.
     pub fn ip_rediscovery_duration(&self) -> Duration {
-        Duration::from_secs(self.check_interval_secs * self.ip_rediscovery_interval as u64)
+        Duration::from_secs(self.check_interval_secs * u64::from(self.ip_rediscovery_interval))
     }
 
     /// Create config optimized for quick VMs

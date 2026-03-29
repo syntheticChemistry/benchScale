@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Serial console utilities for VM log parsing
 //!
 //! Provides parsing and analysis of serial console logs,

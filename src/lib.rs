@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! # benchScale: Laboratory Substrate for Distributed System Testing
 //!
 //! A pure Rust framework for creating reproducible, isolated test environments
@@ -37,6 +38,7 @@
 //! ```
 
 #![deny(unsafe_code)]
+#![deny(clippy::unwrap_used)]
 #![warn(missing_docs)]
 #![warn(clippy::all)]
 #![warn(clippy::pedantic)]
@@ -47,14 +49,16 @@
 #![allow(clippy::missing_errors_doc)]
 #![allow(clippy::missing_panics_doc)]
 #![allow(clippy::uninlined_format_args)] // Older format! style is still readable
-#![allow(clippy::must_use_candidate)] // Too many false positives
-#![allow(clippy::multiple_crate_versions)] // Dependency issue, not ours
-#![allow(clippy::significant_drop_tightening)] // Overly pedantic for async code
-#![allow(clippy::missing_const_for_fn)] // Async fns can't be const
-#![allow(clippy::map_unwrap_or)] // map().unwrap_or_else() is idiomatic
-#![allow(clippy::use_self)] // Explicit types are clearer sometimes
-#![allow(clippy::doc_markdown)] // Too strict on URL formatting
-#![allow(clippy::unused_async)] // Some async fns are trait impls or future-proofing
+#![allow(clippy::must_use_candidate)]
+#![allow(clippy::return_self_not_must_use)] // Builder pattern methods
+#![allow(clippy::multiple_crate_versions)] // Transitive dependency issue
+#![allow(clippy::significant_drop_tightening)]
+#![allow(clippy::missing_const_for_fn)]
+#![allow(clippy::map_unwrap_or)]
+#![allow(clippy::use_self)]
+#![allow(clippy::doc_markdown)]
+#![allow(clippy::unused_async)] // Trait impls and future-proofing
+#![allow(clippy::option_if_let_else)] // if-let is often clearer than map_or_else
 
 pub mod backend;
 pub mod capabilities;
@@ -70,8 +74,14 @@ pub mod error;
 pub mod image_builder;
 pub mod lab;
 pub mod network;
+/// Cross-architecture binary resolution for primal deployment
+pub mod deploy;
 pub mod scenarios;
+/// JSON-RPC 2.0 server (UniBin `server --port` mode)
+pub mod server;
 pub mod topology;
+/// IPC compliance validation for deployed primals
+pub mod validation;
 
 #[cfg(feature = "persistence")]
 pub mod persistence;
@@ -84,6 +94,7 @@ pub use config::{BenchScaleConfig, MonitoringConfig, TimeoutConfig};
 // Legacy config for backward compatibility
 #[allow(deprecated)]
 pub use config_legacy::Config;
+pub use config_legacy::PciPassthroughDevice;
 pub use error::{Error, Result};
 pub use image_builder::{BuildResult, BuildStep, ImageBuilder};
 pub use lab::{Lab, LabHandle, LabMetadata, LabRegistry, LabStatus};

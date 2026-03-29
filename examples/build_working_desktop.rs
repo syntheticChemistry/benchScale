@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 #!/usr/bin/env rust-script
 //! Example: Build Ubuntu Desktop + RustDesk template using benchScale ImageBuilder
 //!

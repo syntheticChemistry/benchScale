@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! VM health monitoring and status checking
 //!
 //! Provides health check capabilities for VMs including boot status,

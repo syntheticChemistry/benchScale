@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Timeout Configuration
 //!
 //! **Phase 2: Configuration Externalization**
@@ -33,7 +34,7 @@ use std::time::Duration;
 ///     ..Default::default()
 /// };
 /// ```
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TimeoutConfig {
     /// Cloud-init completion timeout (seconds)
     ///
@@ -195,53 +196,49 @@ impl TimeoutConfig {
     /// assert_eq!(config.cloud_init_secs, 3600);
     /// ```
     pub fn apply_env_overrides(&mut self) {
-        if let Ok(val) = std::env::var("BENCHSCALE_CLOUD_INIT_TIMEOUT") {
-            if let Ok(secs) = val.parse::<u64>() {
+        if let Ok(val) = std::env::var("BENCHSCALE_CLOUD_INIT_TIMEOUT")
+            && let Ok(secs) = val.parse::<u64>() {
                 self.cloud_init_secs = secs;
             }
-        }
 
-        if let Ok(val) = std::env::var("BENCHSCALE_DHCP_DISCOVERY_TIMEOUT") {
-            if let Ok(secs) = val.parse::<u64>() {
+        if let Ok(val) = std::env::var("BENCHSCALE_DHCP_DISCOVERY_TIMEOUT")
+            && let Ok(secs) = val.parse::<u64>() {
                 self.dhcp_discovery_secs = secs;
             }
-        }
 
-        if let Ok(val) = std::env::var("BENCHSCALE_VM_BOOT_TIMEOUT") {
-            if let Ok(secs) = val.parse::<u64>() {
+        if let Ok(val) = std::env::var("BENCHSCALE_VM_BOOT_TIMEOUT")
+            && let Ok(secs) = val.parse::<u64>() {
                 self.vm_boot_secs = secs;
             }
-        }
 
-        if let Ok(val) = std::env::var("BENCHSCALE_SSH_TIMEOUT") {
-            if let Ok(secs) = val.parse::<u64>() {
+        if let Ok(val) = std::env::var("BENCHSCALE_SSH_TIMEOUT")
+            && let Ok(secs) = val.parse::<u64>() {
                 self.ssh_connection_secs = secs;
             }
-        }
 
-        if let Ok(val) = std::env::var("BENCHSCALE_PING_TIMEOUT") {
-            if let Ok(secs) = val.parse::<u64>() {
+        if let Ok(val) = std::env::var("BENCHSCALE_PING_TIMEOUT")
+            && let Ok(secs) = val.parse::<u64>() {
                 self.ping_timeout_secs = secs;
             }
-        }
 
-        if let Ok(val) = std::env::var("BENCHSCALE_POST_BOOT_STEP_TIMEOUT") {
-            if let Ok(secs) = val.parse::<u64>() {
+        if let Ok(val) = std::env::var("BENCHSCALE_POST_BOOT_STEP_TIMEOUT")
+            && let Ok(secs) = val.parse::<u64>() {
                 self.post_boot_step_secs = secs;
             }
-        }
 
-        if let Ok(val) = std::env::var("BENCHSCALE_REBOOT_TIMEOUT") {
-            if let Ok(secs) = val.parse::<u64>() {
+        if let Ok(val) = std::env::var("BENCHSCALE_REBOOT_TIMEOUT")
+            && let Ok(secs) = val.parse::<u64>() {
                 self.reboot_timeout_secs = secs;
             }
-        }
     }
 
     /// Validate configuration values
     ///
     /// Returns an error if any timeout is zero or unreasonably large.
     pub fn validate(&self) -> anyhow::Result<()> {
+        // Sanity bound for all timeout fields (24 hours)
+        const MAX_TIMEOUT: u64 = 86400;
+
         if self.cloud_init_secs == 0 {
             anyhow::bail!("cloud_init_secs must be > 0");
         }
@@ -265,7 +262,6 @@ impl TimeoutConfig {
         }
 
         // Sanity check: no timeout should exceed 24 hours
-        const MAX_TIMEOUT: u64 = 86400; // 24 hours
         if self.cloud_init_secs > MAX_TIMEOUT {
             anyhow::bail!("cloud_init_secs exceeds 24 hours");
         }

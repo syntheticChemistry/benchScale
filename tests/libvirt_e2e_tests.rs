@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! End-to-End tests for LibvirtBackend with IP Pool
 //!
 //! These tests validate the IP pool integration with actual VM creation.

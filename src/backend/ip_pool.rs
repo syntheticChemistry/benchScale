@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! IP Pool Management
 //!
 //! Provides deterministic IP address allocation for VMs, eliminating DHCP race conditions.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Constants and default values for benchScale
 //!
 //! This module provides capability-based defaults that can be discovered

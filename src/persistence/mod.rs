@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! VM Lifecycle Persistence and State Management
 //!
 //! This module provides production-grade VM lifecycle management with:

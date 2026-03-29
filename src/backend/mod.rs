@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Backend abstraction for container runtimes
 
 use async_trait::async_trait;
@@ -34,12 +35,6 @@ pub mod serial_console;
 pub mod health;
 pub mod senescence;
 pub mod cleanup;
-
-//#[cfg(feature = "libvirt")]
-//pub mod lab;
-
-//#[cfg(feature = "libvirt")]
-//pub use lab::{LabHygiene, LabStatus, LabExperiment, VmLabStatus, CleanupReport};
 
 #[cfg(feature = "libvirt")]
 pub use health::{HealthCheck, HealthMonitor, HealthStatus};

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Network Configuration
 //!
 //! **Phase 2C: Configuration Externalization**
@@ -31,7 +32,7 @@ use std::net::IpAddr;
 ///     ..Default::default()
 /// };
 /// ```
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NetworkConfig {
     /// Libvirt network name
     ///
@@ -96,7 +97,7 @@ pub struct NetworkConfig {
 }
 
 /// DHCP range configuration
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DhcpRange {
     /// Start IP address
     pub start: IpAddr,
@@ -167,8 +168,7 @@ impl NetworkConfig {
         if let Some(ref range) = self.dhcp_range {
             // Validate that start and end are same address family
             match (&range.start, &range.end) {
-                (IpAddr::V4(_), IpAddr::V4(_)) => {}
-                (IpAddr::V6(_), IpAddr::V6(_)) => {}
+                (IpAddr::V4(_), IpAddr::V4(_)) | (IpAddr::V6(_), IpAddr::V6(_)) => {}
                 _ => anyhow::bail!("DHCP range start and end must be same address family"),
             }
 
@@ -218,7 +218,7 @@ impl NetworkConfig {
     pub fn merge_with_capabilities(&mut self, capabilities: &crate::capabilities::NetworkCapabilities) {
         // If network_name is default and capabilities has a different one, use it
         if self.network_name == "default" && capabilities.default_network != "default" {
-            self.network_name = capabilities.default_network.clone();
+            self.network_name.clone_from(&capabilities.default_network);
         }
 
         // If DHCP range not set, populate from capabilities

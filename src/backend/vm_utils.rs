@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! VM disk management utilities for LibvirtBackend
 //!
 //! Handles qcow2 disk image operations including copy-on-write overlays.
@@ -99,6 +100,9 @@ pub fn parse_memory(mem_str: &str) -> Option<u32> {
 }
 
 /// Generate libvirt domain XML for a VM
+///
+/// When `pci_devices` is non-empty, `<hostdev>` elements are added for
+/// VFIO PCI passthrough. Devices must be bound to `vfio-pci` on the host.
 pub fn generate_domain_xml(
     name: &str,
     disk_path: &Path,
@@ -107,6 +111,31 @@ pub fn generate_domain_xml(
     network: &str,
     serial_log: &Path,
 ) -> String {
+    generate_domain_xml_with_pci(name, disk_path, memory_mb, vcpus, network, serial_log, &[])
+}
+
+/// Generate libvirt domain XML with optional PCI passthrough devices
+pub fn generate_domain_xml_with_pci(
+    name: &str,
+    disk_path: &Path,
+    memory_mb: u32,
+    vcpus: u32,
+    network: &str,
+    serial_log: &Path,
+    pci_devices: &[crate::config_legacy::PciPassthroughDevice],
+) -> String {
+    let hostdev_xml: String = pci_devices
+        .iter()
+        .filter_map(super::super::config_legacy::PciPassthroughDevice::to_libvirt_xml)
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let hostdev_section = if hostdev_xml.is_empty() {
+        String::new()
+    } else {
+        format!("\n{hostdev_xml}")
+    };
+
     format!(
         r"<domain type='kvm'>
   <name>{name}</name>
@@ -142,7 +171,7 @@ pub fn generate_domain_xml(
       <source path='{serial_log}'/>
       <target type='serial' port='0'/>
     </console>
-    <graphics type='none'/>
+    <graphics type='none'/>{hostdev}
   </devices>
 </domain>",
         name = name,
@@ -151,6 +180,7 @@ pub fn generate_domain_xml(
         disk = disk_path.display(),
         network = network,
         serial_log = serial_log.display(),
+        hostdev = hostdev_section,
     )
 }
 

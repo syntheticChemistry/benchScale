@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Lab management and high-level API
 
 pub mod registry;
@@ -87,6 +88,63 @@ impl Lab {
                         }
 
                         // Mark as running
+                        let mut state = lab.state.write().await;
+                        state.status = LabStatus::Running;
+                        info!("Lab {} created successfully", name);
+                    }
+                    Err(e) => {
+                        let mut state = lab.state.write().await;
+                        state.status = LabStatus::Failed;
+                        state.error = Some(format!("Failed to create nodes: {}", e));
+                        return Err(e);
+                    }
+                }
+            }
+            Err(e) => {
+                let mut state = lab.state.write().await;
+                state.status = LabStatus::Failed;
+                state.error = Some(format!("Failed to create network: {}", e));
+                return Err(e);
+            }
+        }
+
+        Ok(lab)
+    }
+
+    /// Create a new lab from a topology, accepting a pre-built `Arc<dyn Backend>`.
+    ///
+    /// Useful when the backend is shared across multiple labs (e.g. JSON-RPC server).
+    pub async fn create_with_arc(
+        name: impl Into<String>,
+        topology: Topology,
+        backend: Arc<dyn Backend>,
+    ) -> Result<Self> {
+        let name = name.into();
+        let id = Uuid::new_v4().to_string();
+
+        info!("Creating lab: {} (id: {})", name, id);
+        topology.validate()?;
+
+        let lab = Self {
+            id,
+            name: name.clone(),
+            topology,
+            backend,
+            state: Arc::new(RwLock::new(LabState {
+                status: LabStatus::Creating,
+                network_id: None,
+                nodes: HashMap::new(),
+                error: None,
+            })),
+        };
+
+        match lab.create_network().await {
+            Ok(()) => {
+                match lab.create_nodes().await {
+                    Ok(()) => {
+                        if let Err(e) = lab.apply_network_conditions().await {
+                            warn!("Failed to apply network conditions: {}", e);
+                        }
                         let mut state = lab.state.write().await;
                         state.status = LabStatus::Running;
                         info!("Lab {} created successfully", name);

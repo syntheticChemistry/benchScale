@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-only
 // Copyright © 2024-2025 DataScienceBioLab
 //
 //! VM Lifecycle Cleanup - Deep Debt Solution
@@ -40,7 +40,7 @@ impl VmCleanup {
 
         // Try graceful shutdown first
         let _ = Command::new("virsh")
-            .args(&["shutdown", vm_name])
+            .args(["shutdown", vm_name])
             .output()
             .context("Failed to gracefully shutdown VM");
 
@@ -49,7 +49,7 @@ impl VmCleanup {
 
         // Force destroy if still running
         let destroy_output = Command::new("virsh")
-            .args(&["destroy", vm_name])
+            .args(["destroy", vm_name])
             .output()
             .context("Failed to destroy VM")?;
 
@@ -63,7 +63,7 @@ impl VmCleanup {
 
         // Undefine the VM
         let undefine_output = Command::new("virsh")
-            .args(&["undefine", vm_name])
+            .args(["undefine", vm_name])
             .output()
             .context("Failed to undefine VM")?;
 
@@ -78,7 +78,7 @@ impl VmCleanup {
         let disk_path = self.image_dir.join(format!("{}.qcow2", vm_name));
         if disk_path.exists() {
             std::fs::remove_file(&disk_path)
-                .with_context(|| format!("Failed to remove disk image: {:?}", disk_path))?;
+                .with_context(|| format!("Failed to remove disk image: {}", disk_path.display()))?;
             info!("   Removed disk image: {:?}", disk_path);
         }
 
@@ -86,7 +86,7 @@ impl VmCleanup {
         let cidata_path = self.image_dir.join(format!("{}-cidata.iso", vm_name));
         if cidata_path.exists() {
             std::fs::remove_file(&cidata_path)
-                .with_context(|| format!("Failed to remove cloud-init ISO: {:?}", cidata_path))?;
+                .with_context(|| format!("Failed to remove cloud-init ISO: {}", cidata_path.display()))?;
             info!("   Removed cloud-init ISO: {:?}", cidata_path);
         }
 
@@ -99,7 +99,7 @@ impl VmCleanup {
         info!("🧹 Cleaning up all VMs matching prefix: {}", prefix);
 
         let list_output = Command::new("virsh")
-            .args(&["list", "--all", "--name"])
+            .args(["list", "--all", "--name"])
             .output()
             .context("Failed to list VMs")?;
 
@@ -107,7 +107,7 @@ impl VmCleanup {
         let matching_vms: Vec<String> = vms
             .lines()
             .filter(|line| !line.is_empty() && line.starts_with(prefix))
-            .map(|s| s.to_string())
+            .map(std::string::ToString::to_string)
             .collect();
 
         info!("   Found {} matching VMs", matching_vms.len());
@@ -115,7 +115,7 @@ impl VmCleanup {
         let mut cleaned = Vec::new();
         for vm_name in matching_vms {
             match self.cleanup_vm(&vm_name) {
-                Ok(_) => cleaned.push(vm_name),
+                Ok(()) => cleaned.push(vm_name),
                 Err(e) => error!("Failed to clean up VM {}: {}", vm_name, e),
             }
         }
@@ -129,14 +129,14 @@ impl VmCleanup {
 
         // Get list of all defined VMs
         let list_output = Command::new("virsh")
-            .args(&["list", "--all", "--name"])
+            .args(["list", "--all", "--name"])
             .output()
             .context("Failed to list VMs")?;
 
         let vms: std::collections::HashSet<String> = String::from_utf8_lossy(&list_output.stdout)
             .lines()
             .filter(|line| !line.is_empty())
-            .map(|s| s.to_string())
+            .map(std::string::ToString::to_string)
             .collect();
 
         let mut cleaned = Vec::new();
@@ -148,9 +148,9 @@ impl VmCleanup {
             let entry = entry?;
             let path = entry.path();
 
-            if let Some(ext) = path.extension() {
-                if ext == "qcow2" {
-                    if let Some(file_stem) = path.file_stem() {
+            if let Some(ext) = path.extension()
+                && ext == "qcow2"
+                    && let Some(file_stem) = path.file_stem() {
                         let vm_name = file_stem.to_string_lossy().to_string();
                         
                         // Skip base images (these are templates)
@@ -162,12 +162,10 @@ impl VmCleanup {
                         if !vms.contains(&vm_name) {
                             warn!("   Found orphaned disk: {:?}", path);
                             std::fs::remove_file(&path)
-                                .with_context(|| format!("Failed to remove orphaned disk: {:?}", path))?;
+                                .with_context(|| format!("Failed to remove orphaned disk: {}", path.display()))?;
                             cleaned.push(path);
                         }
                     }
-                }
-            }
         }
 
         info!("✅ Cleaned up {} orphaned disk images", cleaned.len());
@@ -182,14 +180,14 @@ impl VmCleanup {
 
         // List all VMs
         let list_output = Command::new("virsh")
-            .args(&["list", "--all", "--name"])
+            .args(["list", "--all", "--name"])
             .output()
             .context("Failed to list VMs")?;
 
         let vms: Vec<String> = String::from_utf8_lossy(&list_output.stdout)
             .lines()
             .filter(|line| !line.is_empty())
-            .map(|s| s.to_string())
+            .map(std::string::ToString::to_string)
             .collect();
 
         info!("   Found {} VMs to clean", vms.len());

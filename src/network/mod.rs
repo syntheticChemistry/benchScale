@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Network simulation capabilities
 
 pub use crate::topology::NetworkConditions;
@@ -70,6 +71,37 @@ impl NetworkSimulator {
             latency_ms: None,
             packet_loss_percent: None,
             bandwidth_kbps: None,
+        }
+    }
+
+    /// Resolve a named preset to its network conditions.
+    ///
+    /// Ecosystem presets (from wateringHole standards):
+    /// - `basement_lan` — 1ms, 0% loss, 1 Gbps
+    /// - `campus`       — 5ms, 0.01% loss, 500 Mbps
+    /// - `broadband`    — 20ms, 0.1% loss, 100 Mbps
+    /// - `cellular`     — 80ms, 2% loss, 30 Mbps
+    /// - `satellite`    — 600ms, 5% loss, 5 Mbps
+    pub fn from_preset(name: &str) -> Option<NetworkConditions> {
+        match name {
+            "basement_lan" => Some(Self::lan_conditions()),
+            "campus" => Some(NetworkConditions {
+                latency_ms: Some(5),
+                packet_loss_percent: Some(0.01),
+                bandwidth_kbps: Some(500_000),
+            }),
+            "broadband" => Some(NetworkConditions {
+                latency_ms: Some(20),
+                packet_loss_percent: Some(0.1),
+                bandwidth_kbps: Some(100_000),
+            }),
+            "cellular" => Some(Self::cellular_conditions()),
+            "satellite" => Some(NetworkConditions {
+                latency_ms: Some(600),
+                packet_loss_percent: Some(5.0),
+                bandwidth_kbps: Some(5_000),
+            }),
+            _ => None,
         }
     }
 }

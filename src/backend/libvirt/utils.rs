@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Utility functions for LibvirtBackend
 //!
 //! This module contains helper functions for template management, IP discovery,

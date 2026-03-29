@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! End-to-End Tests for Persistence Layer
 //!
 //! Tests complete lifecycle scenarios including:

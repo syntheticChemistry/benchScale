@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Timeout and Retry Utilities
 //!
 //! Pure, testable functions for timeout and retry logic that don't depend on

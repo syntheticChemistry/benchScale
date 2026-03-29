@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! VM Registry with SQLite Backend
 //!
 //! Provides persistent storage for VM state, configuration, and lifecycle events.

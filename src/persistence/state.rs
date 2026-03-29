@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! VM State Machine and Lifecycle Events
 //!
 //! Defines the VM lifecycle states and valid transitions for production-grade

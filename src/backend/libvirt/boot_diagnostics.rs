@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Deep boot diagnostics for failed VM boots
 //!
 //! This module provides comprehensive diagnostics when a VM fails to boot:
@@ -222,7 +223,7 @@ impl BootDiagnosticsReport {
     /// Format the report as a readable string
     pub fn format(&self) -> String {
         format!(
-            r#"
+            r"
 ╔══════════════════════════════════════════════════════════════════════╗
 ║                  BOOT DIAGNOSTICS REPORT                             ║
 ╚══════════════════════════════════════════════════════════════════════╝
@@ -249,7 +250,7 @@ SYSTEMD JOURNAL (Priority: Warning+, Last 200 lines)
 ═══════════════════════════════════════════════════════════════════════
 {}
 
-"#,
+",
             self.vm_name,
             self.vm_state,
             self.boot_parameters,

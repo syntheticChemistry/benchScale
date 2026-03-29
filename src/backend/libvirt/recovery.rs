@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Libvirt Auto-Recovery Module (Evolution #20)
 //!
 //! This module provides automatic recovery from libvirt state corruption,
@@ -63,7 +64,7 @@ pub struct RecoveryResult {
 }
 
 /// Individual recovery action
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RecoveryAction {
     /// Killed an orphaned dnsmasq process
     KilledOrphanedProcess(u32),
@@ -127,9 +128,8 @@ impl LibvirtRecovery {
                     info!("  Waiting {}s before retry...", self.retry_delay.as_secs());
                     tokio::time::sleep(self.retry_delay).await;
                     continue;
-                } else {
-                    return Ok(result);
                 }
+                return Ok(result);
             }
 
             // Verify recovery succeeded
@@ -140,13 +140,12 @@ impl LibvirtRecovery {
                 result.success = true;
                 info!("✅ Recovery successful after {} attempt(s)", attempt);
                 return Ok(result);
-            } else {
-                warn!(
-                    "  System still unhealthy after attempt {}: {}",
-                    attempt,
-                    result.final_health.summary()
-                );
             }
+            warn!(
+                "  System still unhealthy after attempt {}: {}",
+                attempt,
+                result.final_health.summary()
+            );
         }
 
         warn!(

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Critical E2E tests for benchScale automation
 //!
 //! These tests validate end-to-end flows that are critical for production use.
