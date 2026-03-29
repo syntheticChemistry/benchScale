@@ -1,0 +1,44 @@
+metadata:
+  name: ecoprimals-alpine-minimal
+  description: "Minimal Alpine substrate: 6MB base, BusyBox, no glibc/systemd/apt — tests musl-static primal portability"
+  version: "1.0"
+  tags: ["ecoprimals", "alpine", "minimal", "edge", "iot", "musl"]
+
+network:
+  name: ecoprimals-alpine-net
+  subnet: "10.70.0.0/24"
+  preset: home_lan
+  conditions:
+    latency_ms: 2
+    packet_loss_percent: 0.01
+    bandwidth_kbps: 1000000
+    jitter_ms: 1
+
+nodes:
+  # Tower on Alpine — tests: do primals start without glibc?
+  # BusyBox provides nc/wget but not full coreutils
+  - name: node-tower
+    image: alpine
+    env:
+      ROLE: tower-substrate-alpine
+      NODE_ID: "1"
+      PRIMALS: "beardog songbird biomeos"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      BIOMEOS_PORT: "9800"
+      FAMILY_ID: "benchscale-alpine-minimal"
+
+  # Spring node on Alpine
+  - name: node-spring
+    image: alpine
+    env:
+      ROLE: spring-primals-alpine
+      NODE_ID: "2"
+      PRIMALS: "groundspring healthspring_primal"
+      GROUNDSPRING_PORT: "9110"
+      HEALTHSPRING_PRIMAL_PORT: "9120"
+      FAMILY_ID: "benchscale-alpine-minimal"
+      TOWER_HOST: "node-tower"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      BIOMEOS_PORT: "9800"

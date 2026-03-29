@@ -51,3 +51,37 @@ presets:
     bandwidth_kbps: 5000  # 5 Mbps
     jitter_ms: 50
     scenario: "Starlink or geostationary — extreme latency, lossy"
+
+  # ── Extreme / stress-test presets ───────────────────────────────────────
+
+  deep_space:
+    description: "Intercontinental / Tor-routed — extreme RTT"
+    latency_ms: 2000
+    packet_loss_percent: 10.0
+    bandwidth_kbps: 1000  # 1 Mbps
+    jitter_ms: 200
+    scenario: "Tor exit relay, multi-hop VPN, or intercontinental satellite bounce"
+
+  urban_congested:
+    description: "Dense urban LTE during peak hours"
+    latency_ms: 150
+    packet_loss_percent: 15.0
+    bandwidth_kbps: 2000  # 2 Mbps
+    jitter_ms: 80
+    scenario: "Phone on congested cell tower, event venue, transit station"
+
+  intermittent:
+    description: "Spotty rural / tunnel transitions — near-unusable"
+    latency_ms: 500
+    packet_loss_percent: 50.0
+    bandwidth_kbps: 500  # 500 kbps
+    jitter_ms: 300
+    scenario: "Driving through tunnels, rural dead zones, satellite fade"
+
+  localhost:
+    description: "Same-machine loopback — zero overhead"
+    latency_ms: 0
+    packet_loss_percent: 0.0
+    bandwidth_kbps: 0  # unlimited (0 = no tc applied)
+    jitter_ms: 0
+    scenario: "All primals on one machine, no network simulation"

@@ -1,0 +1,56 @@
+metadata:
+  name: ecoprimals-constrained-256m
+  description: "Resource-constrained substrate: 256MB RAM, 0.5 CPU per node — tests OOM handling and graceful degradation"
+  version: "1.0"
+  tags: ["ecoprimals", "constrained", "resource-limit", "edge", "embedded"]
+
+network:
+  name: ecoprimals-constrained-net
+  subnet: "10.72.0.0/24"
+  preset: home_lan
+  conditions:
+    latency_ms: 2
+    packet_loss_percent: 0.01
+    bandwidth_kbps: 1000000
+    jitter_ms: 1
+
+# Docker invocation hint: --memory=256m --cpus=0.5
+# Tests which primal compositions fit in constrained memory:
+#   - Tower Atomic (BearDog + Songbird): ~20-40MB each
+#   - biomeOS: ~60-100MB with Neural API loaded
+#   - Springs: ~10-20MB each
+#   - Full composition may OOM — that's the point
+
+nodes:
+  - name: node-tower
+    image: ubuntu
+    env:
+      ROLE: tower-constrained
+      NODE_ID: "1"
+      PRIMALS: "beardog songbird biomeos"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      BIOMEOS_PORT: "9800"
+      FAMILY_ID: "benchscale-constrained"
+    metadata:
+      docker_args: "--memory=256m --cpus=0.5"
+      memory_limit_mb: 256
+      cpu_limit: 0.5
+
+  - name: node-spring
+    image: ubuntu
+    env:
+      ROLE: spring-constrained
+      NODE_ID: "2"
+      PRIMALS: "groundspring healthspring_primal"
+      GROUNDSPRING_PORT: "9110"
+      HEALTHSPRING_PRIMAL_PORT: "9120"
+      FAMILY_ID: "benchscale-constrained"
+      TOWER_HOST: "node-tower"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      BIOMEOS_PORT: "9800"
+    metadata:
+      docker_args: "--memory=256m --cpus=0.5"
+      memory_limit_mb: 256
+      cpu_limit: 0.5

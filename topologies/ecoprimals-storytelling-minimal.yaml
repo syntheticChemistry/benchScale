@@ -1,0 +1,46 @@
+metadata:
+  name: ecoprimals-storytelling-minimal
+  description: "Minimal Storytelling: esotericWebb + ludoSpring + Squirrel AI DM — no biomeOS, direct IPC, validates offline play"
+  version: "1.0"
+  tags: ["ecoprimals", "storytelling", "minimal", "offline", "esotericwebb", "ludospring", "squirrel"]
+  bond_type: covalent
+
+# Minimal storytelling stack without biomeOS orchestration.
+# esotericWebb discovers ludoSpring and Squirrel directly via Songbird.
+# petalTongue renders scenes. No provenance trio — offline/portable mode.
+#
+# This validates:
+#   - esotericWebb graceful degradation without biomeOS
+#   - Direct ludoSpring ↔ esotericWebb IPC (game.evaluate_flow, etc.)
+#   - Squirrel ai.chat as DM without Neural API routing
+#   - petalTongue TUI mode for terminal-only play
+#   - fieldMouse-class deployment: could this run on constrained hardware?
+
+network:
+  name: ecoprimals-storytelling-min-net
+  subnet: "10.86.0.0/24"
+  preset: localhost
+  conditions:
+    latency_ms: 0
+    packet_loss_percent: 0
+    bandwidth_kbps: 0
+    jitter_ms: 0
+
+nodes:
+  # Everything on one node — minimal deployment
+  - name: node-storytelling
+    image: ubuntu
+    env:
+      ROLE: storytelling-minimal
+      NODE_ID: "1"
+      PRIMALS: "beardog songbird esotericwebb ludospring squirrel petaltongue"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      ESOTERICWEBB_PORT: "9600"
+      ESOTERICWEBB_MODE: "serve"
+      LUDOSPRING_MODE: "server"
+      LUDOSPRING_PORT: "9650"
+      SQUIRREL_PORT: "9500"
+      PETALTONGUE_PORT: "9160"
+      FAMILY_ID: "storytelling-minimal"
+      PETALTONGUE_MODE: "tui"

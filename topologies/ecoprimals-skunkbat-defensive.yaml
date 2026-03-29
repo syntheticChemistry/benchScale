@@ -1,0 +1,81 @@
+metadata:
+  name: ecoprimals-skunkbat-defensive
+  description: "skunkBat defensive security mesh: violation detection, topology intrusion sensing, sovereignty proofs"
+  version: "1.0"
+  tags: ["ecoprimals", "skunkbat", "defensive", "security", "mesh", "intrusion"]
+  bond_type: covalent
+  source_showcase: "primals/skunkBat/showcase/"
+
+# skunkBat is defensive reconnaissance and denial, NOT surveillance.
+# Source: primals/skunkBat/showcase/01-violation-detection/ through 04-layered-security/
+#
+# This topology models a defended mesh with:
+#   - skunkBat sensing violations (genetic, topology, behavioral, resource)
+#   - BearDog providing cryptographic identity and trust
+#   - Songbird mesh as the attack surface being defended
+#   - An untrusted external node probing the boundary
+#
+# Tests:
+#   - Violation detection for lineage/topology/behavioral/resource-exhaustion
+#   - Defensive response vs surveillance (sovereignty proof)
+#   - Layered security: bearDog trust → songBird mesh → skunkBat defense
+#   - Federation mesh defense with external probing node
+
+network:
+  name: ecoprimals-skunkbat-net
+  subnet: "10.80.0.0/24"
+  preset: home_lan
+  conditions:
+    latency_ms: 2
+    packet_loss_percent: 0.01
+    bandwidth_kbps: 1000000
+    jitter_ms: 1
+
+nodes:
+  # Defended Tower with skunkBat active
+  - name: node-defended-tower
+    image: ubuntu
+    env:
+      ROLE: defended-tower
+      NODE_ID: "1"
+      PRIMALS: "beardog songbird biomeos skunkbat"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      BIOMEOS_PORT: "9800"
+      SKUNKBAT_PORT: "9700"
+      FAMILY_ID: "skunkbat-defended"
+      SKUNKBAT_MODE: "defensive"
+
+  # Internal node: trusted member of the mesh
+  - name: node-internal
+    image: ubuntu
+    env:
+      ROLE: internal-node
+      NODE_ID: "2"
+      PRIMALS: "beardog songbird groundspring healthspring_primal"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      GROUNDSPRING_PORT: "9110"
+      HEALTHSPRING_PRIMAL_PORT: "9120"
+      FAMILY_ID: "skunkbat-defended"
+      TOWER_HOST: "node-defended-tower"
+      BIOMEOS_PORT: "9800"
+
+  # External probe: untrusted node attempting to interact
+  # Different family seed — should be detected by skunkBat
+  - name: node-external-probe
+    image: ubuntu
+    env:
+      ROLE: external-probe
+      NODE_ID: "3"
+      PRIMALS: "songbird"
+      SONGBIRD_PORT: "9200"
+      FAMILY_ID: "external-unknown"
+      PRIMAL_TRANSPORT: "tcp"
+      TOWER_HOST: "node-defended-tower"
+    network_conditions:
+      preset: friend_wan
+      latency_ms: 50
+      packet_loss_percent: 0.5
+      bandwidth_kbps: 100000
+      jitter_ms: 10

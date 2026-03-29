@@ -1,0 +1,93 @@
+metadata:
+  name: ecoprimals-storytelling-tower
+  description: "Storytelling Tower: esotericWebb CRPG + ludoSpring game science + Squirrel AI DM + petalTongue scene rendering"
+  version: "1.0"
+  tags: ["ecoprimals", "storytelling", "rpgpt", "crpg", "esotericwebb", "ludospring", "squirrel", "petaltongue", "ai-dm"]
+  bond_type: covalent
+
+# The Storytelling Tower assembles the full interactive fiction stack:
+#
+#   esotericWebb — CRPG substrate: DAG-traced narrative, NPCs, scene resolution,
+#                  ability interactions, bounded endings (Disco Elysium-inspired)
+#   ludoSpring  — game science: flow analysis, DDA, Fitts, engagement metrics,
+#                  60Hz tick budget, session management, WFC procedural generation
+#   Squirrel    — AI DM: narrative generation via ai.chat, context windows for
+#                  session state, tool execution for game actions
+#   petalTongue — scene rendering: visualization.render.scene for narrative UI,
+#                  interaction.poll for player input, dashboards for game state
+#   biomeOS     — Neural API routing: routes game.* to ludoSpring, ai.* to Squirrel,
+#                  visualization.* to petalTongue, manages graph execution
+#
+# The storytelling loop:
+#   player input (petalTongue) → scene resolution (esotericWebb) →
+#   game science check (ludoSpring) → AI narration (Squirrel) →
+#   provenance stamp (rhizoCrypt) → scene push (petalTongue)
+#
+# Tests:
+#   - esotericWebb TCP-first vs biomeOS UDS-first transport gap
+#   - ludoSpring binary capability surface vs graph expectations
+#   - Squirrel ai.chat fallback when game.narrate_action unavailable
+#   - petalTongue scene rendering for dialogue trees (GAP-002)
+#   - Session provenance: rhizoCrypt DAG for game state integrity
+#   - 60Hz tick budget under narrative + AI + viz load
+
+network:
+  name: ecoprimals-storytelling-net
+  subnet: "10.85.0.0/24"
+  preset: home_lan
+  conditions:
+    latency_ms: 2
+    packet_loss_percent: 0.01
+    bandwidth_kbps: 1000000
+    jitter_ms: 1
+
+nodes:
+  # Tower + orchestration + AI
+  - name: node-tower
+    image: ubuntu
+    env:
+      ROLE: storytelling-tower
+      NODE_ID: "1"
+      PRIMALS: "beardog songbird biomeos squirrel"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      BIOMEOS_PORT: "9800"
+      SQUIRREL_PORT: "9500"
+      FAMILY_ID: "storytelling-tower"
+      BIOMEOS_MODE: "neural-api"
+
+  # esotericWebb + ludoSpring + petalTongue (the game stack)
+  - name: node-game
+    image: ubuntu
+    env:
+      ROLE: storytelling-game
+      NODE_ID: "2"
+      PRIMALS: "esotericwebb ludospring petaltongue"
+      ESOTERICWEBB_PORT: "9600"
+      ESOTERICWEBB_MODE: "serve"
+      LUDOSPRING_MODE: "server"
+      LUDOSPRING_PORT: "9650"
+      PETALTONGUE_PORT: "9160"
+      FAMILY_ID: "storytelling-tower"
+      TOWER_HOST: "node-tower"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      BIOMEOS_PORT: "9800"
+      SQUIRREL_HOST: "node-tower"
+      SQUIRREL_PORT: "9500"
+
+  # Storage + provenance (session integrity)
+  - name: node-provenance
+    image: ubuntu
+    env:
+      ROLE: storytelling-provenance
+      NODE_ID: "3"
+      PRIMALS: "nestgate rhizocrypt loamspine sweetgrass"
+      NESTGATE_PORT: "9300"
+      RHIZOCRYPT_PORT: "9310"
+      LOAMSPINE_PORT: "9320"
+      SWEETGRASS_PORT: "9330"
+      FAMILY_ID: "storytelling-tower"
+      TOWER_HOST: "node-tower"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"

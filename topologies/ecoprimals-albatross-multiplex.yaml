@@ -1,0 +1,102 @@
+metadata:
+  name: ecoprimals-albatross-multiplex
+  description: "Albatross: multi-Songbird tarpc multiplex — 3 Songbird instances with connection pooling and intelligent routing to ToadStool compute"
+  version: "1.0"
+  tags: ["ecoprimals", "albatross", "multiplex", "tarpc", "high-throughput", "fleet", "songbird"]
+  bond_type: metallic
+
+# Albatross = array/multiplex of Songbird instances for complex management.
+# Source: primals/songbird/showcase/05-albatross-multiplex/
+#
+# Architecture:
+#   Songbird A (master) + Songbird B + Songbird C
+#   → tarpc connection pool (10-100 concurrent streams)
+#   → intelligent protocol selection (HTTP/JSON-RPC/tarpc)
+#   → workload distribution to ToadStool GPU compute
+#
+# Tests:
+#   - Multi-instance Songbird coordination
+#   - tarpc saturation point (target: 100K+ req/s)
+#   - Protocol escalation under load
+#   - Round-robin / intelligent routing
+#   - Concurrent connection scaling (1 → 10 → 50 → 100)
+
+network:
+  name: ecoprimals-albatross-net
+  subnet: "10.79.0.0/24"
+  preset: basement_lan
+  conditions:
+    latency_ms: 0.5
+    packet_loss_percent: 0.0
+    bandwidth_kbps: 10000000
+    jitter_ms: 0.1
+
+nodes:
+  # BearDog: shared identity for all Songbird instances
+  - name: node-tower-core
+    image: ubuntu
+    env:
+      ROLE: tower-identity
+      NODE_ID: "1"
+      PRIMALS: "beardog biomeos"
+      BEARDOG_PORT: "9100"
+      BIOMEOS_PORT: "9800"
+      FAMILY_ID: "albatross-flock"
+
+  # Songbird A: master coordinator
+  - name: node-songbird-master
+    image: ubuntu
+    env:
+      ROLE: albatross-master
+      NODE_ID: "2"
+      PRIMALS: "songbird"
+      SONGBIRD_PORT: "9200"
+      SONGBIRD_TARPC_PORT: "8091"
+      FAMILY_ID: "albatross-flock"
+      ALBATROSS_ROLE: "master"
+      TOWER_HOST: "node-tower-core"
+      BEARDOG_PORT: "9100"
+      BIOMEOS_PORT: "9800"
+
+  # Songbird B: worker
+  - name: node-songbird-worker-1
+    image: ubuntu
+    env:
+      ROLE: albatross-worker
+      NODE_ID: "3"
+      PRIMALS: "songbird"
+      SONGBIRD_PORT: "9201"
+      SONGBIRD_TARPC_PORT: "8092"
+      FAMILY_ID: "albatross-flock"
+      ALBATROSS_ROLE: "worker"
+      TOWER_HOST: "node-tower-core"
+      BEARDOG_PORT: "9100"
+      BIOMEOS_PORT: "9800"
+
+  # Songbird C: worker
+  - name: node-songbird-worker-2
+    image: ubuntu
+    env:
+      ROLE: albatross-worker
+      NODE_ID: "4"
+      PRIMALS: "songbird"
+      SONGBIRD_PORT: "9202"
+      SONGBIRD_TARPC_PORT: "8093"
+      FAMILY_ID: "albatross-flock"
+      ALBATROSS_ROLE: "worker"
+      TOWER_HOST: "node-tower-core"
+      BEARDOG_PORT: "9100"
+      BIOMEOS_PORT: "9800"
+
+  # ToadStool: GPU compute target for workload distribution
+  - name: node-compute
+    image: ubuntu
+    env:
+      ROLE: compute-target
+      NODE_ID: "5"
+      PRIMALS: "toadstool"
+      TOADSTOOL_PORT: "9400"
+      FAMILY_ID: "albatross-flock"
+      TOWER_HOST: "node-tower-core"
+      BEARDOG_PORT: "9100"
+      BIOMEOS_PORT: "9800"

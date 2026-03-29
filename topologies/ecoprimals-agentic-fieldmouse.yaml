@@ -1,0 +1,77 @@
+metadata:
+  name: ecoprimals-agentic-fieldmouse
+  description: "Agentic + fieldMouse: AI-guided edge sensor orchestration — Squirrel analyzes, biomeOS routes, petalTongue visualizes fieldMouse streams"
+  version: "1.0"
+  tags: ["ecoprimals", "agentic", "fieldmouse", "edge", "sensor", "ai-guided"]
+  bond_type: covalent
+
+# Full agentic stack (biomeOS + Squirrel + petalTongue) on the gate,
+# with fieldMouse chimera sensors streaming data. Squirrel analyzes
+# incoming frames, biomeOS routes to appropriate springs, petalTongue
+# renders real-time sensor dashboards.
+#
+# Tests:
+#   - fieldMouse frame → NestGate → Squirrel ai.query (classify) → petalTongue dashboard
+#   - biomeOS Neural API routing edge data to analysis springs
+#   - petalTongue SSE rendering of live sensor data
+#   - Squirrel tool.execute for automated response to sensor anomalies
+
+network:
+  name: ecoprimals-agentic-fm-net
+  subnet: "10.84.0.0/24"
+  preset: home_lan
+  conditions:
+    latency_ms: 2
+    packet_loss_percent: 0.01
+    bandwidth_kbps: 1000000
+    jitter_ms: 1
+
+nodes:
+  # Agentic gate: full coordination stack
+  - name: node-agentic-gate
+    image: ubuntu
+    env:
+      ROLE: agentic-gate
+      NODE_ID: "1"
+      PRIMALS: "beardog songbird biomeos squirrel petaltongue nestgate"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      BIOMEOS_PORT: "9800"
+      SQUIRREL_PORT: "9500"
+      PETALTONGUE_PORT: "9160"
+      NESTGATE_PORT: "9300"
+      FAMILY_ID: "agentic-fieldmouse"
+      BIOMEOS_MODE: "neural-api"
+
+  # Analysis springs (biomeOS routes fieldMouse data here)
+  - name: node-analysis
+    image: ubuntu
+    env:
+      ROLE: analysis-springs
+      NODE_ID: "2"
+      PRIMALS: "neuralspring wetspring groundspring"
+      NEURALSPRING_PORT: "9130"
+      WETSPRING_PORT: "9140"
+      GROUNDSPRING_PORT: "9110"
+      FAMILY_ID: "agentic-fieldmouse"
+      TOWER_HOST: "node-agentic-gate"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      BIOMEOS_PORT: "9800"
+
+  # fieldMouse sensor (Alpine chimera, no biomeOS)
+  - name: node-fieldmouse
+    image: alpine
+    env:
+      ROLE: fieldmouse-sensor
+      NODE_ID: "3"
+      PRIMALS: "beardog songbird"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      FAMILY_ID: "agentic-fieldmouse"
+      FIELDMOUSE_CLASS: "sensor"
+      FIELDMOUSE_SUBTYPE: "fm-soil"
+      TOWER_HOST: "node-agentic-gate"
+      CHIMERA_MODE: "true"
+    metadata:
+      docker_args: "--memory=128m --cpus=0.25"

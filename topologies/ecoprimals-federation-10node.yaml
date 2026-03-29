@@ -1,0 +1,224 @@
+metadata:
+  name: ecoprimals-federation-10node
+  description: "Large-scale federation: 3 NUCLEUS gates + 5 spring nodes + 2 mobile-degraded — tests Plasmodium at scale"
+  version: "1.0"
+  tags: ["ecoprimals", "federation", "scale", "plasmodium", "10-node"]
+  bond_type: covalent
+
+network:
+  name: ecoprimals-federation-net
+  subnet: "10.76.0.0/24"
+
+# 10-node topology testing Plasmodium formation at scale.
+# Three full NUCLEUS gates (covalent) + spring specialization nodes
+# + two mobile-degraded endpoints.
+#
+# This is the largest topology in the matrix. It tests:
+#   - Plasmodium best-gate routing with 3 coordinators
+#   - Neural API capability aggregation across 10 nodes
+#   - BirdSong mesh formation with many peers
+#   - Spring composition spread across multiple nodes
+#   - Mobile endpoints connecting to nearest NUCLEUS gate
+
+nodes:
+  # ── NUCLEUS Gate 1: primary (all core primals) ───────────────────────
+  - name: node-gate1-primary
+    image: ubuntu
+    env:
+      ROLE: nucleus-primary
+      NODE_ID: "1"
+      PRIMALS: "beardog songbird nestgate toadstool squirrel biomeos"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      NESTGATE_PORT: "9300"
+      TOADSTOOL_PORT: "9400"
+      SQUIRREL_PORT: "9500"
+      BIOMEOS_PORT: "9800"
+      FAMILY_ID: "federation-10node"
+    network_conditions:
+      preset: basement_lan
+      latency_ms: 0.5
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 10000000
+      jitter_ms: 0.1
+
+  # ── NUCLEUS Gate 2: secondary ────────────────────────────────────────
+  - name: node-gate2-secondary
+    image: ubuntu
+    env:
+      ROLE: nucleus-secondary
+      NODE_ID: "2"
+      PRIMALS: "beardog songbird nestgate toadstool biomeos"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      NESTGATE_PORT: "9300"
+      TOADSTOOL_PORT: "9400"
+      BIOMEOS_PORT: "9800"
+      FAMILY_ID: "federation-10node"
+      TOWER_HOST: "node-gate1-primary"
+    network_conditions:
+      preset: home_lan
+      latency_ms: 2
+      packet_loss_percent: 0.01
+      bandwidth_kbps: 1000000
+      jitter_ms: 1
+
+  # ── NUCLEUS Gate 3: remote friend ────────────────────────────────────
+  - name: node-gate3-remote
+    image: ubuntu
+    env:
+      ROLE: nucleus-remote
+      NODE_ID: "3"
+      PRIMALS: "beardog songbird nestgate biomeos"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      NESTGATE_PORT: "9300"
+      BIOMEOS_PORT: "9800"
+      FAMILY_ID: "federation-10node"
+      TOWER_HOST: "node-gate1-primary"
+    network_conditions:
+      preset: friend_wan
+      latency_ms: 50
+      packet_loss_percent: 0.5
+      bandwidth_kbps: 100000
+      jitter_ms: 10
+
+  # ── Spring nodes (specialized) ───────────────────────────────────────
+  - name: node-springs-science
+    image: ubuntu
+    env:
+      ROLE: science-springs
+      NODE_ID: "4"
+      PRIMALS: "groundspring neuralspring wetspring"
+      GROUNDSPRING_PORT: "9110"
+      NEURALSPRING_PORT: "9130"
+      WETSPRING_PORT: "9140"
+      FAMILY_ID: "federation-10node"
+      TOWER_HOST: "node-gate1-primary"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      BIOMEOS_PORT: "9800"
+    network_conditions:
+      preset: basement_lan
+      latency_ms: 0.5
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 10000000
+      jitter_ms: 0.1
+
+  - name: node-springs-health
+    image: ubuntu
+    env:
+      ROLE: health-springs
+      NODE_ID: "5"
+      PRIMALS: "healthspring_primal ludospring"
+      HEALTHSPRING_PRIMAL_PORT: "9120"
+      LUDOSPRING_PORT: "9150"
+      FAMILY_ID: "federation-10node"
+      TOWER_HOST: "node-gate2-secondary"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      BIOMEOS_PORT: "9800"
+    network_conditions:
+      preset: home_lan
+      latency_ms: 2
+      packet_loss_percent: 0.01
+      bandwidth_kbps: 1000000
+      jitter_ms: 1
+
+  - name: node-springs-compute
+    image: ubuntu
+    env:
+      ROLE: compute-springs
+      NODE_ID: "6"
+      PRIMALS: "toadstool groundspring"
+      TOADSTOOL_PORT: "9400"
+      GROUNDSPRING_PORT: "9110"
+      FAMILY_ID: "federation-10node"
+      TOWER_HOST: "node-gate1-primary"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      BIOMEOS_PORT: "9800"
+    network_conditions:
+      preset: basement_lan
+      latency_ms: 0.5
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 10000000
+      jitter_ms: 0.1
+
+  - name: node-springs-provenance
+    image: ubuntu
+    env:
+      ROLE: provenance-trio
+      NODE_ID: "7"
+      PRIMALS: "rhizocrypt loamspine sweetgrass"
+      RHIZOCRYPT_PORT: "9600"
+      LOAMSPINE_PORT: "9610"
+      SWEETGRASS_PORT: "9620"
+      FAMILY_ID: "federation-10node"
+      TOWER_HOST: "node-gate1-primary"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      BIOMEOS_PORT: "9800"
+    network_conditions:
+      preset: home_lan
+      latency_ms: 2
+      packet_loss_percent: 0.01
+      bandwidth_kbps: 1000000
+      jitter_ms: 1
+
+  - name: node-springs-remote
+    image: ubuntu
+    env:
+      ROLE: remote-springs
+      NODE_ID: "8"
+      PRIMALS: "neuralspring wetspring"
+      NEURALSPRING_PORT: "9130"
+      WETSPRING_PORT: "9140"
+      FAMILY_ID: "federation-10node"
+      TOWER_HOST: "node-gate3-remote"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      BIOMEOS_PORT: "9800"
+    network_conditions:
+      preset: friend_wan
+      latency_ms: 50
+      packet_loss_percent: 0.5
+      bandwidth_kbps: 100000
+      jitter_ms: 10
+
+  # ── Mobile-degraded endpoints ────────────────────────────────────────
+  - name: node-mobile-1
+    image: ubuntu
+    env:
+      ROLE: mobile-degraded
+      NODE_ID: "9"
+      PRIMALS: "songbird"
+      SONGBIRD_PORT: "9200"
+      FAMILY_ID: "federation-10node"
+      BEHIND_NAT: "true"
+      PRIMAL_TRANSPORT: "tcp"
+      TOWER_HOST: "node-gate1-primary"
+    network_conditions:
+      preset: mobile_cell
+      latency_ms: 100
+      packet_loss_percent: 2.0
+      bandwidth_kbps: 10000
+      jitter_ms: 30
+
+  - name: node-mobile-2
+    image: ubuntu
+    env:
+      ROLE: mobile-degraded
+      NODE_ID: "10"
+      PRIMALS: "songbird"
+      SONGBIRD_PORT: "9200"
+      FAMILY_ID: "federation-10node"
+      BEHIND_NAT: "true"
+      PRIMAL_TRANSPORT: "tcp"
+      TOWER_HOST: "node-gate3-remote"
+    network_conditions:
+      preset: urban_congested
+      latency_ms: 150
+      packet_loss_percent: 15.0
+      bandwidth_kbps: 2000
+      jitter_ms: 80

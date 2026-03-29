@@ -1,0 +1,56 @@
+metadata:
+  name: ecoprimals-readonly-fs
+  description: "Read-only filesystem substrate: simulates Android/GrapheneOS where CWD writes fail"
+  version: "1.0"
+  tags: ["ecoprimals", "readonly", "android", "grapheneos", "mobile", "pixel"]
+
+network:
+  name: ecoprimals-readonly-net
+  subnet: "10.71.0.0/24"
+  preset: home_lan
+  conditions:
+    latency_ms: 2
+    packet_loss_percent: 0.01
+    bandwidth_kbps: 1000000
+    jitter_ms: 1
+
+# Docker invocation hint: containers need --read-only --tmpfs /tmp:size=10M
+# This forces primals to handle:
+#   - BearDog audit.log write failure
+#   - Songbird PID file creation failure
+#   - NestGate data directory unavailable
+#   - Only /tmp (small) and /opt/ecoprimals writable
+
+nodes:
+  - name: node-tower
+    image: ubuntu
+    env:
+      ROLE: tower-readonly
+      NODE_ID: "1"
+      PRIMALS: "beardog songbird biomeos"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      BIOMEOS_PORT: "9800"
+      FAMILY_ID: "benchscale-readonly"
+      PRIMAL_TRANSPORT: "tcp"
+      CONTAINER_READONLY: "true"
+    metadata:
+      docker_args: "--read-only --tmpfs /tmp:size=10M --tmpfs /run:size=5M"
+
+  - name: node-spring
+    image: ubuntu
+    env:
+      ROLE: spring-readonly
+      NODE_ID: "2"
+      PRIMALS: "groundspring healthspring_primal"
+      GROUNDSPRING_PORT: "9110"
+      HEALTHSPRING_PRIMAL_PORT: "9120"
+      FAMILY_ID: "benchscale-readonly"
+      TOWER_HOST: "node-tower"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      BIOMEOS_PORT: "9800"
+      PRIMAL_TRANSPORT: "tcp"
+      CONTAINER_READONLY: "true"
+    metadata:
+      docker_args: "--read-only --tmpfs /tmp:size=10M --tmpfs /run:size=5M"

@@ -1,0 +1,86 @@
+metadata:
+  name: ecoprimals-agentic-tower
+  description: "Agentic Tower: biomeOS Neural API + Squirrel MCP/AI + petalTongue UI — full human+AI coordination loop"
+  version: "1.0"
+  tags: ["ecoprimals", "agentic", "biomeOS", "squirrel", "petaltongue", "neural-api", "mcp", "ui"]
+  bond_type: covalent
+
+# The Agentic Tower is the three-layer coordination stack:
+#   biomeOS  — substrate orchestrator, Neural API, graph execution, capability routing
+#   Squirrel — AI/MCP hub, inference routing, tool execution, context management
+#   petalTongue — human-facing UI (TUI/egui/web/headless), SSE events, dashboards
+#
+# Together they form the "nervous system + brain + sensory surface":
+#   biomeOS routes capabilities (the nervous system)
+#   Squirrel coordinates AI workflows (the brain)
+#   petalTongue renders state + captures intent (the senses)
+#
+# Tests:
+#   - Neural API capability routing: capability.call → Squirrel ai.query
+#   - MCP tool discovery: Squirrel tool.list → primalSpring + spring tools
+#   - UI ↔ orchestrator loop: petalTongue SSE ← biomeOS events → Squirrel decisions
+#   - Graph execution with AI-guided optimization: graph.suggest_optimizations
+#   - Abstract vs filesystem socket routing (exp077 gap)
+#   - biomeOS standalone/health-only mode in lab
+#
+# Known gaps modeled:
+#   - biomeOS api mode ignores --port (TCP-only cells will expose this)
+#   - Squirrel abstract socket @squirrel vs biomeOS filesystem routing
+#   - petalTongue ToadStool frame path not connected
+
+network:
+  name: ecoprimals-agentic-net
+  subnet: "10.83.0.0/24"
+  preset: home_lan
+  conditions:
+    latency_ms: 2
+    packet_loss_percent: 0.01
+    bandwidth_kbps: 1000000
+    jitter_ms: 1
+
+nodes:
+  # Core identity + discovery
+  - name: node-tower
+    image: ubuntu
+    env:
+      ROLE: agentic-tower
+      NODE_ID: "1"
+      PRIMALS: "beardog songbird biomeos squirrel petaltongue"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      BIOMEOS_PORT: "9800"
+      SQUIRREL_PORT: "9500"
+      PETALTONGUE_PORT: "9160"
+      FAMILY_ID: "agentic-tower"
+      BIOMEOS_MODE: "neural-api"
+
+  # Spring primals providing capabilities for the agentic loop
+  - name: node-springs
+    image: ubuntu
+    env:
+      ROLE: agentic-springs
+      NODE_ID: "2"
+      PRIMALS: "groundspring healthspring_primal neuralspring"
+      GROUNDSPRING_PORT: "9110"
+      HEALTHSPRING_PRIMAL_PORT: "9120"
+      NEURALSPRING_PORT: "9130"
+      FAMILY_ID: "agentic-tower"
+      TOWER_HOST: "node-tower"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      BIOMEOS_PORT: "9800"
+
+  # Compute + storage for AI workflows
+  - name: node-compute
+    image: ubuntu
+    env:
+      ROLE: agentic-compute
+      NODE_ID: "3"
+      PRIMALS: "toadstool nestgate"
+      TOADSTOOL_PORT: "9400"
+      NESTGATE_PORT: "9300"
+      FAMILY_ID: "agentic-tower"
+      TOWER_HOST: "node-tower"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      BIOMEOS_PORT: "9800"

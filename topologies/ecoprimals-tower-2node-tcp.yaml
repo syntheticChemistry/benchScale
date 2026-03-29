@@ -1,0 +1,52 @@
+metadata:
+  name: ecoprimals-tower-2node-tcp
+  description: "TCP-only Tower: simulates mobile/Android deployment where UDS is blocked (SELinux sock_file denial)"
+  version: "1.0"
+  tags: ["ecoprimals", "tower", "tcp-only", "mobile", "pixel", "android", "cross-gate"]
+
+network:
+  name: ecoprimals-tower-tcp-lan
+  subnet: "10.63.0.0/24"
+  preset: home_lan
+  conditions:
+    latency_ms: 2
+    packet_loss_percent: 0.01
+    bandwidth_kbps: 1000000
+    jitter_ms: 1
+
+nodes:
+  # Tower substrate: TCP-only mode
+  # PRIMAL_TRANSPORT=tcp forces TCP listeners instead of UDS
+  # This catches: biomeOS --port ignored, BearDog UDS hard-exit,
+  # Songbird --listen ergonomics, NestGate socket-only issues
+  - name: node-tower
+    image: ubuntu
+    env:
+      ROLE: tower-substrate-tcp
+      NODE_ID: "1"
+      PRIMALS: "beardog songbird biomeos"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      BIOMEOS_PORT: "9800"
+      FAMILY_ID: "benchscale-tower-tcp"
+      PRIMAL_TRANSPORT: "tcp"
+      BIOMEOS_MODE: "api"
+      BIOMEOS_TCP_ONLY: "true"
+      BEARDOG_LISTEN: "0.0.0.0:9100"
+      SONGBIRD_LISTEN: "0.0.0.0:9200"
+
+  # Spring primals: TCP-only
+  - name: node-spring
+    image: ubuntu
+    env:
+      ROLE: spring-primals-tcp
+      NODE_ID: "2"
+      PRIMALS: "groundspring healthspring_primal"
+      GROUNDSPRING_PORT: "9110"
+      HEALTHSPRING_PRIMAL_PORT: "9120"
+      FAMILY_ID: "benchscale-tower-tcp"
+      TOWER_HOST: "node-tower"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      BIOMEOS_PORT: "9800"
+      PRIMAL_TRANSPORT: "tcp"

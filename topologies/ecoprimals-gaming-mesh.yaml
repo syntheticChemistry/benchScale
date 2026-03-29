@@ -1,0 +1,78 @@
+metadata:
+  name: ecoprimals-gaming-mesh
+  description: "Gaming mesh chimera: ludoSpring + Songbird + ToadStool — protocol bridge, game library, Steam integration"
+  version: "1.0"
+  tags: ["ecoprimals", "gaming", "ludospring", "chimera", "steam", "protocol-bridge"]
+  bond_type: covalent
+  source_showcase: "primals/toadstool/showcase/gaming-evolution/"
+
+# Gaming mesh: ludoSpring + Songbird fused chimera for game coordination.
+# Source: primals/toadstool/showcase/gaming-evolution/ (6-level evolution)
+#
+# The gaming-mesh chimera (Songbird networking + ludoSpring game logic)
+# is one of the defined chimera types in GLOSSARY.md.
+#
+# Architecture:
+#   Tower (BearDog+Songbird) → ToadStool (GPU compute for rendering/physics)
+#   → ludoSpring (game state, library, protocol bridge to Steam/GOG)
+#   → petalTongue (visualization/UI layer)
+#
+# Tests:
+#   - ludoSpring game state management with networking
+#   - Protocol bridge: ecoPrimals ↔ Steam/game platform APIs
+#   - ToadStool GPU dispatch for game compute (shaders, physics)
+#   - petalTongue TUI/dashboard for game state visualization
+#   - Real-time tick budget (16.67ms @ 60Hz) under coordination overhead
+
+network:
+  name: ecoprimals-gaming-net
+  subnet: "10.82.0.0/24"
+  preset: localhost
+  conditions:
+    latency_ms: 0
+    packet_loss_percent: 0.0
+    bandwidth_kbps: 0
+    jitter_ms: 0
+
+nodes:
+  # Tower + biomeOS orchestrator
+  - name: node-tower
+    image: ubuntu
+    env:
+      ROLE: gaming-tower
+      NODE_ID: "1"
+      PRIMALS: "beardog songbird biomeos"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      BIOMEOS_PORT: "9800"
+      FAMILY_ID: "gaming-mesh"
+
+  # Gaming chimera: ludoSpring + ToadStool (GPU)
+  - name: node-gaming
+    image: ubuntu
+    env:
+      ROLE: gaming-chimera
+      NODE_ID: "2"
+      PRIMALS: "ludospring toadstool"
+      LUDOSPRING_PORT: "9150"
+      TOADSTOOL_PORT: "9400"
+      FAMILY_ID: "gaming-mesh"
+      TOWER_HOST: "node-tower"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      BIOMEOS_PORT: "9800"
+      CHIMERA_MODE: "true"
+
+  # Visualization layer
+  - name: node-viz
+    image: ubuntu
+    env:
+      ROLE: gaming-viz
+      NODE_ID: "3"
+      PRIMALS: "petaltongue"
+      PETALTONGUE_PORT: "9160"
+      FAMILY_ID: "gaming-mesh"
+      TOWER_HOST: "node-tower"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      BIOMEOS_PORT: "9800"

@@ -1,0 +1,83 @@
+metadata:
+  name: ecoprimals-neuromorphic-edge
+  description: "Neuromorphic edge compute: Akida NPU + ToadStool dispatch + NeuralSpring inference — edge AI classification"
+  version: "1.0"
+  tags: ["ecoprimals", "neuromorphic", "akida", "edge", "npu", "ai", "classify", "fieldmouse"]
+  bond_type: covalent
+  source_showcase: "primals/toadstool/showcase/neuromorphic/"
+
+# Neuromorphic edge: models a deployment with hardware NPU (Akida/Coral/Jetson)
+# doing real-time inference on streaming data.
+# Source: primals/toadstool/showcase/neuromorphic/03-akida-llm-intent/, 04-akida-mesh/
+#
+# This is a fieldMouse Edge class: Tower + ToadStool + barraCuda
+# doing on-device classification without full NUCLEUS.
+#
+# Architecture:
+#   Gate (full NUCLEUS) ←BirdSong→ Edge node (Tower chimera + ToadStool + NeuralSpring)
+#
+# Tests:
+#   - ToadStool compute dispatch to NPU vs CPU fallback
+#   - NeuralSpring inference pipeline on constrained hardware
+#   - Streaming data classification (fieldMouse frames → classify → gate)
+#   - Edge-to-gate result propagation with provenance
+
+network:
+  name: ecoprimals-neuromorphic-net
+  subnet: "10.81.0.0/24"
+  preset: home_lan
+  conditions:
+    latency_ms: 2
+    packet_loss_percent: 0.01
+    bandwidth_kbps: 1000000
+    jitter_ms: 1
+
+nodes:
+  # Gate: receives classified results from edge
+  - name: node-gate
+    image: ubuntu
+    env:
+      ROLE: gate-nucleus
+      NODE_ID: "1"
+      PRIMALS: "beardog songbird biomeos nestgate"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      BIOMEOS_PORT: "9800"
+      NESTGATE_PORT: "9300"
+      FAMILY_ID: "neuromorphic-edge"
+
+  # Edge compute node: fieldMouse Edge class
+  - name: node-edge-compute
+    image: ubuntu
+    env:
+      ROLE: fieldmouse-edge
+      NODE_ID: "2"
+      PRIMALS: "beardog songbird toadstool"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      TOADSTOOL_PORT: "9400"
+      FAMILY_ID: "neuromorphic-edge"
+      FIELDMOUSE_CLASS: "edge"
+      FIELDMOUSE_SUBTYPE: "fm-classify-akida"
+      TOWER_HOST: "node-gate"
+      BIOMEOS_PORT: "9800"
+      COMPUTE_TARGET: "npu_fallback_cpu"
+    metadata:
+      docker_args: "--memory=512m --cpus=1.0"
+      memory_limit_mb: 512
+      cpu_limit: 1.0
+
+  # Neural analysis node: processes classification results
+  - name: node-neural-analysis
+    image: ubuntu
+    env:
+      ROLE: neural-analysis
+      NODE_ID: "3"
+      PRIMALS: "neuralspring wetspring"
+      NEURALSPRING_PORT: "9130"
+      WETSPRING_PORT: "9140"
+      FAMILY_ID: "neuromorphic-edge"
+      TOWER_HOST: "node-gate"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      BIOMEOS_PORT: "9800"

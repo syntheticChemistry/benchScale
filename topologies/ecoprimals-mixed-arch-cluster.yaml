@@ -1,0 +1,92 @@
+metadata:
+  name: ecoprimals-mixed-arch-cluster
+  description: "Mixed-architecture cluster: x86_64 and aarch64 nodes in the same lab — tests cross-arch binary dispatch"
+  version: "1.0"
+  tags: ["ecoprimals", "mixed-arch", "x86_64", "aarch64", "cross-arch"]
+  bond_type: covalent
+
+network:
+  name: ecoprimals-mixed-arch-net
+  subnet: "10.77.0.0/24"
+  preset: home_lan
+  conditions:
+    latency_ms: 2
+    packet_loss_percent: 0.01
+    bandwidth_kbps: 1000000
+    jitter_ms: 1
+
+# Mixed-arch cluster: some nodes are x86_64, some are aarch64 (via qemu).
+# All share the same family seed and Docker network.
+# Tests: cross-arch binary dispatch from plasmidBin, musl portability,
+# identical crypto output across architectures, BirdSong mesh works
+# regardless of underlying arch.
+
+nodes:
+  # x86_64 Tower (native)
+  - name: node-tower-x86
+    image: ubuntu
+    env:
+      ROLE: tower-substrate
+      NODE_ID: "1"
+      PRIMALS: "beardog songbird biomeos"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      BIOMEOS_PORT: "9800"
+      FAMILY_ID: "mixed-arch-cluster"
+      DEPLOY_ARCH: "x86_64"
+    metadata:
+      platform: "linux/amd64"
+
+  # aarch64 Tower (qemu-emulated)
+  - name: node-tower-arm64
+    image: ubuntu
+    env:
+      ROLE: tower-substrate
+      NODE_ID: "2"
+      PRIMALS: "beardog songbird"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      FAMILY_ID: "mixed-arch-cluster"
+      DEPLOY_ARCH: "aarch64"
+      TOWER_HOST: "node-tower-x86"
+      BIOMEOS_PORT: "9800"
+    metadata:
+      platform: "linux/arm64"
+
+  # x86_64 Spring node
+  - name: node-springs-x86
+    image: ubuntu
+    env:
+      ROLE: spring-primals
+      NODE_ID: "3"
+      PRIMALS: "groundspring healthspring_primal neuralspring"
+      GROUNDSPRING_PORT: "9110"
+      HEALTHSPRING_PRIMAL_PORT: "9120"
+      NEURALSPRING_PORT: "9130"
+      FAMILY_ID: "mixed-arch-cluster"
+      DEPLOY_ARCH: "x86_64"
+      TOWER_HOST: "node-tower-x86"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      BIOMEOS_PORT: "9800"
+    metadata:
+      platform: "linux/amd64"
+
+  # aarch64 Spring node (mobile simulation)
+  - name: node-springs-arm64
+    image: ubuntu
+    env:
+      ROLE: spring-primals
+      NODE_ID: "4"
+      PRIMALS: "groundspring healthspring_primal"
+      GROUNDSPRING_PORT: "9110"
+      HEALTHSPRING_PRIMAL_PORT: "9120"
+      FAMILY_ID: "mixed-arch-cluster"
+      DEPLOY_ARCH: "aarch64"
+      PRIMAL_TRANSPORT: "tcp"
+      TOWER_HOST: "node-tower-x86"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      BIOMEOS_PORT: "9800"
+    metadata:
+      platform: "linux/arm64"

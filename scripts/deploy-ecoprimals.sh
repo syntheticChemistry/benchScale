@@ -27,6 +27,7 @@ PLASMIDBIN_DIR=""
 GRAPHS_DIR=""
 FAMILY_SEED=""
 DEPLOY_DIR="/opt/ecoprimals"
+DEPLOY_ARCH="x86_64"
 
 usage() {
     cat << EOF
@@ -42,6 +43,7 @@ Optional Arguments:
     --graphs <dir>          Path to primalSpring/graphs/ (default: auto-detect)
     --seed <string>         Family seed for primal identity (default: lab name)
     --deploy-dir <path>     Remote install path (default: $DEPLOY_DIR)
+    --arch <arch>           Target architecture: x86_64 or aarch64 (default: x86_64)
     --help                  Show this help message
 
 Examples:
@@ -59,6 +61,7 @@ while [[ $# -gt 0 ]]; do
         --graphs) GRAPHS_DIR="$2"; shift 2 ;;
         --seed) FAMILY_SEED="$2"; shift 2 ;;
         --deploy-dir) DEPLOY_DIR="$2"; shift 2 ;;
+        --arch) DEPLOY_ARCH="$2"; shift 2 ;;
         --help) usage ;;
         *) echo -e "${RED}Error: Unknown option $1${NC}"; usage ;;
     esac
@@ -117,6 +120,7 @@ log_info "plasmidBin:  $PLASMIDBIN_DIR"
 log_info "Graphs:      ${GRAPHS_DIR:-none}"
 log_info "Family seed: $FAMILY_SEED"
 log_info "Deploy dir:  $DEPLOY_DIR"
+log_info "Target arch: $DEPLOY_ARCH"
 echo ""
 
 # ── Container helpers ────────────────────────────────────────────────────────
@@ -186,11 +190,20 @@ deploy_node() {
         return
     fi
 
+    # Determine target architecture for binary resolution
+    local target_arch="${DEPLOY_ARCH:-x86_64}"
+    local arch_subdir=""
+    if [ "$target_arch" = "aarch64" ]; then
+        arch_subdir="/aarch64"
+    fi
+
     # Copy binaries for each primal this node runs
     for primal in $primals_env; do
         local bin_path=""
-        # Check multiple known binary locations in plasmidBin
+        # Check arch-specific paths first, then generic locations
         for candidate in \
+            "$PLASMIDBIN_DIR/primals${arch_subdir}/$primal" \
+            "$PLASMIDBIN_DIR/springs${arch_subdir}/$primal" \
             "$PLASMIDBIN_DIR/$primal" \
             "$PLASMIDBIN_DIR/primals/$primal" \
             "$PLASMIDBIN_DIR/springs/$primal" \

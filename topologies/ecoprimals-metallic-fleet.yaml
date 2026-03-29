@@ -1,0 +1,95 @@
+metadata:
+  name: ecoprimals-metallic-fleet
+  description: "Metallic bond: delocalized electron sea — 5 identical nodes pooling Tower resources for global optimization"
+  version: "1.0"
+  tags: ["ecoprimals", "metallic", "fleet", "pool", "datacenter", "gpu"]
+  bond_type: metallic
+
+network:
+  name: ecoprimals-metallic-net
+  subnet: "10.74.0.0/24"
+  preset: basement_lan
+  conditions:
+    latency_ms: 0.5
+    packet_loss_percent: 0.0
+    bandwidth_kbps: 10000000
+    jitter_ms: 0.1
+
+# Metallic bond: organizational fleet sharing a resource pool.
+# All nodes share the same family seed but act as a distributed pool.
+# biomeOS routes capability requests to the best available node.
+# Tests: Plasmodium-style aggregation, ToadStool compute dispatch,
+# load balancing across identical gates, no single coordinator.
+
+nodes:
+  - name: node-fleet-1
+    image: ubuntu
+    env:
+      ROLE: fleet-member
+      NODE_ID: "1"
+      PRIMALS: "beardog songbird biomeos toadstool"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      BIOMEOS_PORT: "9800"
+      TOADSTOOL_PORT: "9400"
+      FAMILY_ID: "metallic-fleet-omega"
+      BOND_TYPE: "metallic"
+      FLEET_ROLE: "coordinator"
+
+  - name: node-fleet-2
+    image: ubuntu
+    env:
+      ROLE: fleet-member
+      NODE_ID: "2"
+      PRIMALS: "beardog songbird toadstool"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      TOADSTOOL_PORT: "9400"
+      FAMILY_ID: "metallic-fleet-omega"
+      BOND_TYPE: "metallic"
+      TOWER_HOST: "node-fleet-1"
+      BIOMEOS_PORT: "9800"
+
+  - name: node-fleet-3
+    image: ubuntu
+    env:
+      ROLE: fleet-member
+      NODE_ID: "3"
+      PRIMALS: "beardog songbird toadstool"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      TOADSTOOL_PORT: "9400"
+      FAMILY_ID: "metallic-fleet-omega"
+      BOND_TYPE: "metallic"
+      TOWER_HOST: "node-fleet-1"
+      BIOMEOS_PORT: "9800"
+
+  - name: node-fleet-4
+    image: ubuntu
+    env:
+      ROLE: fleet-member
+      NODE_ID: "4"
+      PRIMALS: "beardog songbird groundspring hotspring_primal"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      GROUNDSPRING_PORT: "9110"
+      HOTSPRING_PRIMAL_PORT: "9160"
+      FAMILY_ID: "metallic-fleet-omega"
+      BOND_TYPE: "metallic"
+      TOWER_HOST: "node-fleet-1"
+      BIOMEOS_PORT: "9800"
+
+  - name: node-fleet-5
+    image: ubuntu
+    env:
+      ROLE: fleet-member
+      NODE_ID: "5"
+      PRIMALS: "beardog songbird neuralspring wetspring"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      NEURALSPRING_PORT: "9130"
+      WETSPRING_PORT: "9140"
+      FAMILY_ID: "metallic-fleet-omega"
+      BOND_TYPE: "metallic"
+      TOWER_HOST: "node-fleet-1"
+      BIOMEOS_PORT: "9800"

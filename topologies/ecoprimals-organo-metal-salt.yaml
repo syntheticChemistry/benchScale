@@ -1,0 +1,124 @@
+metadata:
+  name: ecoprimals-organo-metal-salt
+  description: "OrganoMetalSalt complex: covalent core (3 nodes) + ionic edge (1 node, different family) + weak public (1 node, no family)"
+  version: "1.0"
+  tags: ["ecoprimals", "organo-metal-salt", "complex", "multi-bond", "multi-family"]
+  bond_type: organo_metal_salt
+
+network:
+  name: ecoprimals-oms-net
+  subnet: "10.75.0.0/24"
+
+# OrganoMetalSalt: the most complex bonding model.
+# Models a real-world deployment: research lab (covalent) sharing
+# compute with a university (ionic contract) while exposing a
+# public API endpoint (weak/zero-trust).
+#
+# Covalent core: nodes 1-3 share family seed, full mutual trust
+# Ionic edge: node 4 has different seed, contract-based access
+# Weak public: node 5 has no family seed, zero-trust endpoint
+
+nodes:
+  # ── Covalent core (Family Alpha) ─────────────────────────────────────
+  - name: node-core-tower
+    image: ubuntu
+    env:
+      ROLE: core-tower
+      NODE_ID: "1"
+      PRIMALS: "beardog songbird biomeos nestgate"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      BIOMEOS_PORT: "9800"
+      NESTGATE_PORT: "9300"
+      FAMILY_ID: "oms-core-alpha"
+      BOND_TYPE: "covalent"
+    network_conditions:
+      preset: basement_lan
+      latency_ms: 0.5
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 10000000
+      jitter_ms: 0.1
+
+  - name: node-core-compute
+    image: ubuntu
+    env:
+      ROLE: core-compute
+      NODE_ID: "2"
+      PRIMALS: "beardog songbird toadstool squirrel"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      TOADSTOOL_PORT: "9400"
+      SQUIRREL_PORT: "9500"
+      FAMILY_ID: "oms-core-alpha"
+      BOND_TYPE: "covalent"
+      TOWER_HOST: "node-core-tower"
+      BIOMEOS_PORT: "9800"
+    network_conditions:
+      preset: basement_lan
+      latency_ms: 0.5
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 10000000
+      jitter_ms: 0.1
+
+  - name: node-core-springs
+    image: ubuntu
+    env:
+      ROLE: core-springs
+      NODE_ID: "3"
+      PRIMALS: "groundspring healthspring_primal neuralspring wetspring"
+      GROUNDSPRING_PORT: "9110"
+      HEALTHSPRING_PRIMAL_PORT: "9120"
+      NEURALSPRING_PORT: "9130"
+      WETSPRING_PORT: "9140"
+      FAMILY_ID: "oms-core-alpha"
+      BOND_TYPE: "covalent"
+      TOWER_HOST: "node-core-tower"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      BIOMEOS_PORT: "9800"
+    network_conditions:
+      preset: home_lan
+      latency_ms: 2
+      packet_loss_percent: 0.01
+      bandwidth_kbps: 1000000
+      jitter_ms: 1
+
+  # ── Ionic edge (Family Beta — university contract) ───────────────────
+  - name: node-ionic-uni
+    image: ubuntu
+    env:
+      ROLE: ionic-partner
+      NODE_ID: "4"
+      PRIMALS: "beardog songbird toadstool"
+      BEARDOG_PORT: "9101"
+      SONGBIRD_PORT: "9201"
+      TOADSTOOL_PORT: "9401"
+      FAMILY_ID: "oms-ionic-beta"
+      BOND_TYPE: "ionic"
+      TOWER_HOST: "node-core-tower"
+      BIOMEOS_PORT: "9800"
+    network_conditions:
+      preset: friend_wan
+      latency_ms: 50
+      packet_loss_percent: 0.5
+      bandwidth_kbps: 100000
+      jitter_ms: 10
+
+  # ── Weak public endpoint (no family seed) ────────────────────────────
+  - name: node-weak-public
+    image: ubuntu
+    env:
+      ROLE: weak-public-api
+      NODE_ID: "5"
+      PRIMALS: "songbird"
+      SONGBIRD_PORT: "9202"
+      FAMILY_ID: ""
+      BOND_TYPE: "weak"
+      PRIMAL_TRANSPORT: "tcp"
+      TOWER_HOST: "node-core-tower"
+    network_conditions:
+      preset: mobile_cell
+      latency_ms: 100
+      packet_loss_percent: 2.0
+      bandwidth_kbps: 10000
+      jitter_ms: 30

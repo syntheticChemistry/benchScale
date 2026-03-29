@@ -1,0 +1,79 @@
+metadata:
+  name: ecoprimals-ionic-2family
+  description: "Ionic bond: two separate family seeds sharing capabilities across a contract boundary"
+  version: "1.0"
+  tags: ["ecoprimals", "ionic", "cross-family", "metered", "contract"]
+  bond_type: ionic
+
+network:
+  name: ecoprimals-ionic-net
+  subnet: "10.73.0.0/24"
+  preset: home_lan
+  conditions:
+    latency_ms: 2
+    packet_loss_percent: 0.01
+    bandwidth_kbps: 1000000
+    jitter_ms: 1
+
+# Ionic bond: two NUCLEUS instances with different family seeds.
+# BearDog on each side cannot decrypt the other's BirdSong beacons.
+# Capability sharing requires explicit contract (API key / mTLS).
+# Tests: cross-family crypto verification, metered capability calls,
+# route.register with ionic trust, capability.call with gate routing.
+
+nodes:
+  # Family A: research lab Tower
+  - name: node-lab-tower
+    image: ubuntu
+    env:
+      ROLE: tower-substrate
+      NODE_ID: "1"
+      PRIMALS: "beardog songbird biomeos"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      BIOMEOS_PORT: "9800"
+      FAMILY_ID: "family-alpha-lab"
+      BOND_TYPE: "ionic"
+
+  # Family A: lab compute node
+  - name: node-lab-compute
+    image: ubuntu
+    env:
+      ROLE: compute-node
+      NODE_ID: "2"
+      PRIMALS: "toadstool groundspring"
+      TOADSTOOL_PORT: "9400"
+      GROUNDSPRING_PORT: "9110"
+      FAMILY_ID: "family-alpha-lab"
+      TOWER_HOST: "node-lab-tower"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      BIOMEOS_PORT: "9800"
+
+  # Family B: university HPC Tower (different seed)
+  - name: node-uni-tower
+    image: ubuntu
+    env:
+      ROLE: tower-substrate
+      NODE_ID: "3"
+      PRIMALS: "beardog songbird biomeos"
+      BEARDOG_PORT: "9101"
+      SONGBIRD_PORT: "9201"
+      BIOMEOS_PORT: "9801"
+      FAMILY_ID: "family-beta-university"
+      BOND_TYPE: "ionic"
+
+  # Family B: university spring node
+  - name: node-uni-springs
+    image: ubuntu
+    env:
+      ROLE: spring-primals
+      NODE_ID: "4"
+      PRIMALS: "neuralspring wetspring"
+      NEURALSPRING_PORT: "9130"
+      WETSPRING_PORT: "9140"
+      FAMILY_ID: "family-beta-university"
+      TOWER_HOST: "node-uni-tower"
+      BEARDOG_PORT: "9101"
+      SONGBIRD_PORT: "9201"
+      BIOMEOS_PORT: "9801"

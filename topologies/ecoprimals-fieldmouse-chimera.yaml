@@ -1,0 +1,91 @@
+metadata:
+  name: ecoprimals-fieldmouse-chimera
+  description: "fieldMouse deployment class: minimal Tower chimera (BearDog+Songbird fused), no biomeOS, Alpine substrate"
+  version: "1.0"
+  tags: ["ecoprimals", "fieldmouse", "chimera", "embedded", "edge", "iot", "sensor", "risc-v", "minimal"]
+  bond_type: covalent
+  deployment_class: fieldmouse
+
+# fieldMouse is NOT a primal — it is a deployment class.
+# The smallest deployable unit in ecoPrimals: a chimera binary
+# (multiple primals fused into a single process, one socket, merged JSON-RPC namespace).
+#
+# No biomeOS runs on a fieldMouse. Gates discover fieldMouse nodes
+# on the mesh via BirdSong beacons and treat them as remote capability providers.
+#
+# Hierarchy: NUCLEUS → Niche → fieldMouse
+# If biomeOS is running, it's a Niche. If not, it's a fieldMouse.
+#
+# This topology models:
+#   - fm-soil (RISC-V/Pi Zero soil sensor)
+#   - fm-pipette (lab instrument data streamer)
+#   - fm-classify (Akida/Coral edge classifier)
+# All connect to a gate that runs the full provenance trio.
+
+network:
+  name: ecoprimals-fieldmouse-net
+  subnet: "10.78.0.0/24"
+  preset: home_lan
+  conditions:
+    latency_ms: 2
+    packet_loss_percent: 0.01
+    bandwidth_kbps: 1000000
+    jitter_ms: 1
+
+nodes:
+  # Gate: full NUCLEUS that receives fieldMouse data
+  - name: node-gate
+    image: ubuntu
+    env:
+      ROLE: gate-nucleus
+      NODE_ID: "1"
+      PRIMALS: "beardog songbird biomeos nestgate"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      BIOMEOS_PORT: "9800"
+      NESTGATE_PORT: "9300"
+      FAMILY_ID: "fieldmouse-lab"
+
+  # fieldMouse sensor: Tower chimera on Alpine (no biomeOS)
+  # Single binary, single process, merged JSON-RPC namespace:
+  #   crypto.sign → bearDog, mesh.beacon → songBird
+  - name: node-fieldmouse-sensor
+    image: alpine
+    env:
+      ROLE: fieldmouse-sensor
+      NODE_ID: "2"
+      PRIMALS: "beardog songbird"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      FAMILY_ID: "fieldmouse-lab"
+      FIELDMOUSE_CLASS: "sensor"
+      FIELDMOUSE_SUBTYPE: "fm-soil"
+      TOWER_HOST: "node-gate"
+      CHIMERA_MODE: "true"
+    metadata:
+      docker_args: "--memory=128m --cpus=0.25"
+      memory_limit_mb: 128
+      cpu_limit: 0.25
+      deployment_class: fieldmouse
+
+  # fieldMouse store: Tower + NestGate chimera
+  # Adds content-addressed local cache + mesh sync
+  - name: node-fieldmouse-store
+    image: alpine
+    env:
+      ROLE: fieldmouse-store
+      NODE_ID: "3"
+      PRIMALS: "beardog songbird nestgate"
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      NESTGATE_PORT: "9300"
+      FAMILY_ID: "fieldmouse-lab"
+      FIELDMOUSE_CLASS: "store"
+      FIELDMOUSE_SUBTYPE: "fm-pipette"
+      TOWER_HOST: "node-gate"
+      CHIMERA_MODE: "true"
+    metadata:
+      docker_args: "--memory=256m --cpus=0.5"
+      memory_limit_mb: 256
+      cpu_limit: 0.5
+      deployment_class: fieldmouse
