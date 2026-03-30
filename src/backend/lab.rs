@@ -439,14 +439,17 @@ impl LabHygiene {
         Ok(total)
     }
 
-    /// Kill a process by PID
+    /// Kill a process by PID (no sudo — uses libc::kill directly).
+    ///
+    /// Works for same-user processes. For libvirt-managed QEMU processes,
+    /// callers should prefer `virsh destroy` (via `destroy_node`) which
+    /// handles the privilege boundary through the libvirt daemon.
     async fn kill_process(&self, pid: u32) -> Result<()> {
-        Command::new("sudo")
-            .arg("kill")
-            .arg("-9")
-            .arg(pid.to_string())
-            .output()
-            .context(format!("Failed to kill process {}", pid))?;
+        let ret = unsafe { libc::kill(pid as i32, libc::SIGKILL) };
+        if ret != 0 {
+            let err = std::io::Error::last_os_error();
+            anyhow::bail!("kill({}, SIGKILL) failed: {}", pid, err);
+        }
         Ok(())
     }
 }

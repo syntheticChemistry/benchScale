@@ -32,115 +32,68 @@ pub fn capture_serial_console(vm_name: &str) -> Result<String> {
     }
 }
 
-/// Extracts systemd journal from a VM disk image
-pub fn extract_journal_from_disk(disk_path: &Path) -> Result<String> {
-    info!("📖 Extracting systemd journal from disk: {:?}", disk_path);
-    
-    // Create temporary mount point
-    let secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .context("system clock is before UNIX epoch")?
-        .as_secs();
-    let mount_point = std::env::temp_dir().join(format!("vm-diag-{secs}"));
+/// Extracts systemd journal from a VM via SSH (no root / guestmount needed).
+///
+/// Falls back to reading `/var/log/cloud-init-output.log` when journalctl
+/// is unavailable. If SSH is unreachable (VM crashed hard), returns a
+/// descriptive message instead of failing.
+pub fn extract_journal_via_ssh(vm_name: &str) -> Result<String> {
+    info!("Extracting journal from VM '{}' via SSH", vm_name);
 
-    std::fs::create_dir_all(&mount_point)
-        .context("Failed to create mount point")?;
+    let ip = get_vm_ip_from_virsh(vm_name);
+    let Some(ip) = ip else {
+        return Ok("Journal unavailable: could not determine VM IP".to_string());
+    };
 
-    info!("   📁 Mount point: {:?}", mount_point);
-
-    let disk_path_str = disk_path
-        .to_str()
-        .context("disk path is not valid UTF-8")?;
-    let mount_point_str = mount_point
-        .to_str()
-        .context("mount point path is not valid UTF-8")?;
-
-    // Find the partition with the root filesystem
-    // Use guestmount (libguestfs) to mount the qcow2 image
-    info!("   🔍 Mounting disk image (this may take a moment)...");
-    let mount_output = Command::new("guestmount")
-        .args([
-            "-a", disk_path_str,
-            "-m", "/dev/sda1",  // Usually the first partition
-            "--ro",              // Read-only
-            mount_point_str,
-        ])
-        .output()
-        .context("Failed to mount disk image")?;
-
-    if !mount_output.status.success() {
-        // Try alternative partition naming
-        let mount_output = Command::new("guestmount")
+    let users = ["ubuntu", "reagent", "builder", "cosmic"];
+    for user in users {
+        let addr = format!("{}@{}", user, ip);
+        let output = Command::new("ssh")
             .args([
-                "-a", disk_path_str,
-                "-m", "/dev/vda1",
-                "--ro",
-                mount_point_str,
-            ])
-            .output()
-            .context("Failed to mount disk image (second attempt)")?;
-        
-        if !mount_output.status.success() {
-            warn!("   ⚠️  Could not mount disk: {}", 
-                String::from_utf8_lossy(&mount_output.stderr));
-            return Ok(String::from("Could not mount disk image"));
-        }
-    }
-    
-    info!("   ✅ Disk mounted successfully");
-    
-    // Extract journal logs
-    let journal_dir = mount_point.join("var/log/journal");
-    let mut journal_content = String::new();
-    
-    if journal_dir.exists() {
-        info!("   📊 Reading systemd journal...");
-        let journal_dir_str = journal_dir
-            .to_str()
-            .context("journal directory path is not valid UTF-8")?;
-        // Use journalctl to read the journal from the mounted filesystem
-        let journal_output = Command::new("journalctl")
-            .args([
-                "--directory", journal_dir_str,
-                "--no-pager",
-                "--boot", "-0",  // Last boot
-                "--priority", "warning",  // Warning and above
-                "--lines", "200",  // Last 200 lines
+                "-o", "StrictHostKeyChecking=no",
+                "-o", "UserKnownHostsFile=/dev/null",
+                "-o", "ConnectTimeout=5",
+                "-o", "BatchMode=yes",
+                &addr,
+                "journalctl --no-pager --boot -0 --priority warning --lines 200 2>/dev/null || cat /var/log/cloud-init-output.log 2>/dev/null || echo 'no journal available'",
             ])
             .output();
-        
-        match journal_output {
-            Ok(output) if output.status.success() => {
-                journal_content = String::from_utf8_lossy(&output.stdout).to_string();
-                info!("   ✅ Extracted {} bytes of journal logs", journal_content.len());
+
+        if let Ok(out) = output {
+            if out.status.success() {
+                let text = String::from_utf8_lossy(&out.stdout).to_string();
+                if !text.trim().is_empty() {
+                    info!("Extracted {} bytes of journal via SSH (user={})", text.len(), user);
+                    return Ok(text);
+                }
             }
-            _ => {
-                warn!("   ⚠️  Could not read journal with journalctl");
-            }
-        }
-    } else {
-        warn!("   ⚠️  Journal directory not found at {:?}", journal_dir);
-    }
-    
-    // Unmount
-    info!("   🧹 Unmounting disk...");
-    let unmount_output = Command::new("guestunmount")
-        .arg(mount_point_str)
-        .output();
-    
-    match unmount_output {
-        Ok(output) if output.status.success() => {
-            info!("   ✅ Disk unmounted");
-        }
-        _ => {
-            warn!("   ⚠️  Could not unmount disk cleanly");
         }
     }
-    
-    // Clean up mount point
-    let _ = std::fs::remove_dir(&mount_point);
-    
-    Ok(journal_content)
+
+    Ok("Journal unavailable: SSH not reachable on any known user".to_string())
+}
+
+/// Helper: resolve a VM's IP from virsh DHCP leases (no sudo needed).
+fn get_vm_ip_from_virsh(vm_name: &str) -> Option<String> {
+    let output = Command::new("virsh")
+        .args(["domifaddr", vm_name])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let text = String::from_utf8_lossy(&output.stdout);
+    for line in text.lines() {
+        if line.contains("ipv4") {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if let Some(ip_mask) = parts.last() {
+                return ip_mask.split('/').next().map(String::from);
+            }
+        }
+    }
+    None
 }
 
 /// Gets boot parameters and kernel command line
@@ -195,14 +148,18 @@ pub struct BootDiagnosticsReport {
 }
 
 impl BootDiagnosticsReport {
-    /// Generate a comprehensive diagnostic report for a failed VM boot
-    pub async fn generate(vm_name: &str, disk_path: &Path) -> Result<Self> {
-        info!("🔬 Generating comprehensive boot diagnostics for '{}'", vm_name);
+    /// Generate a comprehensive diagnostic report for a failed VM boot.
+    ///
+    /// Uses SSH-based journal extraction (no root / guestmount needed).
+    /// The `_disk_path` parameter is kept for API compatibility but is no
+    /// longer used — journal logs are pulled via SSH before the VM is torn down.
+    pub async fn generate(vm_name: &str, _disk_path: &Path) -> Result<Self> {
+        info!("Generating comprehensive boot diagnostics for '{}'", vm_name);
         
         let serial_console = capture_serial_console(vm_name)
             .unwrap_or_else(|e| format!("Failed to capture console: {}", e));
         
-        let journal_logs = extract_journal_from_disk(disk_path)
+        let journal_logs = extract_journal_via_ssh(vm_name)
             .unwrap_or_else(|e| format!("Failed to extract journal: {}", e));
         
         let boot_parameters = get_boot_parameters(vm_name)

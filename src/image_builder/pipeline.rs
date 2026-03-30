@@ -43,8 +43,8 @@ pub(super) async fn detect_ssh_user(ip: &str) -> Result<String> {
 
 /// Get actual IP address from virsh (not the allocated one)
 pub(super) async fn get_actual_vm_ip(vm_name: &str) -> Result<String> {
-    let output = tokio::process::Command::new("sudo")
-        .args(["virsh", "domifaddr", vm_name])
+    let output = tokio::process::Command::new("virsh")
+        .args(["domifaddr", vm_name])
         .output()
         .await
         .map_err(|e| Error::Backend(format!("Failed to get VM IP: {}", e)))?;
@@ -488,8 +488,8 @@ impl ImageBuilder {
     }
 
     pub(super) fn get_vnc_display(vm_name: &str) -> Result<String> {
-        let output = std::process::Command::new("sudo")
-            .args(["virsh", "vncdisplay", vm_name])
+        let output = std::process::Command::new("virsh")
+            .args(["vncdisplay", vm_name])
             .output()
             .map_err(|e| Error::Backend(format!("Failed to get VNC display: {}", e)))?;
 
@@ -504,26 +504,9 @@ impl ImageBuilder {
             return Ok(display);
         }
 
-        debug!("Trying VNC detection without sudo...");
-        let output2 = std::process::Command::new("virsh")
-            .args(["vncdisplay", vm_name])
-            .output();
-
-        if let Ok(out) = output2
-            && out.status.success() {
-                let display = String::from_utf8_lossy(&out.stdout).trim().to_string();
-                if !display.is_empty() {
-                    if let Some(num) = display.strip_prefix(':')
-                        && let Ok(n) = num.parse::<u16>() {
-                            return Ok(format!("localhost:{}", 5900 + n));
-                        }
-                    return Ok(display);
-                }
-            }
-
         debug!("Trying to parse VM XML for VNC port...");
-        let xml_output = std::process::Command::new("sudo")
-            .args(["virsh", "dumpxml", vm_name])
+        let xml_output = std::process::Command::new("virsh")
+            .args(["dumpxml", vm_name])
             .output();
 
         if let Ok(xml) = xml_output
@@ -587,15 +570,15 @@ impl ImageBuilder {
             .await
             .map_err(|e| Error::Backend(format!("Failed to copy template: {}", e)))?;
 
-        tokio::process::Command::new("sudo")
-            .args(["chown", "libvirt-qemu:kvm", &template_path])
-            .output()
-            .await?;
-
-        tokio::process::Command::new("sudo")
-            .args(["chmod", "644", &template_path])
-            .output()
-            .await?;
+        // Ensure template is group-readable (libvirt group can access).
+        // No sudo needed: /var/lib/libvirt/images is 775 root:libvirt
+        // and the user is in the libvirt group.
+        if let Err(e) = std::fs::set_permissions(
+            &template_path,
+            std::os::unix::fs::PermissionsExt::from_mode(0o644),
+        ) {
+            warn!("Could not set template permissions: {}", e);
+        }
 
         info!("Template saved: {}", template_path);
 
