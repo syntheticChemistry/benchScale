@@ -116,6 +116,12 @@ pub struct BenchScaleConfig {
 }
 
 impl BenchScaleConfig {
+    /// Storage settings ([`StorageConfig::vm_images_dir_or_default`] / [`StorageConfig::images_dir`]).
+    #[must_use]
+    pub fn storage(&self) -> &StorageConfig {
+        &self.storage
+    }
+
     /// Load configuration from a YAML file
     ///
     /// # Examples

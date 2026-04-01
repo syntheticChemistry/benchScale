@@ -10,6 +10,7 @@
 //!
 //! Run with: cargo run --example build_cosmic_image --features libvirt
 
+use benchscale::config::BenchScaleConfig;
 use benchscale::{BuildStep, CloudInit, ImageBuilder};
 use std::path::PathBuf;
 
@@ -98,7 +99,10 @@ async fn main() -> anyhow::Result<()> {
         // Step 6: Save intermediate state (before reboot)
         .add_step(BuildStep::SaveIntermediate {
             name: "before-gui-reboot".to_string(),
-            path: PathBuf::from("/var/lib/libvirt/images/cosmic-intermediate.qcow2"),
+            path: BenchScaleConfig::default()
+                .storage()
+                .images_dir()
+                .join("cosmic-intermediate.qcow2"),
         })
 
         // Step 7: Reboot to start GUI

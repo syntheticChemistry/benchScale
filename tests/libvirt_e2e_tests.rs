@@ -11,8 +11,8 @@
 
 #[cfg(feature = "libvirt")]
 use benchscale::backend::{Backend, LibvirtBackend};
+use benchscale::config::BenchScaleConfig;
 use benchscale::CloudInit;
-use std::path::Path;
 
 /// Helper to check if libvirt is available
 async fn is_libvirt_available() -> bool {
@@ -46,7 +46,10 @@ async fn test_create_single_vm_with_ip_pool() {
     let cloud_init = create_test_cloud_init();
 
     // Check if base image exists
-    let base_image = Path::new("/var/lib/libvirt/images/ubuntu-22.04-server-cloudimg-amd64.img");
+    let base_image = BenchScaleConfig::default()
+        .storage()
+        .images_dir()
+        .join("ubuntu-22.04-server-cloudimg-amd64.img");
     if !base_image.exists() {
         println!("Skipping: base image not found at {:?}", base_image);
         return;
@@ -58,7 +61,7 @@ async fn test_create_single_vm_with_ip_pool() {
     let vm_result: Result<_, _> = backend
         .create_desktop_vm(
             "benchscale-test-ip-pool",
-            base_image,
+            base_image.as_path(),
             &cloud_init,
             1024,
             1,
@@ -96,7 +99,10 @@ async fn test_concurrent_vm_creation_no_ip_conflict() {
     let backend = LibvirtBackend::new().expect("Failed to create backend");
     let cloud_init = create_test_cloud_init();
 
-    let base_image = Path::new("/var/lib/libvirt/images/ubuntu-22.04-server-cloudimg-amd64.img");
+    let base_image = BenchScaleConfig::default()
+        .storage()
+        .images_dir()
+        .join("ubuntu-22.04-server-cloudimg-amd64.img");
     if !base_image.exists() {
         println!("Skipping: base image not found");
         return;
@@ -107,7 +113,7 @@ async fn test_concurrent_vm_creation_no_ip_conflict() {
     // Create two VMs concurrently
     let vm1_future = backend.create_desktop_vm(
         "benchscale-concurrent-1",
-        base_image,
+        base_image.as_path(),
         &cloud_init,
         1024,
         1,
@@ -115,7 +121,7 @@ async fn test_concurrent_vm_creation_no_ip_conflict() {
     );
     let vm2_future = backend.create_desktop_vm(
         "benchscale-concurrent-2",
-        base_image,
+        base_image.as_path(),
         &cloud_init,
         1024,
         1,
@@ -162,7 +168,10 @@ async fn test_ip_release_on_delete() {
     let backend = LibvirtBackend::new().expect("Failed to create backend");
     let cloud_init = create_test_cloud_init();
 
-    let base_image = Path::new("/var/lib/libvirt/images/ubuntu-22.04-server-cloudimg-amd64.img");
+    let base_image = BenchScaleConfig::default()
+        .storage()
+        .images_dir()
+        .join("ubuntu-22.04-server-cloudimg-amd64.img");
     if !base_image.exists() {
         println!("Skipping: base image not found");
         return;
@@ -174,7 +183,7 @@ async fn test_ip_release_on_delete() {
     let vm: benchscale::backend::NodeInfo = backend
         .create_desktop_vm(
             "benchscale-test-release",
-            base_image,
+            base_image.as_path(),
             &cloud_init,
             1024,
             1,
@@ -196,7 +205,7 @@ async fn test_ip_release_on_delete() {
     let vm2: benchscale::backend::NodeInfo = backend
         .create_desktop_vm(
             "benchscale-test-release2",
-            base_image,
+            base_image.as_path(),
             &cloud_init,
             1024,
             1,

@@ -168,7 +168,15 @@ impl StorageConfig {
     pub fn vm_images_dir_or_default(&self) -> PathBuf {
         self.vm_images_dir
             .clone()
-            .unwrap_or_else(|| PathBuf::from("/var/lib/libvirt/images"))
+            .unwrap_or_else(|| crate::constants::paths::default_system_vm_images_dir())
+    }
+
+    /// Resolved VM images directory (explicit config or system default).
+    ///
+    /// Same as [`Self::vm_images_dir_or_default`]; use with [`crate::config::BenchScaleConfig::storage`].
+    #[inline]
+    pub fn images_dir(&self) -> PathBuf {
+        self.vm_images_dir_or_default()
     }
 
     /// Get base_images_dir or fallback to vm_images_dir
@@ -176,7 +184,7 @@ impl StorageConfig {
         self.base_images_dir
             .clone()
             .or_else(|| self.vm_images_dir.clone())
-            .unwrap_or_else(|| PathBuf::from("/var/lib/libvirt/images"))
+            .unwrap_or_else(|| crate::constants::paths::default_system_vm_images_dir())
     }
 
     /// Get intermediate_dir or fallback
@@ -337,7 +345,7 @@ mod tests {
         let config = StorageConfig::default();
         assert_eq!(
             config.vm_images_dir_or_default(),
-            PathBuf::from("/var/lib/libvirt/images")
+            crate::constants::paths::default_system_vm_images_dir()
         );
 
         let config = StorageConfig {
@@ -351,12 +359,12 @@ mod tests {
     fn test_base_images_dir_or_default() {
         // Falls back to vm_images_dir
         let config = StorageConfig {
-            vm_images_dir: Some(PathBuf::from("/var/lib/libvirt/images")),
+            vm_images_dir: Some(crate::constants::paths::default_system_vm_images_dir()),
             ..Default::default()
         };
         assert_eq!(
             config.base_images_dir_or_default(),
-            PathBuf::from("/var/lib/libvirt/images")
+            crate::constants::paths::default_system_vm_images_dir()
         );
 
         // Uses explicit base_images_dir
@@ -372,7 +380,7 @@ mod tests {
         let config = StorageConfig::default();
         assert_eq!(
             config.intermediate_dir_or_default(),
-            PathBuf::from("/var/lib/libvirt/images/intermediate")
+            crate::constants::paths::default_system_vm_images_dir().join("intermediate")
         );
 
         let config = StorageConfig {

@@ -15,6 +15,14 @@ use std::path::PathBuf;
 use std::process::Command;
 use tracing::{error, info, warn};
 
+#[cfg(feature = "libvirt")]
+use virt::error::ErrorNumber;
+
+#[cfg(feature = "libvirt")]
+fn libvirt_connect() -> anyhow::Result<virt::connect::Connect> {
+    Ok(virt::connect::Connect::open(Some("qemu:///system"))?)
+}
+
 /// VM cleanup manager
 pub struct VmCleanup {
     image_dir: PathBuf,
@@ -39,38 +47,96 @@ impl VmCleanup {
         info!("🧹 Cleaning up VM: {}", vm_name);
 
         // Try graceful shutdown first
-        let _ = Command::new("virsh")
-            .args(["shutdown", vm_name])
-            .output()
-            .context("Failed to gracefully shutdown VM");
+        #[cfg(feature = "libvirt")]
+        {
+            if let Ok(conn) = libvirt_connect() {
+                if let Ok(domain) = virt::domain::Domain::lookup_by_name(&conn, vm_name) {
+                    let _ = domain.shutdown();
+                }
+            }
+        }
+        #[cfg(not(feature = "libvirt"))]
+        {
+            let _ = Command::new("virsh")
+                .args(["shutdown", vm_name])
+                .output()
+                .context("Failed to gracefully shutdown VM");
+        }
 
         // Wait a moment for graceful shutdown
         std::thread::sleep(std::time::Duration::from_secs(5));
 
         // Force destroy if still running
-        let destroy_output = Command::new("virsh")
-            .args(["destroy", vm_name])
-            .output()
-            .context("Failed to destroy VM")?;
+        #[cfg(feature = "libvirt")]
+        {
+            let conn = libvirt_connect().context("Failed to destroy VM")?;
+            match virt::domain::Domain::lookup_by_name(&conn, vm_name) {
+                Ok(domain) => {
+                    if let Err(e) = domain.destroy() {
+                        let msg = e.message();
+                        if !msg.contains("domain is not running") && !msg.contains("failed to get domain")
+                        {
+                            warn!("Failed to destroy VM {}: {}", vm_name, msg);
+                        }
+                    }
+                }
+                Err(e) => {
+                    if e.code() != ErrorNumber::NoDomain && !e.message().contains("failed to get domain")
+                    {
+                        warn!("Failed to destroy VM {}: {}", vm_name, e.message());
+                    }
+                }
+            }
+        }
+        #[cfg(not(feature = "libvirt"))]
+        {
+            let destroy_output = Command::new("virsh")
+                .args(["destroy", vm_name])
+                .output()
+                .context("Failed to destroy VM")?;
 
-        if !destroy_output.status.success() {
-            let stderr = String::from_utf8_lossy(&destroy_output.stderr);
-            // Don't error if VM doesn't exist
-            if !stderr.contains("domain is not running") && !stderr.contains("failed to get domain") {
-                warn!("Failed to destroy VM {}: {}", vm_name, stderr);
+            if !destroy_output.status.success() {
+                let stderr = String::from_utf8_lossy(&destroy_output.stderr);
+                // Don't error if VM doesn't exist
+                if !stderr.contains("domain is not running") && !stderr.contains("failed to get domain") {
+                    warn!("Failed to destroy VM {}: {}", vm_name, stderr);
+                }
             }
         }
 
         // Undefine the VM
-        let undefine_output = Command::new("virsh")
-            .args(["undefine", vm_name])
-            .output()
-            .context("Failed to undefine VM")?;
+        #[cfg(feature = "libvirt")]
+        {
+            let conn = libvirt_connect().context("Failed to undefine VM")?;
+            match virt::domain::Domain::lookup_by_name(&conn, vm_name) {
+                Ok(domain) => {
+                    if let Err(e) = domain.undefine() {
+                        let msg = e.message();
+                        if !msg.contains("failed to get domain") {
+                            warn!("Failed to undefine VM {}: {}", vm_name, msg);
+                        }
+                    }
+                }
+                Err(e) => {
+                    if e.code() != ErrorNumber::NoDomain && !e.message().contains("failed to get domain")
+                    {
+                        warn!("Failed to undefine VM {}: {}", vm_name, e.message());
+                    }
+                }
+            }
+        }
+        #[cfg(not(feature = "libvirt"))]
+        {
+            let undefine_output = Command::new("virsh")
+                .args(["undefine", vm_name])
+                .output()
+                .context("Failed to undefine VM")?;
 
-        if !undefine_output.status.success() {
-            let stderr = String::from_utf8_lossy(&undefine_output.stderr);
-            if !stderr.contains("failed to get domain") {
-                warn!("Failed to undefine VM {}: {}", vm_name, stderr);
+            if !undefine_output.status.success() {
+                let stderr = String::from_utf8_lossy(&undefine_output.stderr);
+                if !stderr.contains("failed to get domain") {
+                    warn!("Failed to undefine VM {}: {}", vm_name, stderr);
+                }
             }
         }
 
@@ -98,17 +164,30 @@ impl VmCleanup {
     pub fn cleanup_matching(&self, prefix: &str) -> Result<Vec<String>> {
         info!("🧹 Cleaning up all VMs matching prefix: {}", prefix);
 
-        let list_output = Command::new("virsh")
-            .args(["list", "--all", "--name"])
-            .output()
-            .context("Failed to list VMs")?;
+        #[cfg(feature = "libvirt")]
+        let matching_vms: Vec<String> = {
+            let conn = libvirt_connect().context("Failed to list VMs")?;
+            let domains = conn.list_all_domains(0)?;
+            domains
+                .into_iter()
+                .filter_map(|d| d.get_name().ok())
+                .filter(|name| name.starts_with(prefix))
+                .collect()
+        };
+        #[cfg(not(feature = "libvirt"))]
+        let matching_vms: Vec<String> = {
+            let list_output = Command::new("virsh")
+                .args(["list", "--all", "--name"])
+                .output()
+                .context("Failed to list VMs")?;
 
-        let vms = String::from_utf8_lossy(&list_output.stdout);
-        let matching_vms: Vec<String> = vms
-            .lines()
-            .filter(|line| !line.is_empty() && line.starts_with(prefix))
-            .map(std::string::ToString::to_string)
-            .collect();
+            let vms = String::from_utf8_lossy(&list_output.stdout);
+            vms
+                .lines()
+                .filter(|line| !line.is_empty() && line.starts_with(prefix))
+                .map(std::string::ToString::to_string)
+                .collect()
+        };
 
         info!("   Found {} matching VMs", matching_vms.len());
 
@@ -128,16 +207,28 @@ impl VmCleanup {
         info!("🧹 Cleaning up orphaned disk images");
 
         // Get list of all defined VMs
-        let list_output = Command::new("virsh")
-            .args(["list", "--all", "--name"])
-            .output()
-            .context("Failed to list VMs")?;
+        #[cfg(feature = "libvirt")]
+        let vms: std::collections::HashSet<String> = {
+            let conn = libvirt_connect().context("Failed to list VMs")?;
+            let domains = conn.list_all_domains(0)?;
+            domains
+                .into_iter()
+                .filter_map(|d| d.get_name().ok())
+                .collect()
+        };
+        #[cfg(not(feature = "libvirt"))]
+        let vms: std::collections::HashSet<String> = {
+            let list_output = Command::new("virsh")
+                .args(["list", "--all", "--name"])
+                .output()
+                .context("Failed to list VMs")?;
 
-        let vms: std::collections::HashSet<String> = String::from_utf8_lossy(&list_output.stdout)
-            .lines()
-            .filter(|line| !line.is_empty())
-            .map(std::string::ToString::to_string)
-            .collect();
+            String::from_utf8_lossy(&list_output.stdout)
+                .lines()
+                .filter(|line| !line.is_empty())
+                .map(std::string::ToString::to_string)
+                .collect()
+        };
 
         let mut cleaned = Vec::new();
 
@@ -179,16 +270,28 @@ impl VmCleanup {
         warn!("🚨 EMERGENCY CLEANUP - This will stop ALL VMs!");
 
         // List all VMs
-        let list_output = Command::new("virsh")
-            .args(["list", "--all", "--name"])
-            .output()
-            .context("Failed to list VMs")?;
+        #[cfg(feature = "libvirt")]
+        let vms: Vec<String> = {
+            let conn = libvirt_connect().context("Failed to list VMs")?;
+            let domains = conn.list_all_domains(0)?;
+            domains
+                .into_iter()
+                .filter_map(|d| d.get_name().ok())
+                .collect()
+        };
+        #[cfg(not(feature = "libvirt"))]
+        let vms: Vec<String> = {
+            let list_output = Command::new("virsh")
+                .args(["list", "--all", "--name"])
+                .output()
+                .context("Failed to list VMs")?;
 
-        let vms: Vec<String> = String::from_utf8_lossy(&list_output.stdout)
-            .lines()
-            .filter(|line| !line.is_empty())
-            .map(std::string::ToString::to_string)
-            .collect();
+            String::from_utf8_lossy(&list_output.stdout)
+                .lines()
+                .filter(|line| !line.is_empty())
+                .map(std::string::ToString::to_string)
+                .collect()
+        };
 
         info!("   Found {} VMs to clean", vms.len());
 
@@ -208,7 +311,7 @@ impl VmCleanup {
 
 impl Default for VmCleanup {
     fn default() -> Self {
-        Self::new("/var/lib/libvirt/images")
+        Self::new(crate::config::StorageConfig::default().vm_images_dir_or_default())
     }
 }
 
@@ -218,8 +321,9 @@ mod tests {
 
     #[test]
     fn test_cleanup_creation() {
-        let cleanup = VmCleanup::new("/var/lib/libvirt/images");
-        assert_eq!(cleanup.image_dir, PathBuf::from("/var/lib/libvirt/images"));
+        let expected = crate::config::StorageConfig::default().vm_images_dir_or_default();
+        let cleanup = VmCleanup::new(&expected);
+        assert_eq!(cleanup.image_dir, expected);
     }
 }
 

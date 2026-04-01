@@ -11,6 +11,51 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::time::Duration;
 use tracing::{debug, info, warn};
+use virt::connect::Connect;
+use virt::domain::Domain;
+
+fn parse_vnc_from_domain_xml(xml: &str) -> Option<String> {
+    if let Some(idx) = xml
+        .find("type='vnc'")
+        .or_else(|| xml.find("type=\"vnc\""))
+    {
+        let slice = xml[idx..].chars().take(512).collect::<String>();
+        for prefix in ["port='", "port=\""] {
+            if let Some(p) = slice.find(prefix) {
+                let rest = &slice[p + prefix.len()..];
+                if let Some(end) = rest.find('\'').or_else(|| rest.find('"'))
+                    && let Ok(num) = rest[..end].parse::<i32>()
+                    && num > 0
+                {
+                    return Some(format!("localhost:{}", num));
+                }
+            }
+        }
+    }
+    for line in xml.lines() {
+        if line.contains("graphics") && line.contains("vnc") && line.contains("port=") {
+            if let Some(port_start) = line.find("port='") {
+                let port_str = &line[port_start + 6..];
+                if let Some(port_end) = port_str.find('\'')
+                    && let Ok(port) = port_str[..port_end].parse::<i32>()
+                    && port > 0
+                {
+                    return Some(format!("localhost:{}", port));
+                }
+            }
+            if let Some(port_start) = line.find("port=\"") {
+                let port_str = &line[port_start + 6..];
+                if let Some(port_end) = port_str.find('"')
+                    && let Ok(port) = port_str[..port_end].parse::<i32>()
+                    && port > 0
+                {
+                    return Some(format!("localhost:{}", port));
+                }
+            }
+        }
+    }
+    None
+}
 
 /// Detect SSH user for a VM (tries common usernames)
 pub(super) async fn detect_ssh_user(ip: &str) -> Result<String> {
@@ -43,30 +88,29 @@ pub(super) async fn detect_ssh_user(ip: &str) -> Result<String> {
 
 /// Get actual IP address from virsh (not the allocated one)
 pub(super) async fn get_actual_vm_ip(vm_name: &str) -> Result<String> {
-    let output = tokio::process::Command::new("virsh")
-        .args(["domifaddr", vm_name])
-        .output()
-        .await
-        .map_err(|e| Error::Backend(format!("Failed to get VM IP: {}", e)))?;
-
-    if !output.status.success() {
-        return Err(Error::Backend("Failed to get VM IP".to_string()));
-    }
-
-    let output_str = String::from_utf8_lossy(&output.stdout);
-
-    for line in output_str.lines() {
-        if line.contains("ipv4") {
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            if let Some(ip_with_mask) = parts.last()
-                && let Some(ip) = ip_with_mask.split('/').next() {
-                    info!("Detected actual VM IP: {}", ip);
-                    return Ok(ip.to_string());
+    let vm = vm_name.to_string();
+    let ip = tokio::task::spawn_blocking(move || {
+        let conn = Connect::open(Some("qemu:///system"))
+            .map_err(|e| Error::Backend(format!("Failed to get VM IP: {}", e)))?;
+        let domain = Domain::lookup_by_name(&conn, &vm)
+            .map_err(|_| Error::Backend("Failed to get VM IP".to_string()))?;
+        let ifaces = domain
+            .interface_addresses(virt::sys::VIR_DOMAIN_INTERFACE_ADDRESSES_SRC_LEASE, 0)
+            .map_err(|_| Error::Backend("Failed to get VM IP".to_string()))?;
+        for iface in ifaces {
+            for addr in &iface.addrs {
+                if addr.typed == i64::from(virt::sys::VIR_IP_ADDR_TYPE_IPV4) {
+                    return Ok(addr.addr.clone());
                 }
+            }
         }
-    }
+        Err(Error::Backend("Could not parse VM IP".to_string()))
+    })
+    .await
+    .map_err(|e| Error::Backend(format!("Failed to get VM IP: {}", e)))??;
 
-    Err(Error::Backend("Could not parse VM IP".to_string()))
+    info!("Detected actual VM IP: {}", ip);
+    Ok(ip)
 }
 
 /// Wait for SSH with retries
@@ -452,23 +496,30 @@ impl ImageBuilder {
     async fn save_intermediate(&self, vm_name: &str, path: &Path) -> Result<()> {
         info!("Shutting down VM for intermediate save...");
 
-        let _ = tokio::process::Command::new("virsh")
-            .args(["shutdown", vm_name])
-            .output()
-            .await;
+        let vm_shutdown = vm_name.to_string();
+        let _ = tokio::task::spawn_blocking(move || {
+            if let Ok(conn) = Connect::open(Some("qemu:///system"))
+                && let Ok(domain) = Domain::lookup_by_name(&conn, &vm_shutdown)
+            {
+                let _ = domain.shutdown();
+            }
+        })
+        .await;
 
         tokio::time::sleep(Duration::from_secs(30)).await;
 
-        let images_dir = std::env::var("BENCHSCALE_VM_IMAGES_DIR")
-            .unwrap_or_else(|_| "/var/lib/libvirt/images".to_string());
-
-        let disk_path = format!("{}/{}.qcow2", images_dir, vm_name);
+        let images_dir = crate::constants::paths::libvirt_images_dir();
+        let disk_path = images_dir.join(format!("{}.qcow2", vm_name));
 
         let path_str = path
             .to_str()
             .ok_or_else(|| Error::Backend("Invalid UTF-8 in path".to_string()))?;
 
-        info!("Copying VM disk from {} to {}", disk_path, path_str);
+        info!(
+            "Copying VM disk from {} to {}",
+            disk_path.display(),
+            path_str
+        );
 
         tokio::fs::copy(&disk_path, path_str)
             .await
@@ -476,11 +527,19 @@ impl ImageBuilder {
 
         info!("Intermediate state saved to: {}", path.display());
 
-        tokio::process::Command::new("virsh")
-            .args(["start", vm_name])
-            .output()
-            .await
-            .map_err(|e| Error::Backend(format!("Failed to restart VM: {}", e)))?;
+        let vm_start = vm_name.to_string();
+        tokio::task::spawn_blocking(move || {
+            let conn = Connect::open(Some("qemu:///system"))
+                .map_err(|e| Error::Backend(format!("Failed to restart VM: {}", e)))?;
+            let domain = Domain::lookup_by_name(&conn, &vm_start)
+                .map_err(|e| Error::Backend(format!("Failed to restart VM: {}", e)))?;
+            domain
+                .create()
+                .map_err(|e| Error::Backend(format!("Failed to restart VM: {}", e)))?;
+            Ok::<(), Error>(())
+        })
+        .await
+        .map_err(|e| Error::Backend(format!("Failed to restart VM: {}", e)))??;
 
         tokio::time::sleep(Duration::from_secs(10)).await;
 
@@ -488,41 +547,18 @@ impl ImageBuilder {
     }
 
     pub(super) fn get_vnc_display(vm_name: &str) -> Result<String> {
-        let output = std::process::Command::new("virsh")
-            .args(["vncdisplay", vm_name])
-            .output()
-            .map_err(|e| Error::Backend(format!("Failed to get VNC display: {}", e)))?;
+        let xml_opt = (|| {
+            let conn = Connect::open(Some("qemu:///system")).ok()?;
+            let domain = Domain::lookup_by_name(&conn, vm_name).ok()?;
+            domain.get_xml_desc(0).ok()
+        })();
 
-        if output.status.success() {
-            let display = String::from_utf8_lossy(&output.stdout).trim().to_string();
-
-            if let Some(num) = display.strip_prefix(':')
-                && let Ok(n) = num.parse::<u16>() {
-                    return Ok(format!("localhost:{}", 5900 + n));
-                }
-
-            return Ok(display);
-        }
-
-        debug!("Trying to parse VM XML for VNC port...");
-        let xml_output = std::process::Command::new("virsh")
-            .args(["dumpxml", vm_name])
-            .output();
-
-        if let Ok(xml) = xml_output
-            && xml.status.success() {
-                let xml_str = String::from_utf8_lossy(&xml.stdout);
-                for line in xml_str.lines() {
-                    if line.contains("graphics") && line.contains("vnc") && line.contains("port=")
-                        && let Some(port_start) = line.find("port='") {
-                            let port_str = &line[port_start + 6..];
-                            if let Some(port_end) = port_str.find('\'')
-                                && let Ok(port) = port_str[..port_end].parse::<u16>() {
-                                    return Ok(format!("localhost:{}", port));
-                                }
-                        }
-                }
+        if let Some(xml) = xml_opt {
+            if let Some(display) = parse_vnc_from_domain_xml(&xml) {
+                return Ok(display);
             }
+            debug!("Trying to parse VM XML for VNC port...");
+        }
 
         warn!("Could not detect VNC display, VM may not have graphics enabled");
         Ok("(VNC not available)".to_string())
@@ -531,18 +567,21 @@ impl ImageBuilder {
     pub(super) async fn save_as_template(&self, vm_name: &str) -> Result<PathBuf> {
         info!("Shutting down VM to save as template...");
 
-        let _ = tokio::process::Command::new("virsh")
-            .args(["shutdown", vm_name])
-            .output()
-            .await;
+        let vm_shutdown = vm_name.to_string();
+        let _ = tokio::task::spawn_blocking(move || {
+            if let Ok(conn) = Connect::open(Some("qemu:///system"))
+                && let Ok(domain) = Domain::lookup_by_name(&conn, &vm_shutdown)
+            {
+                let _ = domain.shutdown();
+            }
+        })
+        .await;
 
         tokio::time::sleep(Duration::from_secs(30)).await;
 
-        let images_dir = std::env::var("BENCHSCALE_VM_IMAGES_DIR")
-            .unwrap_or_else(|_| "/var/lib/libvirt/images".to_string());
-
-        let disk_path = format!("{}/{}.qcow2", images_dir, vm_name);
-        let template_path = format!("{}/{}-template.qcow2", images_dir, self.name);
+        let images_dir = crate::constants::paths::libvirt_images_dir();
+        let disk_path = images_dir.join(format!("{}.qcow2", vm_name));
+        let template_path = images_dir.join(format!("{}-template.qcow2", self.name));
 
         info!("Optimizing template...");
 
@@ -555,7 +594,12 @@ impl ImageBuilder {
             Ok(output) if output.status.success() => {
                 info!("Running virt-sparsify to optimize disk...");
                 tokio::process::Command::new("virt-sparsify")
-                    .args(["--in-place", &disk_path])
+                    .args([
+                        "--in-place",
+                        disk_path.to_str().ok_or_else(|| {
+                            Error::Backend("VM disk path is not valid UTF-8".to_string())
+                        })?,
+                    ])
                     .output()
                     .await
                     .map_err(|e| Error::Backend(format!("Failed to sparsify: {}", e)))?;
@@ -571,8 +615,7 @@ impl ImageBuilder {
             .map_err(|e| Error::Backend(format!("Failed to copy template: {}", e)))?;
 
         // Ensure template is group-readable (libvirt group can access).
-        // No sudo needed: /var/lib/libvirt/images is 775 root:libvirt
-        // and the user is in the libvirt group.
+        // No sudo needed when the pool dir is group-writable and the user is in libvirt.
         if let Err(e) = std::fs::set_permissions(
             &template_path,
             std::os::unix::fs::PermissionsExt::from_mode(0o644),
@@ -580,8 +623,8 @@ impl ImageBuilder {
             warn!("Could not set template permissions: {}", e);
         }
 
-        info!("Template saved: {}", template_path);
+        info!("Template saved: {}", template_path.display());
 
-        Ok(PathBuf::from(template_path))
+        Ok(template_path)
     }
 }

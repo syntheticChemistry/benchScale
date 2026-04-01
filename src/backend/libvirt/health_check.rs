@@ -32,8 +32,11 @@
 //! ```
 
 use std::process::Command;
+use std::ptr;
 use std::time::SystemTime;
 use tracing::{debug, info, warn};
+use virt::connect::Connect;
+use virt::network::Network;
 
 /// Health check for libvirt system state
 pub struct LibvirtHealthCheck {
@@ -200,17 +203,25 @@ impl LibvirtHealthCheck {
     fn check_network_active(&self, issues: &mut Vec<String>) -> bool {
         debug!("Checking default network status...");
 
-        match Command::new("virsh").args(["net-list"]).output() {
-            Ok(output) => {
-                let list = String::from_utf8_lossy(&output.stdout);
-                let is_active = list.contains("default") && list.contains("active");
-
-                if !is_active {
+        match Connect::open(Some("qemu:///system")) {
+            Ok(conn) => match Network::lookup_by_name(&conn, "default") {
+                Ok(network) => match network.is_active() {
+                    Ok(is_active) => {
+                        if !is_active {
+                            issues.push("Default libvirt network is not active".to_string());
+                        }
+                        is_active
+                    }
+                    Err(e) => {
+                        issues.push(format!("Failed to check network status: {}", e));
+                        false
+                    }
+                },
+                Err(_) => {
                     issues.push("Default libvirt network is not active".to_string());
+                    false
                 }
-
-                is_active
-            }
+            },
             Err(e) => {
                 issues.push(format!("Failed to check network status: {}", e));
                 false
@@ -222,18 +233,38 @@ impl LibvirtHealthCheck {
     fn check_dhcp_functional(&self, issues: &mut Vec<String>) -> bool {
         debug!("Checking DHCP functionality...");
 
-        match Command::new("virsh")
-            .args(["net-dhcp-leases", "default"])
-            .output()
-        {
-            Ok(output) => {
-                // If command succeeds, DHCP is functional (even if no leases)
-                if !output.status.success() {
-                    issues.push("DHCP lease query failed".to_string());
-                    return false;
+        match Connect::open(Some("qemu:///system")) {
+            Ok(conn) => match Network::lookup_by_name(&conn, "default") {
+                Ok(network) => {
+                    let mut leases: *mut virt::sys::virNetworkDHCPLeasePtr = ptr::null_mut();
+                    let ret = unsafe {
+                        virt::sys::virNetworkGetDHCPLeases(
+                            network.as_ptr(),
+                            ptr::null(),
+                            ptr::addr_of_mut!(leases),
+                            0,
+                        )
+                    };
+                    if ret < 0 {
+                        issues.push("DHCP lease query failed".to_string());
+                        return false;
+                    }
+                    if !leases.is_null() && ret > 0 {
+                        unsafe {
+                            for i in 0..ret as usize {
+                                let lease = *leases.add(i);
+                                virt::sys::virNetworkDHCPLeaseFree(lease);
+                            }
+                            libc::free(leases as *mut libc::c_void);
+                        }
+                    }
+                    true
                 }
-                true
-            }
+                Err(_) => {
+                    issues.push("DHCP lease query failed".to_string());
+                    false
+                }
+            },
             Err(e) => {
                 issues.push(format!("Failed to check DHCP functionality: {}", e));
                 false

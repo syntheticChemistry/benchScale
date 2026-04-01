@@ -7,6 +7,7 @@
 use crate::Result;
 use std::path::PathBuf;
 use tracing::{info, warn};
+use virt::domain::Domain;
 
 use super::LibvirtBackend;
 
@@ -154,7 +155,7 @@ impl LibvirtBackend {
 
     /// Get VM IP address by domain name
     ///
-    /// Uses virsh to query libvirt for the VM's IP address from DHCP leases.
+    /// Queries libvirt for the VM's IP address from DHCP lease source data.
     /// This is an internal utility used by various VM creation and management
     /// functions.
     ///
@@ -164,39 +165,21 @@ impl LibvirtBackend {
     /// # Returns
     /// IP address as string (e.g., "192.168.122.10")
     ///
-    /// # Note
-    /// This uses the system virsh command for simplicity and reliability.
-    /// It's a pragmatic choice that leverages existing tools rather than
-    /// implementing complex libvirt API calls.
     pub(super) async fn get_vm_ip_by_name(&self, name: &str) -> Result<String> {
-        // Use virsh command to get IP (simpler than libvirt API for this)
-        let output = tokio::process::Command::new("virsh")
-            .args(["domifaddr", name, "--source", "lease"])
-            .output()
-            .await
-            .map_err(|e| crate::Error::Backend(format!("Failed to run virsh: {}", e)))?;
-
-        if !output.status.success() {
-            return Err(crate::Error::Backend(format!(
-                "virsh domifaddr failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            )));
-        }
-
-        let output_str = String::from_utf8_lossy(&output.stdout);
-
-        // Parse IP from virsh output
-        // Format: Name MAC address Protocol Address
-        //         ----------------------------------------------------------------
-        //         vnet0 52:54:00:xx:xx:xx ipv4 192.168.122.x/24
-        for line in output_str.lines() {
-            if line.contains("ipv4") {
-                let parts: Vec<&str> = line.split_whitespace().collect();
-                if let Some(ip_with_mask) = parts.last() {
-                    if let Some(ip) = ip_with_mask.split('/').next() {
-                        info!("Found VM IP: {}", ip);
-                        return Ok(ip.to_string());
-                    }
+        let conn = self.conn.lock().await;
+        let domain = Domain::lookup_by_name(&*conn, name).map_err(|e| {
+            crate::Error::Backend(format!("Failed to look up domain: {}", e))
+        })?;
+        let interfaces = domain
+            .interface_addresses(virt::sys::VIR_DOMAIN_INTERFACE_ADDRESSES_SRC_LEASE, 0)
+            .map_err(|e| {
+                crate::Error::Backend(format!("Failed to query interface addresses: {}", e))
+            })?;
+        for iface in interfaces {
+            for addr in iface.addrs {
+                if addr.typed == virt::sys::VIR_IP_ADDR_TYPE_IPV4 as i64 {
+                    info!("Found VM IP: {}", addr.addr);
+                    return Ok(addr.addr);
                 }
             }
         }

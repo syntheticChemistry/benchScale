@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+#![cfg_attr(feature = "libvirt", allow(unsafe_code))]
+
 //! LibvirtBackend - KVM/QEMU backend for benchScale
 //!
 //! This backend allows benchScale to work with libvirt-managed VMs
@@ -159,6 +161,8 @@ use tracing::{debug, info, warn};
 
 #[cfg(feature = "libvirt")]
 use virt::connect::Connect;
+#[cfg(feature = "libvirt")]
+use virt::domain::Domain;
 
 // Re-export required modules for internal use
 #[cfg(feature = "libvirt")]
@@ -464,8 +468,8 @@ impl LibvirtBackend {
     /// IP that DHCP assigned. This is modern, idiomatic, and capability-based.
     ///
     /// Uses multiple methods for robust discovery:
-    /// 1. `virsh domifaddr --source lease` (primary)
-    /// 2. `virsh net-dhcp-leases default` (fallback)
+    /// 1. Domain interface addresses from the DHCP lease source (primary)
+    /// 2. Default network DHCP leases (fallback)
     ///
     /// # Arguments
     /// * `vm_name` - Name of the VM to query
@@ -508,42 +512,36 @@ impl LibvirtBackend {
             let elapsed = start.elapsed().as_secs();
             debug!("Attempt {} at {}s...", attempt, elapsed);
 
-            // Method 1: Try domifaddr (primary method)
-            let output = tokio::process::Command::new("virsh")
-                .args(["domifaddr", vm_name, "--source", "lease"])
-                .output()
-                .await
-                .map_err(|e| crate::Error::Backend(format!("Failed to query VM IP: {}", e)))?;
-
-            if output.status.success() {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                if let Some(ip) = Self::parse_ip_from_domifaddr(&stdout) {
-                    info!(
-                        "✅ Discovered IP {} for VM '{}' after {} attempts ({:.1}s)",
-                        ip,
-                        vm_name,
-                        attempt,
-                        start.elapsed().as_secs_f32()
-                    );
-                    return Ok(ip);
+            let ip = {
+                let conn = self.conn.lock().await;
+                let from_dom = || -> Option<String> {
+                    let domain = Domain::lookup_by_name(&*conn, vm_name).ok()?;
+                    let ifaces = domain
+                        .interface_addresses(
+                            virt::sys::VIR_DOMAIN_INTERFACE_ADDRESSES_SRC_LEASE,
+                            0,
+                        )
+                        .ok()?;
+                    Self::first_ipv4_from_lease_interfaces(&ifaces)
+                };
+                if let Some(ip) = from_dom() {
+                    Some(ip)
+                } else {
+                    dhcp_discovery::query_dhcp_leases_with_connect(&*conn, "default")
+                        .ok()
+                        .and_then(|leases| Self::ip_from_leases_matching_vm(&leases, vm_name))
                 }
-            }
+            };
 
-            // Method 2: Try net-dhcp-leases (fallback)
-            let leases_output = tokio::process::Command::new("virsh")
-                .args(["net-dhcp-leases", "default"])
-                .output()
-                .await;
-
-            if let Ok(output) = leases_output {
-                if output.status.success() {
-                    let stdout = String::from_utf8_lossy(&output.stdout);
-                    if let Some(ip) = Self::parse_ip_from_dhcp_leases(&stdout, vm_name) {
-                        info!("✅ Discovered IP {} for VM '{}' via DHCP leases after {} attempts ({:.1}s)", 
-                              ip, vm_name, attempt, start.elapsed().as_secs_f32());
-                        return Ok(ip);
-                    }
-                }
+            if let Some(ip) = ip {
+                info!(
+                    "✅ Discovered IP {} for VM '{}' after {} attempts ({:.1}s)",
+                    ip,
+                    vm_name,
+                    attempt,
+                    start.elapsed().as_secs_f32()
+                );
+                return Ok(ip);
             }
 
             // Check timeout
@@ -564,59 +562,24 @@ impl LibvirtBackend {
         }
     }
 
-    /// Parse IP address from virsh domifaddr output
-    ///
-    /// Example input:
-    /// ```text
-    ///  Name       MAC address          Protocol     Address
-    /// -------------------------------------------------------------------------------
-    ///  vnet0      52:54:00:xx:xx:xx    ipv4         192.168.122.225/24
-    /// ```
-    fn parse_ip_from_domifaddr(output: &str) -> Option<String> {
-        for line in output.lines() {
-            // Look for lines containing "ipv4" and an IP address
-            if line.contains("ipv4") {
-                // Find the IP address with CIDR notation (e.g., "192.168.122.225/24")
-                for part in line.split_whitespace() {
-                    if part.contains('.') && part.contains('/') {
-                        // Extract IP without CIDR suffix
-                        if let Some(ip) = part.split('/').next() {
-                            // Validate it looks like an IP
-                            if ip.split('.').count() == 4 {
-                                return Some(ip.to_string());
-                            }
-                        }
-                    }
+    fn first_ipv4_from_lease_interfaces(interfaces: &[virt::domain::Interface]) -> Option<String> {
+        for iface in interfaces {
+            for addr in &iface.addrs {
+                if addr.typed == virt::sys::VIR_IP_ADDR_TYPE_IPV4 as i64 {
+                    return Some(addr.addr.clone());
                 }
             }
         }
         None
     }
 
-    /// Parse IP address from virsh net-dhcp-leases output
-    ///
-    /// Example input:
-    /// ```text
-    ///  Expiry Time           MAC address         Protocol   IP address           Hostname
-    /// -----------------------------------------------------------------------------------------
-    ///  2025-12-30 21:24:27   52:54:00:00:cc:91   ipv4       192.168.122.185/24   ubuntu24-minimal-baseline
-    /// ```
-    fn parse_ip_from_dhcp_leases(output: &str, vm_name: &str) -> Option<String> {
-        for line in output.lines() {
-            // Look for lines containing our VM name
-            if line.contains(vm_name) && line.contains("ipv4") {
-                // Find the IP address with CIDR notation
-                let parts: Vec<&str> = line.split_whitespace().collect();
-                for (i, part) in parts.iter().enumerate() {
-                    if *part == "ipv4" && i + 1 < parts.len() {
-                        let ip_with_cidr = parts[i + 1];
-                        if let Some(ip) = ip_with_cidr.split('/').next() {
-                            if ip.split('.').count() == 4 {
-                                return Some(ip.to_string());
-                            }
-                        }
-                    }
-                }
+    fn ip_from_leases_matching_vm(
+        leases: &[dhcp_discovery::DhcpLease],
+        vm_name: &str,
+    ) -> Option<String> {
+        for lease in leases {
+            if lease.hostname.contains(vm_name) {
+                return Some(lease.ip_address.clone());
             }
         }
         None
@@ -716,7 +679,7 @@ impl LibvirtBackend {
         let full_capabilities = crate::capabilities::SystemCapabilities {
             network: capabilities,
             storage: crate::capabilities::StorageCapabilities {
-                images_dir: std::path::PathBuf::from("/var/lib/libvirt/images"),
+                images_dir: crate::constants::paths::default_system_vm_images_dir(),
                 temp_dir: std::env::temp_dir(),
                 cloud_init_dir: std::env::temp_dir().join("benchscale-cloud-init"),
             },

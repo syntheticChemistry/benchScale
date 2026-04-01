@@ -16,12 +16,16 @@
 //!
 //! ## Implementation
 //!
-//! We query `virsh net-dhcp-leases` and match VMs by MAC address, which is the
+//! We query libvirt network DHCP leases and match VMs by MAC address, which is the
 //! most reliable identifier since hostnames might not be set yet during early boot.
 
-use anyhow::{anyhow, Context, Result};
-use std::process::Command;
+use anyhow::{anyhow, Result};
+use libc;
+use std::ffi::CStr;
+use std::ptr;
 use std::time::Duration;
+use virt::connect::Connect;
+use virt::network::Network;
 use tokio::time::sleep;
 use tracing::{debug, info, warn};
 
@@ -148,9 +152,6 @@ pub async fn discover_dhcp_ip(mac_address: &str, config: DiscoveryConfig) -> Res
 
 /// Queries libvirt's DHCP lease database for a network
 ///
-/// This function parses the output of `virsh net-dhcp-leases` to extract
-/// all current DHCP leases.
-///
 /// # Arguments
 ///
 /// * `network_name` - The name of the libvirt network (usually "default")
@@ -158,75 +159,65 @@ pub async fn discover_dhcp_ip(mac_address: &str, config: DiscoveryConfig) -> Res
 /// # Returns
 ///
 /// A vector of all DHCP leases, or an error if the query failed
-fn query_dhcp_leases(network_name: &str) -> Result<Vec<DhcpLease>> {
-    debug!("Querying DHCP leases for network: {}", network_name);
-
-    let output = Command::new("virsh")
-        .args(["net-dhcp-leases", network_name])
-        .output()
-        .context("Failed to execute virsh net-dhcp-leases")?;
-
-    if !output.status.success() {
-        return Err(anyhow!(
-            "virsh net-dhcp-leases failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        ));
-    }
-
-    let stdout = String::from_utf8(output.stdout)
-        .context("virsh output contains invalid UTF-8")?;
-
-    parse_dhcp_leases(&stdout, network_name)
+pub(crate) fn query_dhcp_leases(network_name: &str) -> Result<Vec<DhcpLease>> {
+    let mut conn = Connect::open(None)
+        .map_err(|e| anyhow!("Failed to connect to libvirt: {}", e))?;
+    let result = query_dhcp_leases_with_connect(&conn, network_name);
+    let _ = conn.close();
+    result
 }
 
-/// Parses the output of `virsh net-dhcp-leases`
-///
-/// Example output format:
-/// ```text
-///  Expiry Time           MAC address         Protocol   IP address          Hostname   Client ID or DUID
-/// -----------------------------------------------------------------------------------------------------------------------
-///  2024-01-03 20:30:42   52:54:00:12:34:56   ipv4       192.168.122.10/24   ubuntu     ff:00:12:34:00:01:00:...
-/// ```
-fn parse_dhcp_leases(output: &str, network_name: &str) -> Result<Vec<DhcpLease>> {
+pub(crate) fn query_dhcp_leases_with_connect(
+    conn: &Connect,
+    network_name: &str,
+) -> Result<Vec<DhcpLease>> {
+    debug!("Querying DHCP leases for network: {}", network_name);
+
+    let net = Network::lookup_by_name(conn, network_name)
+        .map_err(|e| anyhow!("Failed to lookup network: {}", e))?;
+
+    let mut leases_raw: *mut virt::sys::virNetworkDHCPLeasePtr = ptr::null_mut();
+    let n = unsafe {
+        virt::sys::virNetworkGetDHCPLeases(
+            net.as_ptr(),
+            ptr::null(),
+            ptr::addr_of_mut!(leases_raw),
+            0,
+        )
+    };
+    if n < 0 {
+        return Err(anyhow!(
+            "virNetworkGetDHCPLeases failed: {}",
+            virt::error::Error::last_error()
+        ));
+    }
+    let n = n as usize;
+    if n == 0 || leases_raw.is_null() {
+        return Ok(Vec::new());
+    }
+
     let mut leases = Vec::new();
-
-    for line in output.lines().skip(2) {
-        // Skip header lines
-        let line = line.trim();
-        if line.is_empty() {
+    for i in 0..n {
+        let lease_ptr = unsafe { *leases_raw.add(i) };
+        if lease_ptr.is_null() {
             continue;
         }
-
-        let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() < 5 {
-            debug!("Skipping malformed lease line: {}", line);
+        let lease = unsafe { &*lease_ptr };
+        let mac_address = c_string_from_ptr(lease.mac);
+        let ip_raw = c_string_from_ptr(lease.ipaddr);
+        let hostname = c_string_from_ptr(lease.hostname);
+        let type_ = lease.type_;
+        unsafe {
+            virt::sys::virNetworkDHCPLeaseFree(lease_ptr);
+        }
+        if type_ != virt::sys::VIR_IP_ADDR_TYPE_IPV4 as i32 {
             continue;
         }
-
-        // Extract fields (columns may vary, we need MAC, Protocol, IP)
-        // Format: Expiry(2) MAC Protocol IP Hostname(optional) Client-ID(optional)
-        let mac_address = parts[2].to_string();
-        let protocol = parts[3];
-        let ip_with_mask = parts[4];
-        let hostname = if parts.len() > 5 {
-            parts[5].to_string()
-        } else {
-            String::new()
-        };
-
-        // Only handle IPv4 for now
-        if protocol != "ipv4" {
-            debug!("Skipping non-IPv4 lease: {}", line);
-            continue;
-        }
-
-        // Strip CIDR mask (/24) from IP address
-        let ip_address = ip_with_mask
+        let ip_address = ip_raw
             .split('/')
             .next()
-            .unwrap_or(ip_with_mask)
+            .unwrap_or(ip_raw.as_str())
             .to_string();
-
         leases.push(DhcpLease {
             mac_address,
             ip_address,
@@ -234,59 +225,18 @@ fn parse_dhcp_leases(output: &str, network_name: &str) -> Result<Vec<DhcpLease>>
             network: network_name.to_string(),
         });
     }
+    unsafe {
+        libc::free(leases_raw as *mut libc::c_void);
+    }
 
     debug!("Parsed {} DHCP leases", leases.len());
     Ok(leases)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_parse_dhcp_leases() {
-        let output = r#"
- Expiry Time           MAC address         Protocol   IP address          Hostname   Client ID or DUID
------------------------------------------------------------------------------------------------------------------------
- 2024-01-03 20:30:42   52:54:00:12:34:56   ipv4       192.168.122.10/24   ubuntu     ff:00:12:34:00:01
- 2024-01-03 20:31:15   52:54:00:aa:bb:cc   ipv4       192.168.122.11/24   test-vm    ff:00:aa:bb:cc:01
-"#;
-
-        let leases = parse_dhcp_leases(output, "default").unwrap();
-        assert_eq!(leases.len(), 2);
-
-        assert_eq!(leases[0].mac_address, "52:54:00:12:34:56");
-        assert_eq!(leases[0].ip_address, "192.168.122.10");
-        assert_eq!(leases[0].hostname, "ubuntu");
-
-        assert_eq!(leases[1].mac_address, "52:54:00:aa:bb:cc");
-        assert_eq!(leases[1].ip_address, "192.168.122.11");
-        assert_eq!(leases[1].hostname, "test-vm");
+fn c_string_from_ptr(p: *mut libc::c_char) -> String {
+    if p.is_null() {
+        return String::new();
     }
-
-    #[test]
-    fn test_parse_empty_output() {
-        let output = r#"
- Expiry Time           MAC address         Protocol   IP address          Hostname   Client ID or DUID
------------------------------------------------------------------------------------------------------------------------
-"#;
-
-        let leases = parse_dhcp_leases(output, "default").unwrap();
-        assert_eq!(leases.len(), 0);
-    }
-
-    #[test]
-    fn test_parse_ipv6_filtered() {
-        let output = r#"
- Expiry Time           MAC address         Protocol   IP address          Hostname   Client ID or DUID
------------------------------------------------------------------------------------------------------------------------
- 2024-01-03 20:30:42   52:54:00:12:34:56   ipv4       192.168.122.10/24   ubuntu     ff:00:12:34:00:01
- 2024-01-03 20:30:42   52:54:00:12:34:56   ipv6       fe80::5054:ff:fe12:3456/128   ubuntu     ff:00:12:34:00:01
-"#;
-
-        let leases = parse_dhcp_leases(output, "default").unwrap();
-        assert_eq!(leases.len(), 1); // Only IPv4
-        assert_eq!(leases[0].ip_address, "192.168.122.10");
-    }
+    unsafe { CStr::from_ptr(p).to_string_lossy().into_owned() }
 }
 

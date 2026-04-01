@@ -38,6 +38,7 @@ ipnetwork = "0.20"
 
 # Utilities
 libc = "0.2"
+virt = "0.3"
 uuid = { version = "1.6", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 futures-util = "0.3"
@@ -83,10 +84,6 @@ docker = []
 # Built-in docker.io/dockerhardened/* short-name mappings; disable to require full refs or env overrides only
 docker-hardened-catalog = []
 hardened = []  # Use Docker hardened images
-libvirt = ["dep:virt", "dep:russh", "dep:russh-keys", "dep:data-encoding"]  # Libvirt/KVM backend for VM testing
+libvirt = ["dep:russh", "dep:russh-keys", "dep:data-encoding"]  # Libvirt/KVM backend for VM testing
 persistence = ["dep:sqlx"]  # VM lifecycle persistence and state management
 
-# Libvirt backend dependencies (optional feature)
-[dependencies.virt]
-version = "0.3"
-optional = true

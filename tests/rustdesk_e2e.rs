@@ -8,6 +8,7 @@
 
 #[cfg(feature = "libvirt")]
 use benchscale::backend::{Backend, LibvirtBackend};
+use benchscale::config::BenchScaleConfig;
 use benchscale::CloudInit;
 use std::path::PathBuf;
 use std::process::Command;
@@ -27,9 +28,10 @@ fn get_ssh_public_key() -> Option<String> {
 
 /// Helper to find Ubuntu template
 fn find_ubuntu_template() -> Option<PathBuf> {
+    let img = BenchScaleConfig::default().storage().images_dir();
     let paths = vec![
-        PathBuf::from("/var/lib/libvirt/images/ubuntu-24.04-server-cloudimg-amd64.img"),
-        PathBuf::from("/var/lib/libvirt/images/ubuntu-22.04-server-cloudimg-amd64.img"),
+        img.join("ubuntu-24.04-server-cloudimg-amd64.img"),
+        img.join("ubuntu-22.04-server-cloudimg-amd64.img"),
     ];
 
     paths.into_iter().find(|p| p.exists())

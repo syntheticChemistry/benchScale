@@ -57,11 +57,16 @@ pub mod network {
 pub mod paths {
     use super::PathBuf;
 
-    /// VM / libvirt disk images directory (`BENCHSCALE_VM_IMAGES_DIR`, else `/var/lib/libvirt/images`).
+    /// Conventional default libvirt default-pool path (same fallback as [`crate::config::StorageConfig::vm_images_dir_or_default`]).
+    pub fn default_system_vm_images_dir() -> PathBuf {
+        PathBuf::from("/var/lib/libvirt/images")
+    }
+
+    /// VM / libvirt disk images directory (`BENCHSCALE_VM_IMAGES_DIR`, else [`default_system_vm_images_dir`]).
     pub fn vm_images_dir() -> PathBuf {
         std::env::var("BENCHSCALE_VM_IMAGES_DIR")
             .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from("/var/lib/libvirt/images"))
+            .unwrap_or_else(|_| default_system_vm_images_dir())
     }
 
     /// Get libvirt images directory with capability discovery
@@ -156,6 +161,10 @@ mod tests {
 
     #[test]
     fn test_path_discovery() {
+        assert_eq!(
+            paths::default_system_vm_images_dir(),
+            paths::vm_images_dir()
+        );
         let images_dir = paths::libvirt_images_dir();
         assert!(images_dir.to_string_lossy().contains("libvirt"));
 

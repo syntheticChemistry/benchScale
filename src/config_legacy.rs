@@ -186,7 +186,9 @@ mod defaults {
     pub fn base_image_path() -> PathBuf {
         std::env::var("BENCHSCALE_BASE_IMAGE_PATH")
             .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from("/var/lib/libvirt/images"))
+            .unwrap_or_else(|_| {
+                crate::config::StorageConfig::default().vm_images_dir_or_default()
+            })
     }
 
     pub fn overlay_dir() -> PathBuf {

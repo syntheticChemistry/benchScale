@@ -38,9 +38,14 @@
 //! ```
 
 use super::health_check::{HealthStatus, LibvirtHealthCheck};
-use std::process::Command;
 use std::time::Duration;
 use tracing::{debug, info, warn};
+use virt::connect::Connect;
+use virt::network::Network;
+
+fn system_connection() -> anyhow::Result<Connect> {
+    Connect::open(Some("qemu:///system")).map_err(|e| anyhow::anyhow!(e))
+}
 
 /// Auto-recovery for libvirt system state
 pub struct LibvirtRecovery {
@@ -235,27 +240,20 @@ impl LibvirtRecovery {
     /// **Sudo-Free:** Uses libvirt connection, not manual process management.
     /// This automatically cleans up orphaned dnsmasq processes.
     fn reinitialize_network(&self) -> anyhow::Result<bool> {
-        // Try to start the network (will fail if already active, which is fine)
-        let output = Command::new("virsh")
-            .args(["net-start", "default"])
-            .output()?;
+        let conn = system_connection()?;
+        let network = match Network::lookup_by_name(&conn, "default") {
+            Ok(n) => n,
+            Err(_) => return Ok(false),
+        };
 
-        // If start failed, try destroy + start
-        if !output.status.success() {
-            debug!("Network start failed, trying destroy + start...");
-
-            Command::new("virsh")
-                .args(["net-destroy", "default"])
-                .output()?;
-
-            let output = Command::new("virsh")
-                .args(["net-start", "default"])
-                .output()?;
-
-            return Ok(output.status.success());
+        match network.create() {
+            Ok(_) => Ok(true),
+            Err(_) => {
+                debug!("Network start failed, trying destroy + start...");
+                let _ = network.destroy();
+                Ok(network.create().is_ok())
+            }
         }
-
-        Ok(true)
     }
 }
 

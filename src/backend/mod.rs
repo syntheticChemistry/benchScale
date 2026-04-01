@@ -184,16 +184,18 @@ pub trait Backend: Send + Sync {
     ///
     /// ```no_run
     /// # use benchscale::backend::Backend;
-    /// # use std::path::Path;
     /// # async fn example(backend: &dyn Backend) -> benchscale::Result<()> {
     /// let cloud_init = benchscale::CloudInit::builder()
     ///     .add_user("user", "ssh-key")
     ///     .build();
     ///
+    /// let base_image = benchscale::config::BenchScaleConfig::default()
+    ///     .storage()
+    ///     .images_dir()
+    ///     .join("base.qcow2");
     /// let vm = backend.create_desktop_vm(
     ///     "my-desktop",
-    ///     Path::new("/var/lib/libvirt/images/base.qcow2"),
-    ///     &cloud_init,
+    ///     &base_image,
     ///     4096,  // 4GB RAM
     ///     2,     // 2 vCPUs
     ///     20,    // 20GB disk

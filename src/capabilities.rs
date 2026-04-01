@@ -40,6 +40,9 @@
 use crate::Result;
 use std::path::PathBuf;
 use tracing::{debug, info, warn};
+use virt::connect::Connect;
+use virt::network::Network;
+use virt::storage_pool::StoragePool;
 
 /// Complete system capabilities discovered at runtime
 #[derive(Debug, Clone)]
@@ -148,22 +151,21 @@ impl NetworkCapabilities {
 
     /// Discover from libvirt's default network
     async fn discover_from_libvirt() -> Result<Self> {
-        // Query virsh for default network configuration
-        let output = tokio::process::Command::new("virsh")
-            .args(["net-dumpxml", "default"])
-            .output()
-            .await
-            .map_err(|e| {
+        let xml = tokio::task::spawn_blocking(|| {
+            let conn = Connect::open(Some("qemu:///system")).map_err(|e| {
                 crate::Error::Backend(format!("Failed to query libvirt network: {}", e))
             })?;
-
-        if !output.status.success() {
-            return Err(crate::Error::Backend(
-                "Failed to get libvirt network config".to_string(),
-            ));
-        }
-
-        let xml = String::from_utf8_lossy(&output.stdout);
+            let network = Network::lookup_by_name(&conn, "default").map_err(|_| {
+                crate::Error::Backend("Failed to get libvirt network config".to_string())
+            })?;
+            network.get_xml_desc(0).map_err(|_| {
+                crate::Error::Backend("Failed to get libvirt network config".to_string())
+            })
+        })
+        .await
+        .map_err(|e| {
+            crate::Error::Backend(format!("Failed to query libvirt network: {}", e))
+        })??;
 
         // Parse XML for network configuration
         // Look for <ip address="192.168.122.1" netmask="255.255.255.0">
@@ -345,28 +347,28 @@ impl StorageCapabilities {
             }
         }
 
-        // Standard system location
-        debug!("Using standard location: /var/lib/libvirt/images");
-        PathBuf::from("/var/lib/libvirt/images")
+        // Standard system location (same default as `StorageConfig::vm_images_dir_or_default`)
+        let fallback = crate::constants::paths::default_system_vm_images_dir();
+        debug!("Using standard location: {}", fallback.display());
+        fallback
     }
 
     /// Query libvirt for default storage pool path
     async fn query_libvirt_pool() -> Result<PathBuf> {
-        let output = tokio::process::Command::new("virsh")
-            .args(["pool-dumpxml", "default"])
-            .output()
-            .await
-            .map_err(|e| crate::Error::Backend(format!("Failed to query pool: {}", e)))?;
+        let xml = tokio::task::spawn_blocking(|| {
+            let conn = Connect::open(Some("qemu:///system"))
+                .map_err(|e| crate::Error::Backend(format!("Failed to query pool: {}", e)))?;
+            let pool = StoragePool::lookup_by_name(&conn, "default").map_err(|_| {
+                crate::Error::Backend("Failed to get pool config".to_string())
+            })?;
+            pool.get_xml_desc(0).map_err(|_| {
+                crate::Error::Backend("Failed to get pool config".to_string())
+            })
+        })
+        .await
+        .map_err(|e| crate::Error::Backend(format!("Failed to query pool: {}", e)))??;
 
-        if !output.status.success() {
-            return Err(crate::Error::Backend(
-                "Failed to get pool config".to_string(),
-            ));
-        }
-
-        let xml = String::from_utf8_lossy(&output.stdout);
-
-        // Look for <path>/var/lib/libvirt/images</path>
+        // Look for `<path>…</path>` in pool XML
         for line in xml.lines() {
             if line.contains("<path>") && line.contains("</path>")
                 && let Some(path_str) = line.split("<path>").nth(1)

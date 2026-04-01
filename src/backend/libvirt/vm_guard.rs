@@ -14,7 +14,7 @@ use super::vm_registry::{VmRegistry, VmStatus};
 /// # Evolution #17: Capability-Based Path Discovery
 ///
 /// The guard now accepts the images directory from SystemCapabilities
-/// rather than hardcoding `/var/lib/libvirt/images`. This makes it:
+/// rather than hardcoding the default libvirt pool path. This makes it:
 /// - Portable across different libvirt configurations
 /// - Compatible with user-session libvirt
 /// - Compatible with custom storage pools

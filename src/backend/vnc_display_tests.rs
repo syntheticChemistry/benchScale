@@ -238,39 +238,42 @@ mod libvirt_integration_tests {
     #[test]
     fn test_virt_install_command_structure() {
         // Validate virt-install command structure for desktop VM
+        let img = crate::constants::paths::default_system_vm_images_dir();
+        let disk_main = format!("path={},format=qcow2", img.join("test.qcow2").display());
+        let disk_cidata = format!("path={},device=cdrom", img.join("test-cidata.iso").display());
         let command_args = vec![
-            "virt-install",
-            "--name",
-            "test-vm",
-            "--memory",
-            "2048",
-            "--vcpus",
-            "2",
-            "--disk",
-            "path=/var/lib/libvirt/images/test.qcow2,format=qcow2",
-            "--disk",
-            "path=/var/lib/libvirt/images/test-cidata.iso,device=cdrom",
-            "--os-variant",
-            "ubuntu22.04",
-            "--network",
-            "network=default",
-            "--graphics",
-            "vnc,listen=0.0.0.0", // Critical for VNC!
-            "--noautoconsole",
-            "--import",
+            "virt-install".to_string(),
+            "--name".to_string(),
+            "test-vm".to_string(),
+            "--memory".to_string(),
+            "2048".to_string(),
+            "--vcpus".to_string(),
+            "2".to_string(),
+            "--disk".to_string(),
+            disk_main,
+            "--disk".to_string(),
+            disk_cidata,
+            "--os-variant".to_string(),
+            "ubuntu22.04".to_string(),
+            "--network".to_string(),
+            "network=default".to_string(),
+            "--graphics".to_string(),
+            "vnc,listen=0.0.0.0".to_string(), // Critical for VNC!
+            "--noautoconsole".to_string(),
+            "--import".to_string(),
         ];
 
         // Verify required arguments are present
-        assert!(command_args.contains(&"virt-install"));
-        assert!(command_args.contains(&"--name"));
-        assert!(command_args.contains(&"--graphics"));
-        assert!(command_args.contains(&"--network"));
-        assert!(command_args.contains(&"--import"));
+        assert!(command_args.iter().any(|s| s == "virt-install"));
+        assert!(command_args.iter().any(|s| s == "--name"));
+        assert!(command_args.iter().any(|s| s == "--graphics"));
+        assert!(command_args.iter().any(|s| s == "--network"));
+        assert!(command_args.iter().any(|s| s == "--import"));
 
         // Verify graphics is VNC
         let graphics_idx = command_args
             .iter()
-            .position(|&x| x == "--graphics")
+            .position(|x| x == "--graphics")
             .unwrap();
         assert!(command_args[graphics_idx + 1].contains("vnc"));
     }
@@ -278,18 +281,21 @@ mod libvirt_integration_tests {
     #[test]
     fn test_cloud_init_iso_attachment() {
         // Validate that cloud-init ISO is attached as CDROM
+        let img = crate::constants::paths::default_system_vm_images_dir();
+        let disk_main = format!("path={},format=qcow2", img.join("vm.qcow2").display());
+        let disk_cidata = format!("path={},device=cdrom", img.join("vm-cidata.iso").display());
         let disk_args = vec![
             "--disk",
-            "path=/var/lib/libvirt/images/vm.qcow2,format=qcow2",
+            disk_main.as_str(),
             "--disk",
-            "path=/var/lib/libvirt/images/vm-cidata.iso,device=cdrom",
+            disk_cidata.as_str(),
         ];
 
         // Should have main disk
-        assert!(disk_args.iter().any(|&arg| arg.contains(".qcow2")));
+        assert!(disk_args.iter().any(|arg| arg.contains(".qcow2")));
 
         // Should have cloud-init ISO as cdrom
-        assert!(disk_args.iter().any(|&arg| arg.contains("cidata.iso")));
-        assert!(disk_args.iter().any(|&arg| arg.contains("device=cdrom")));
+        assert!(disk_args.iter().any(|arg| arg.contains("cidata.iso")));
+        assert!(disk_args.iter().any(|arg| arg.contains("device=cdrom")));
     }
 }
