@@ -204,3 +204,11 @@ mod base64 {
         BASE64.encode(data)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn base64_encode_matches_data_encoding() {
+        assert_eq!(super::base64::encode(b"hello"), "aGVsbG8=");
+    }
+}

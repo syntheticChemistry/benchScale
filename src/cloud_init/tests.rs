@@ -208,3 +208,51 @@ fn test_network_config_yaml_format_valid() {
         "YAML should have at least 6 lines"
     );
 }
+
+#[test]
+fn test_network_config_with_renderer_line() {
+    let yaml = NetworkConfig::new("eth0", "10.0.0.2/24", "10.0.0.1")
+        .with_renderer(Some("systemd-networkd".to_string()))
+        .to_network_config_yaml();
+    assert!(yaml.contains("renderer: systemd-networkd"));
+}
+
+#[test]
+fn test_cloud_init_builder_noninteractive_apt_sets_apt_and_bootcmd() {
+    let c = CloudInit::builder()
+        .add_user("u", "k")
+        .with_noninteractive_apt()
+        .build();
+    assert!(c.apt.is_some());
+    assert!(!c.bootcmd.is_empty());
+}
+
+#[test]
+fn test_write_file_with_permissions_and_owner() {
+    let c = CloudInit::builder()
+        .add_user("u", "k")
+        .write_file("/etc/foo", "bar")
+        .build();
+    let wf = c
+        .write_files
+        .iter()
+        .find(|f| f.path == "/etc/foo")
+        .expect("file");
+    assert_eq!(wf.content, "bar");
+}
+
+#[test]
+fn test_packages_extend_multiple() {
+    let c = CloudInit::builder()
+        .packages(vec!["a".into(), "b".into()])
+        .package("c")
+        .build();
+    assert_eq!(c.packages, vec!["a", "b", "c"]);
+}
+
+#[test]
+fn test_empty_cloud_init_serializes() {
+    let c = CloudInit::new();
+    let y = c.to_user_data().expect("yaml");
+    assert!(y.starts_with("#cloud-config\n"));
+}

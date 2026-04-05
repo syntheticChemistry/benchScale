@@ -332,7 +332,7 @@ Build: Clean compilation with libvirt feature
 
 ```bash
 # From benchScale directory
-cd /home/flockgate/Developemt/syntheticChemistry/benchScale
+cd /path/to/benchScale
 
 # Check status
 git status

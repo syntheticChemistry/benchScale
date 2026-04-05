@@ -225,6 +225,97 @@ impl Default for TestRunner {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::backend::{ExecResult, NetworkInfo, NodeInfo, NodeStatus};
+    use async_trait::async_trait;
+    use std::collections::HashMap;
+
+    struct MockExecBackend {
+        exit: i64,
+    }
+
+    #[async_trait]
+    impl crate::backend::Backend for MockExecBackend {
+        async fn create_network(&self, _name: &str, subnet: &str) -> crate::Result<NetworkInfo> {
+            Ok(NetworkInfo {
+                name: "n".into(),
+                id: "i".into(),
+                subnet: subnet.to_string(),
+                gateway: "10.0.0.1".into(),
+            })
+        }
+        async fn delete_network(&self, _name: &str) -> crate::Result<()> {
+            Ok(())
+        }
+        async fn create_node(
+            &self,
+            name: &str,
+            _image: &str,
+            _network: &str,
+            _env: HashMap<String, String>,
+        ) -> crate::Result<NodeInfo> {
+            Ok(NodeInfo {
+                id: name.into(),
+                name: name.into(),
+                container_id: name.into(),
+                ip_address: "127.0.0.1".into(),
+                network: "n".into(),
+                status: NodeStatus::Running,
+                metadata: HashMap::new(),
+            })
+        }
+        async fn start_node(&self, _node_id: &str) -> crate::Result<()> {
+            Ok(())
+        }
+        async fn stop_node(&self, _node_id: &str) -> crate::Result<()> {
+            Ok(())
+        }
+        async fn delete_node(&self, _node_id: &str) -> crate::Result<()> {
+            Ok(())
+        }
+        async fn get_node(&self, node_id: &str) -> crate::Result<NodeInfo> {
+            Ok(NodeInfo {
+                id: node_id.into(),
+                name: node_id.into(),
+                container_id: node_id.into(),
+                ip_address: "127.0.0.1".into(),
+                network: "n".into(),
+                status: NodeStatus::Running,
+                metadata: HashMap::new(),
+            })
+        }
+        async fn list_nodes(&self, _network: &str) -> crate::Result<Vec<NodeInfo>> {
+            Ok(vec![])
+        }
+        async fn exec_command(
+            &self,
+            _node_id: &str,
+            _command: Vec<String>,
+        ) -> crate::Result<ExecResult> {
+            Ok(ExecResult {
+                exit_code: self.exit,
+                stdout: "ok".into(),
+                stderr: String::new(),
+            })
+        }
+        async fn copy_to_node(&self, _node_id: &str, _src: &str, _dest: &str) -> crate::Result<()> {
+            Ok(())
+        }
+        async fn get_logs(&self, _node_id: &str) -> crate::Result<String> {
+            Ok(String::new())
+        }
+        async fn apply_network_conditions(
+            &self,
+            _node_id: &str,
+            _latency_ms: Option<u32>,
+            _packet_loss_percent: Option<f32>,
+            _bandwidth_kbps: Option<u32>,
+        ) -> crate::Result<()> {
+            Ok(())
+        }
+        async fn is_available(&self) -> crate::Result<bool> {
+            Ok(true)
+        }
+    }
 
     #[test]
     fn test_test_scenario_creation() {
@@ -248,5 +339,79 @@ mod tests {
 
         assert_eq!(scenario.name, "ping-test");
         assert_eq!(scenario.steps.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_run_scenario_success_and_summary() {
+        let runner = TestRunner::new();
+        let scenario = TestScenario {
+            name: "s1".into(),
+            description: None,
+            steps: vec![TestStep {
+                name: "step1".into(),
+                node: "node-a".into(),
+                command: vec!["true".into()],
+                expected_exit_code: 0,
+                timeout: None,
+            }],
+            timeout: None,
+        };
+        let mut nodes = HashMap::new();
+        nodes.insert("node-a".into(), "cid-a".into());
+        let backend = Arc::new(MockExecBackend { exit: 0 }) as Arc<dyn crate::backend::Backend>;
+        let res = runner.run_scenario(backend, &nodes, &scenario).await;
+        assert!(res.success);
+        assert!(res.error.is_none());
+
+        let summary = TestRunner::summarize_results(&[res]);
+        assert_eq!(summary.total, 1);
+        assert_eq!(summary.passed, 1);
+        assert_eq!(summary.failed, 0);
+    }
+
+    #[tokio::test]
+    async fn test_run_scenario_node_missing() {
+        let runner = TestRunner::new();
+        let scenario = TestScenario {
+            name: "s2".into(),
+            description: None,
+            steps: vec![TestStep {
+                name: "x".into(),
+                node: "missing".into(),
+                command: vec![],
+                expected_exit_code: 0,
+                timeout: None,
+            }],
+            timeout: None,
+        };
+        let backend = Arc::new(MockExecBackend { exit: 0 }) as Arc<dyn crate::backend::Backend>;
+        let res = runner
+            .run_scenario(backend, &HashMap::new(), &scenario)
+            .await;
+        assert!(!res.success);
+        assert!(res.error.unwrap().contains("Node not found"));
+    }
+
+    #[tokio::test]
+    async fn test_run_scenario_wrong_exit_code() {
+        let runner = TestRunner::new();
+        let scenario = TestScenario {
+            name: "s3".into(),
+            description: None,
+            steps: vec![TestStep {
+                name: "bad".into(),
+                node: "n".into(),
+                command: vec!["false".into()],
+                expected_exit_code: 0,
+                timeout: None,
+            }],
+            timeout: None,
+        };
+        let mut nodes = HashMap::new();
+        nodes.insert("n".into(), "c".into());
+        let backend = Arc::new(MockExecBackend { exit: 7 }) as Arc<dyn crate::backend::Backend>;
+        let res = runner.run_scenario(backend, &nodes, &scenario).await;
+        assert!(!res.success);
+        assert!(res.error.unwrap().contains("exit code"));
     }
 }

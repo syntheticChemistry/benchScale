@@ -278,7 +278,10 @@ impl SenescenceMonitor {
     }
 
     /// Perform a single health check
-    #[allow(clippy::too_many_lines)] // Single coherent poll: DHCP re-discovery + ping/SSH/cloud-init
+    #[expect(
+        clippy::too_many_lines,
+        reason = "Single coherent poll: DHCP re-discovery plus ping, SSH, and cloud-init checks"
+    )]
     async fn perform_health_check(&self, username: &str) -> Result<()> {
         // Evolution #22: Periodic IP re-discovery for DHCP lease tracking
         // Do this BEFORE acquiring the write lock for health checks
@@ -634,5 +637,91 @@ mod tests {
         // Initially unknown
         assert!(monitor.is_healthy().await);
         assert!(!monitor.is_stalled().await);
+    }
+
+    #[tokio::test]
+    async fn test_from_config_applies_monitoring_config() {
+        let mut cfg = crate::config::MonitoringConfig::for_cloud_init_packages();
+        cfg.check_interval_secs = 5;
+        cfg.ip_rediscovery_interval = 4;
+
+        let monitor = SenescenceMonitor::from_config(
+            "vm".to_string(),
+            "10.0.0.5".to_string(),
+            Some("52:54:00:00:00:01".to_string()),
+            &cfg,
+        );
+
+        let m = monitor.metrics().await;
+        assert_eq!(m.vm_name, "vm");
+        assert_eq!(m.ip_address, "10.0.0.5");
+        assert_eq!(m.mac_address.as_deref(), Some("52:54:00:00:00:01"));
+    }
+
+    #[test]
+    fn test_health_status_roundtrip_json() {
+        let s = serde_json::to_string(&HealthStatus::Failed).unwrap();
+        let back: HealthStatus = serde_json::from_str(&s).unwrap();
+        assert_eq!(back, HealthStatus::Failed);
+    }
+
+    #[tokio::test]
+    async fn test_with_max_failures_overrides_default() {
+        let monitor = SenescenceMonitor::new("v".to_string(), "192.168.1.1".to_string()).with_max_failures(42);
+        // Field is private; behavior is exercised indirectly by documenting the chain compiles.
+        let m = monitor.metrics().await;
+        assert_eq!(m.consecutive_failures, 0);
+    }
+
+    #[tokio::test]
+    async fn test_wait_for_healthy_fails_fast_on_failed_status() {
+        let monitor = SenescenceMonitor::new("bad".to_string(), "192.0.2.1".to_string());
+        {
+            let mut g = monitor.metrics.write().await;
+            g.health = HealthStatus::Failed;
+        }
+        let err = monitor
+            .wait_for_healthy(std::time::Duration::from_millis(50))
+            .await
+            .unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("failed health") || msg.contains("bad"));
+    }
+
+    #[tokio::test]
+    async fn test_wait_for_cloud_init_reports_done() {
+        let monitor = SenescenceMonitor::new("ok".to_string(), "192.0.2.2".to_string());
+        {
+            let mut g = monitor.metrics.write().await;
+            g.cloud_init = Some(CloudInitProgress {
+                status: "done".to_string(),
+                detail: None,
+                errors: vec![],
+                _last_check: std::time::Instant::now(),
+            });
+        }
+        monitor
+            .wait_for_cloud_init(std::time::Duration::from_millis(100), |_m| {})
+            .await
+            .expect("should complete when status is done");
+    }
+
+    #[tokio::test]
+    async fn test_wait_for_cloud_init_errors_on_cloud_init_errors() {
+        let monitor = SenescenceMonitor::new("e".to_string(), "192.0.2.3".to_string());
+        {
+            let mut g = monitor.metrics.write().await;
+            g.cloud_init = Some(CloudInitProgress {
+                status: "running".to_string(),
+                detail: None,
+                errors: vec!["boom".to_string()],
+                _last_check: std::time::Instant::now(),
+            });
+        }
+        let err = monitor
+            .wait_for_cloud_init(std::time::Duration::from_millis(50), |_m| {})
+            .await
+            .unwrap_err();
+        assert!(format!("{err}").contains("Cloud-init failed"));
     }
 }

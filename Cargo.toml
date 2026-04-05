@@ -27,7 +27,7 @@ serde_json = "1.0"
 
 # Error handling
 anyhow = "1.0"
-thiserror = "1.0"
+thiserror = "2.0"
 
 # Logging
 tracing = "0.1"
@@ -38,6 +38,7 @@ ipnetwork = "0.20"
 
 # Utilities
 libc = "0.2"
+nix = { version = "0.29", features = ["signal"] }
 virt = "0.3"
 uuid = { version = "1.6", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }

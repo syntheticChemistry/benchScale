@@ -22,6 +22,7 @@
 //! The LibvirtBackend is organized into functional modules:
 //!
 //! - **`mod.rs`** (this file) - Core struct, initialization, template discovery
+//! - **`vm_state.rs`** - Deterministic VM identity (MAC), pool IP release helpers, DHCP metadata
 //! - **`vm_lifecycle.rs`** - VM creation operations (desktop VMs, templates)
 //! - **`vm_ready.rs`** - Readiness validation (cloud-init, SSH waiting)
 //! - **`dhcp_discovery.rs`** - DHCP lease discovery for dynamic IPs (Evolution #12)
@@ -173,6 +174,8 @@ use super::{ssh, vm_utils};
 #[cfg(feature = "libvirt")]
 mod backend_impl;
 #[cfg(feature = "libvirt")]
+mod dhcp_leases;
+#[cfg(feature = "libvirt")]
 /// Deep boot diagnostics for failed VM boots (Evolution #13)
 pub mod boot_diagnostics;
 #[cfg(feature = "libvirt")]
@@ -188,6 +191,8 @@ pub mod recovery;
 mod utils;
 #[cfg(feature = "libvirt")]
 mod vm_guard;
+#[cfg(feature = "libvirt")]
+mod vm_state;
 #[cfg(feature = "libvirt")]
 mod vm_lifecycle;
 #[cfg(feature = "libvirt")]
@@ -751,6 +756,39 @@ impl LibvirtBackend {
     }
 }
 
+#[cfg(all(test, feature = "libvirt"))]
+mod dhcp_lease_match_tests {
+    use crate::backend::libvirt::dhcp_discovery::DhcpLease;
+
+    #[test]
+    fn ip_from_leases_matching_vm_matches_hostname_substring() {
+        let leases = vec![DhcpLease {
+            mac_address: "52:54:00:01:02:03".into(),
+            ip_address: "192.168.122.88".into(),
+            hostname: "benchscale-my-vm-123".into(),
+            network: "default".into(),
+        }];
+        assert_eq!(
+            super::LibvirtBackend::ip_from_leases_matching_vm(&leases, "my-vm"),
+            Some("192.168.122.88".into())
+        );
+    }
+
+    #[test]
+    fn ip_from_leases_matching_vm_returns_none_when_no_match() {
+        let leases = vec![DhcpLease {
+            mac_address: "52:54:00:01:02:03".into(),
+            ip_address: "192.168.122.1".into(),
+            hostname: "other".into(),
+            network: "default".into(),
+        }];
+        assert_eq!(
+            super::LibvirtBackend::ip_from_leases_matching_vm(&leases, "missing"),
+            None
+        );
+    }
+}
+
 // Test module (only compiled with libvirt feature)
 #[cfg(all(test, feature = "libvirt"))]
 #[path = "libvirt_validation_tests.rs"]
@@ -762,6 +800,8 @@ pub struct LibvirtBackend;
 
 #[cfg(not(feature = "libvirt"))]
 impl LibvirtBackend {
+    /// Feature-gated fallback: returns an error when the `libvirt` feature is not enabled.
+    /// This is intentional compile-time feature gating, not a test mock.
     pub fn new() -> Result<Self> {
         Err(crate::Error::Backend(
             "LibvirtBackend requires 'libvirt' feature to be enabled".to_string(),

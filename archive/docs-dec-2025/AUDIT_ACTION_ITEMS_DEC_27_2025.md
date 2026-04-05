@@ -31,7 +31,7 @@ All items below are **optional enhancements** that can be done at your leisure. 
 
 **Fix:**
 ```bash
-cd /home/eastgate/Development/ecoPrimals/phase2/benchscale
+cd /path/to/benchScale
 cargo clippy --fix --allow-dirty --all-targets --all-features
 cargo fmt
 cargo test --lib  # Verify still passing
@@ -68,7 +68,7 @@ cargo test --lib  # Verify still passing
 
 **Fix:**
 ```bash
-cd /home/eastgate/Development/ecoPrimals/phase2/benchscale
+cd /path/to/benchScale
 cargo fmt
 git diff  # Review changes
 ```

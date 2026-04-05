@@ -45,7 +45,10 @@ impl LabRegistry {
     }
 
     /// Create a lab registry from configuration
-    #[allow(deprecated)]
+    #[expect(
+        deprecated,
+        reason = "Accepts legacy Config for state_dir until BenchScaleConfig migration"
+    )]
     pub fn from_config(config: &crate::Config) -> Self {
         Self::new(config.lab.state_dir.clone())
     }
@@ -618,7 +621,10 @@ mod tests {
     }
 
     #[tokio::test]
-    #[allow(deprecated)]
+    #[expect(
+        deprecated,
+        reason = "Exercises LabRegistry::from_config with legacy Config"
+    )]
     async fn test_registry_from_config() {
         let config = crate::Config::default();
         let registry = LabRegistry::from_config(&config);

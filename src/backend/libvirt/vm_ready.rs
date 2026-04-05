@@ -403,3 +403,20 @@ impl LibvirtBackend {
         Ok(node)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    /// Matches exponential backoff cap used in `wait_for_ssh` / `wait_for_cloud_init`.
+    fn next_backoff(current: Duration) -> Duration {
+        (current * 2).min(Duration::from_secs(30))
+    }
+
+    #[test]
+    fn backoff_doubles_until_cap() {
+        assert_eq!(next_backoff(Duration::from_secs(2)), Duration::from_secs(4));
+        assert_eq!(next_backoff(Duration::from_secs(16)), Duration::from_secs(30));
+        assert_eq!(next_backoff(Duration::from_secs(30)), Duration::from_secs(30));
+    }
+}

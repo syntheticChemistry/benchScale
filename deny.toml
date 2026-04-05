@@ -1,3 +1,7 @@
+# Known native (C) dependencies — documented for policy / cargo-deny review:
+# - virt: libvirt FFI (no pure Rust alternative).
+# - sqlite3: SQLite via sqlx (optional `persistence` feature); well-tested, acceptable.
+
 [advisories]
 vulnerability = "deny"
 unmaintained = "warn"

@@ -15,6 +15,8 @@
 //! - Resource accounting
 
 use anyhow::{Context, Result};
+use nix::sys::signal::{Signal, kill};
+use nix::unistd::Pid;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -439,17 +441,18 @@ impl LabHygiene {
         Ok(total)
     }
 
-    /// Kill a process by PID (no sudo — uses libc::kill directly).
+    /// Kill a process by PID (no sudo — uses `nix::sys::signal::kill`).
     ///
     /// Works for same-user processes. For libvirt-managed QEMU processes,
     /// callers should prefer `virsh destroy` (via `destroy_node`) which
     /// handles the privilege boundary through the libvirt daemon.
     async fn kill_process(&self, pid: u32) -> Result<()> {
-        let ret = unsafe { libc::kill(pid as i32, libc::SIGKILL) };
-        if ret != 0 {
-            let err = std::io::Error::last_os_error();
-            anyhow::bail!("kill({}, SIGKILL) failed: {}", pid, err);
-        }
+        let p = Pid::from_raw(
+            i32::try_from(pid).map_err(|_| anyhow::anyhow!("PID {} out of range for kill", pid))?,
+        );
+        kill(p, Signal::SIGKILL).map_err(|e| {
+            anyhow::anyhow!("kill({}, SIGKILL) failed: {}", pid, e)
+        })?;
         Ok(())
     }
 }

@@ -6,7 +6,7 @@
 📅 **Last Updated**: March 29, 2026  
 🧪 **Tests**: 232 passing  
 🔒 **Safety**: `deny(unsafe_code)`, `deny(clippy::unwrap_used)`, `clippy::pedantic` + `clippy::nursery`  
-📜 **License**: AGPL-3.0-only (scyBorg Provenance Trio)
+📜 **License**: AGPL-3.0-or-later (scyBorg Provenance Trio)
 
 ---
 
@@ -110,7 +110,7 @@ See `src/config/` for the full `BenchScaleConfig` system with validation, worklo
 
 ## License
 
-AGPL-3.0-only — Part of the ecoPrimals ecosystem.
+AGPL-3.0-or-later — Part of the ecoPrimals ecosystem.
 
 ---
 

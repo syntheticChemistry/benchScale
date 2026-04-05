@@ -31,6 +31,7 @@
 //! # }
 //! ```
 
+use super::dhcp_leases::LeaseList;
 use std::process::Command;
 use std::ptr;
 use std::time::SystemTime;
@@ -236,27 +237,12 @@ impl LibvirtHealthCheck {
         match Connect::open(Some("qemu:///system")) {
             Ok(conn) => match Network::lookup_by_name(&conn, "default") {
                 Ok(network) => {
-                    let mut leases: *mut virt::sys::virNetworkDHCPLeasePtr = ptr::null_mut();
-                    let ret = unsafe {
-                        virt::sys::virNetworkGetDHCPLeases(
-                            network.as_ptr(),
-                            ptr::null(),
-                            ptr::addr_of_mut!(leases),
-                            0,
-                        )
-                    };
-                    if ret < 0 {
-                        issues.push("DHCP lease query failed".to_string());
-                        return false;
-                    }
-                    if !leases.is_null() && ret > 0 {
-                        unsafe {
-                            for i in 0..ret as usize {
-                                let lease = *leases.add(i);
-                                virt::sys::virNetworkDHCPLeaseFree(lease);
-                            }
-                            libc::free(leases as *mut libc::c_void);
+                    match LeaseList::fetch(&network, ptr::null(), 0) {
+                        Err(_) => {
+                            issues.push("DHCP lease query failed".to_string());
+                            return false;
                         }
+                        Ok(_list) => {}
                     }
                     true
                 }

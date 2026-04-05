@@ -131,3 +131,47 @@ fn test_new_libvirt_convenience() {
     let builder = ImageBuilder::new_libvirt("test").unwrap();
     assert_eq!(builder.name, "test");
 }
+
+#[tokio::test]
+async fn test_build_errors_without_base_image() {
+    let backend = Arc::new(MockBackend);
+    let builder = ImageBuilder::new("nobase", backend).unwrap();
+    let err = builder.build().await.unwrap_err();
+    let msg = format!("{err}");
+    assert!(
+        msg.contains("No base image") || msg.contains("base image"),
+        "unexpected error: {msg}"
+    );
+}
+
+#[tokio::test]
+async fn test_build_errors_when_base_image_missing() {
+    let backend = Arc::new(MockBackend);
+    let builder = ImageBuilder::new("missing", backend)
+        .unwrap()
+        .from_cloud_image("/nonexistent/path/does-not-exist.img");
+    let err = builder.build().await.unwrap_err();
+    let msg = format!("{err}");
+    assert!(
+        msg.contains("not found") || msg.contains("Base image"),
+        "unexpected error: {msg}"
+    );
+}
+
+#[test]
+fn test_build_step_clone_and_debug() {
+    let step = BuildStep::UserVerification {
+        message: "check".into(),
+        vnc_port: Some(5901),
+    };
+    let copy = step.clone();
+    assert_eq!(format!("{copy:?}"), format!("{step:?}"));
+}
+
+#[test]
+fn test_with_cloud_init_sets_builder_field() {
+    let backend = Arc::new(MockBackend);
+    let ci = crate::CloudInit::builder().add_user("u", "k").build();
+    let b = ImageBuilder::new("c", backend).unwrap().with_cloud_init(ci);
+    assert!(b.cloud_init.is_some());
+}

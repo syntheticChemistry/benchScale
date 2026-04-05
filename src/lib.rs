@@ -93,7 +93,10 @@ pub use cloud_init::{CloudInit, CloudInitBuilder, CloudInitFile, CloudInitUser};
 // Phase 2: New configuration system
 pub use config::{BenchScaleConfig, MonitoringConfig, TimeoutConfig};
 // Legacy config for backward compatibility
-#[allow(deprecated)]
+#[expect(
+    deprecated,
+    reason = "Re-export legacy Config until callers migrate to BenchScaleConfig"
+)]
 pub use config_legacy::Config;
 pub use config_legacy::PciPassthroughDevice;
 pub use error::{Error, Result};

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! VM lifecycle operations for LibvirtBackend
 //!
 //! This module contains VM creation functions that orchestrate the complete
@@ -11,6 +11,10 @@ use std::process::Command;
 use std::time::Duration;
 use tracing::{info, warn};
 
+use super::vm_state::{
+    desktop_dhcp_node_metadata, qemu_mac_from_vm_name, release_pool_ip_if_needed,
+    spawn_release_pool_ip_if_needed,
+};
 use super::LibvirtBackend;
 
 impl LibvirtBackend {
@@ -245,12 +249,7 @@ impl LibvirtBackend {
         let user_data = match cloud_init_with_ip.to_user_data() {
             Ok(data) => data,
             Err(e) => {
-                // Release IP on failure (only if from pool)
-                if from_pool {
-                    if let Ok(ip_addr) = allocated_ip.parse::<std::net::Ipv4Addr>() {
-                        self.ip_pool.release(ip_addr).await;
-                    }
-                }
+                release_pool_ip_if_needed(from_pool, &allocated_ip, &self.ip_pool).await;
                 return Err(crate::Error::Backend(format!(
                     "Failed to generate cloud-init: {}",
                     e
@@ -270,12 +269,7 @@ impl LibvirtBackend {
             .cloud_init_dir
             .join(format!("user-data-{}", name));
         if let Err(e) = std::fs::write(&user_data_path, &user_data) {
-            // Release IP on failure (only if from pool)
-            if from_pool {
-                if let Ok(ip_addr) = allocated_ip.parse::<std::net::Ipv4Addr>() {
-                    self.ip_pool.release(ip_addr).await;
-                }
-            }
+            release_pool_ip_if_needed(from_pool, &allocated_ip, &self.ip_pool).await;
             return Err(crate::Error::Backend(format!(
                 "Failed to write user-data: {}",
                 e
@@ -362,20 +356,8 @@ impl LibvirtBackend {
         // 4. Define and start VM
         info!("  Defining VM in libvirt");
 
-        // Evolution #12: Generate deterministic MAC address for DHCP discovery
-        // Format: 52:54:00:XX:XX:XX (QEMU range)
-        // Use a hash of the VM name to make it deterministic and avoid conflicts
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-        let mut hasher = DefaultHasher::new();
-        name.hash(&mut hasher);
-        let hash = hasher.finish();
-        let mac_address = format!(
-            "52:54:00:{:02x}:{:02x}:{:02x}",
-            (hash >> 16) & 0xFF,
-            (hash >> 8) & 0xFF,
-            hash & 0xFF
-        );
+        // Evolution #12: deterministic MAC for DHCP discovery (see `vm_state`).
+        let mac_address = qemu_mac_from_vm_name(name);
         info!(
             "  Generated MAC address: {} (for DHCP discovery)",
             mac_address
@@ -422,25 +404,12 @@ impl LibvirtBackend {
             .args(&virt_args)
             .output()
             .map_err(|e| {
-                // Release IP on failure (only if from pool)
-                if from_pool {
-                    if let Ok(ip_addr) = allocated_ip.parse::<std::net::Ipv4Addr>() {
-                        let pool = self.ip_pool.clone();
-                        tokio::spawn(async move {
-                            pool.release(ip_addr).await;
-                        });
-                    }
-                }
+                spawn_release_pool_ip_if_needed(from_pool, &allocated_ip, &self.ip_pool);
                 crate::Error::Backend(format!("Failed to create VM: {}", e))
             })?;
 
         if !output.status.success() {
-            // Release IP on failure (only if from pool)
-            if from_pool {
-                if let Ok(ip_addr) = allocated_ip.parse::<std::net::Ipv4Addr>() {
-                    self.ip_pool.release(ip_addr).await;
-                }
-            }
+            release_pool_ip_if_needed(from_pool, &allocated_ip, &self.ip_pool).await;
             return Err(crate::Error::Backend(format!(
                 "Failed to create VM: {}",
                 String::from_utf8_lossy(&output.stderr)
@@ -460,33 +429,21 @@ impl LibvirtBackend {
         let actual_ip = discover_dhcp_ip(&mac_address, dhcp_config)
             .await
             .map_err(|e| {
-                // Release pool IP on failure
-                if from_pool {
-                    if let Ok(ip_addr) = allocated_ip.parse::<std::net::Ipv4Addr>() {
-                        let pool = self.ip_pool.clone();
-                        tokio::spawn(async move {
-                            pool.release(ip_addr).await;
-                        });
-                    }
-                }
+                spawn_release_pool_ip_if_needed(from_pool, &allocated_ip, &self.ip_pool);
                 crate::Error::Backend(format!("VM created but DHCP IP discovery failed: {}", e))
             })?;
 
         // Release the pool-allocated IP since VM is using DHCP
         if from_pool {
-            if let Ok(ip_addr) = allocated_ip.parse::<std::net::Ipv4Addr>() {
-                self.ip_pool.release(ip_addr).await;
-                info!(
-                    "  Released pool IP {} (VM using DHCP IP {} instead)",
-                    allocated_ip, actual_ip
-                );
-            }
+            release_pool_ip_if_needed(from_pool, &allocated_ip, &self.ip_pool).await;
+            info!(
+                "  Released pool IP {} (VM using DHCP IP {} instead)",
+                allocated_ip, actual_ip
+            );
         }
 
         // 5. Return NodeInfo with discovered DHCP IP
-        let mut node_meta = HashMap::new();
-        node_meta.insert("mac_address".to_string(), mac_address.clone());
-        node_meta.insert("dhcp_mode".to_string(), "true".to_string());
+        let node_meta = desktop_dhcp_node_metadata(&mac_address);
 
         Ok(NodeInfo {
             id: name.to_string(),

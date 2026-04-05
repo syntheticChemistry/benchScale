@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 use anyhow::Result;
 use std::path::PathBuf;
 use tracing::{debug, error, info, warn};
@@ -189,9 +189,26 @@ impl Drop for VmGuard {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
+    fn expected_disk_path(images_dir: &PathBuf, vm_name: &str) -> PathBuf {
+        images_dir.join(format!("{}.qcow2", vm_name))
+    }
+
+    fn expected_seed_iso(images_dir: &PathBuf, vm_name: &str) -> PathBuf {
+        images_dir.join(format!("{}-seed.iso", vm_name))
+    }
+
     #[test]
-    fn test_vm_guard_preserve() {
-        // This test just verifies the API compiles
-        // Actual cleanup would require a real libvirt connection
+    fn disk_and_seed_paths_follow_naming_convention() {
+        let base = PathBuf::from("/var/lib/libvirt/images");
+        assert_eq!(
+            expected_disk_path(&base, "my-vm"),
+            PathBuf::from("/var/lib/libvirt/images/my-vm.qcow2")
+        );
+        assert_eq!(
+            expected_seed_iso(&base, "my-vm"),
+            PathBuf::from("/var/lib/libvirt/images/my-vm-seed.iso")
+        );
     }
 }

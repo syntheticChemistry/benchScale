@@ -31,7 +31,7 @@ pub struct ServerState {
 impl ServerState {
     /// Create a new server state, initializing Docker backend.
     pub async fn new() -> anyhow::Result<Self> {
-        #[allow(deprecated)]
+        #[expect(deprecated, reason = "Server bootstrap uses legacy Config::from_env until BenchScaleConfig wiring")]
         let config = crate::config_legacy::Config::from_env();
         let backend = DockerBackend::new().map_err(|e| anyhow::anyhow!("Docker init: {e}"))?;
 
@@ -410,5 +410,90 @@ mod tests {
         assert_eq!(json["name"], "test-lab");
         assert_eq!(json["nodes"], 2);
         assert_eq!(json["topology"], "test-topo");
+    }
+
+    #[tokio::test]
+    async fn test_dispatch_unknown_method_is_not_found() {
+        let state = ServerState::new().await.expect("server state");
+        let err = dispatch("not.a.real.method", json!({}), &state)
+            .await
+            .expect_err("expected NotFound");
+        assert!(matches!(err, crate::server::MethodError::NotFound));
+    }
+
+    #[tokio::test]
+    async fn test_dispatch_health_liveness_through_router() {
+        let state = ServerState::new().await.expect("server state");
+        let v = dispatch("health.liveness", json!({}), &state)
+            .await
+            .expect("liveness");
+        assert_eq!(v["status"], "alive");
+        assert_eq!(v["version"], crate::VERSION);
+    }
+
+    #[tokio::test]
+    async fn test_topology_validate_inline_valid() {
+        let state = ServerState::new().await.expect("server state");
+        let topo = json!({
+            "metadata": { "name": "t" },
+            "network": { "name": "n", "subnet": "10.0.0.0/24" },
+            "nodes": [{
+                "name": "a1",
+                "image": "alpine:latest",
+            }]
+        });
+        let v = dispatch(
+            "topology.validate",
+            json!({ "topology": topo }),
+            &state,
+        )
+        .await
+        .expect("validate");
+        assert_eq!(v["valid"], true);
+        assert_eq!(v["name"], "t");
+        assert_eq!(v["nodes"], 1);
+    }
+
+    #[tokio::test]
+    async fn test_topology_validate_inline_invalid_subnet() {
+        let state = ServerState::new().await.expect("server state");
+        let topo = json!({
+            "metadata": { "name": "bad" },
+            "network": { "name": "n", "subnet": "10.0.0.0" },
+            "nodes": []
+        });
+        let v = dispatch(
+            "topology.validate",
+            json!({ "topology": topo }),
+            &state,
+        )
+        .await
+        .expect("validate");
+        assert_eq!(v["valid"], false);
+        assert!(v["error"].as_str().unwrap_or("").contains("subnet"));
+    }
+
+    #[tokio::test]
+    async fn test_lab_create_missing_name_is_invalid_params() {
+        let state = ServerState::new().await.expect("server state");
+        let err = dispatch("lab.create", json!({ "topology": {} }), &state)
+            .await
+            .expect_err("params");
+        match err {
+            super::MethodError::InvalidParams(s) => assert!(s.contains("name")),
+            e => panic!("unexpected: {e:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_node_health_missing_lab_is_invalid_params() {
+        let state = ServerState::new().await.expect("server state");
+        let err = dispatch("node.health", json!({ "node": "n1" }), &state)
+            .await
+            .expect_err("params");
+        match err {
+            crate::server::MethodError::InvalidParams(s) => assert!(s.contains("lab")),
+            e => panic!("unexpected: {e:?}"),
+        }
     }
 }
