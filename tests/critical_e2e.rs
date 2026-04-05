@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! Critical E2E tests for benchScale automation
 //!
 //! These tests validate end-to-end flows that are critical for production use.
@@ -9,10 +9,10 @@
 //!
 //! Run with: cargo test --features libvirt --test critical_e2e -- --ignored
 
+use benchscale::CloudInit;
 #[cfg(feature = "libvirt")]
 use benchscale::backend::{Backend, LibvirtBackend};
 use benchscale::config::BenchScaleConfig;
-use benchscale::CloudInit;
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::Duration;
@@ -83,7 +83,7 @@ async fn test_e2e_cloudinit_processing() {
 
     println!("📦 Creating VM: {}", vm_name);
     let vm = match backend
-        .create_desktop_vm(vm_name, &template, &cloud_init, 2048, 2, 60)
+        .create_desktop_vm(vm_name, &template, &cloud_init, 2048, 2, 60, None)
         .await
     {
         Ok(vm) => vm,
@@ -278,7 +278,7 @@ async fn test_e2e_ssh_automation() {
 
     println!("📦 Creating VM: {}", vm_name);
     let vm = backend
-        .create_desktop_vm(vm_name, &template, &cloud_init, 2048, 2, 60)
+        .create_desktop_vm(vm_name, &template, &cloud_init, 2048, 2, 60, None)
         .await
         .expect("Failed to create VM");
 
@@ -441,7 +441,7 @@ async fn test_e2e_vm_lifecycle() {
     // Test 1: Creation
     println!("🔍 Test 1: VM Creation");
     let vm = backend
-        .create_desktop_vm(vm_name, &template, &cloud_init, 2048, 2, 30)
+        .create_desktop_vm(vm_name, &template, &cloud_init, 2048, 2, 30, None)
         .await
         .expect("Failed to create VM");
     println!("  ✅ VM created: {}", vm.id);

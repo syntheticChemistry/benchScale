@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! Pipeline execution helpers for the image builder.
 //!
 //! Contains SSH utilities, cloud-init monitoring, VM lifecycle operations,
@@ -15,10 +15,7 @@ use virt::connect::Connect;
 use virt::domain::Domain;
 
 fn parse_vnc_from_domain_xml(xml: &str) -> Option<String> {
-    if let Some(idx) = xml
-        .find("type='vnc'")
-        .or_else(|| xml.find("type=\"vnc\""))
-    {
+    if let Some(idx) = xml.find("type='vnc'").or_else(|| xml.find("type=\"vnc\"")) {
         let slice = xml[idx..].chars().take(512).collect::<String>();
         for prefix in ["port='", "port=\""] {
             if let Some(p) = slice.find(prefix) {
@@ -66,21 +63,27 @@ pub(super) async fn detect_ssh_user(ip: &str) -> Result<String> {
 
         let result = tokio::process::Command::new("ssh")
             .args([
-                "-o", "StrictHostKeyChecking=no",
-                "-o", "UserKnownHostsFile=/dev/null",
-                "-o", "ConnectTimeout=3",
-                "-o", "BatchMode=yes",
+                "-o",
+                "StrictHostKeyChecking=no",
+                "-o",
+                "UserKnownHostsFile=/dev/null",
+                "-o",
+                "ConnectTimeout=3",
+                "-o",
+                "BatchMode=yes",
                 &format!("{}@{}", user, ip),
-                "echo", "connected",
+                "echo",
+                "connected",
             ])
             .output()
             .await;
 
         if let Ok(output) = result
-            && output.status.success() {
-                info!("Detected SSH user: {}", user);
-                return Ok(user.to_string());
-            }
+            && output.status.success()
+        {
+            info!("Detected SSH user: {}", user);
+            return Ok(user.to_string());
+        }
     }
 
     Err(Error::Backend("Could not detect SSH user".to_string()))
@@ -123,21 +126,27 @@ pub(super) async fn wait_for_ssh(ip: &str, user: &str, max_attempts: u32) -> Res
     for attempt in 1..=max_attempts {
         let result = tokio::process::Command::new("ssh")
             .args([
-                "-o", "StrictHostKeyChecking=no",
-                "-o", "UserKnownHostsFile=/dev/null",
-                "-o", "ConnectTimeout=3",
-                "-o", "BatchMode=yes",
+                "-o",
+                "StrictHostKeyChecking=no",
+                "-o",
+                "UserKnownHostsFile=/dev/null",
+                "-o",
+                "ConnectTimeout=3",
+                "-o",
+                "BatchMode=yes",
                 &format!("{}@{}", user, ip),
-                "echo", "ready",
+                "echo",
+                "ready",
             ])
             .output()
             .await;
 
         if let Ok(output) = result
-            && output.status.success() {
-                info!("SSH ready after {} attempts", attempt);
-                return Ok(());
-            }
+            && output.status.success()
+        {
+            info!("SSH ready after {} attempts", attempt);
+            return Ok(());
+        }
 
         if attempt < max_attempts {
             debug!(
@@ -156,7 +165,11 @@ pub(super) async fn wait_for_ssh(ip: &str, user: &str, max_attempts: u32) -> Res
 
 impl ImageBuilder {
     /// Create builder VM
-    pub(super) async fn create_builder_vm(&self, name: &str, base_image: &Path) -> Result<NodeInfo> {
+    pub(super) async fn create_builder_vm(
+        &self,
+        name: &str,
+        base_image: &Path,
+    ) -> Result<NodeInfo> {
         let cloud_init = self
             .cloud_init
             .clone()
@@ -221,7 +234,8 @@ impl ImageBuilder {
                 self.wait_for_cloud_init_with_user(node, user).await?;
             }
             BuildStep::InstallPackages(packages) => {
-                self.install_packages_with_user(node, user, packages).await?;
+                self.install_packages_with_user(node, user, packages)
+                    .await?;
             }
             BuildStep::RunCommands(commands) => {
                 for cmd in commands {
@@ -254,8 +268,11 @@ impl ImageBuilder {
                 return Err(Error::Backend("Timeout waiting for cloud-init".to_string()));
             }
 
-            let output = Self::run_ssh_command_silent(node, "cloud-init status --wait --long || echo 'TIMEOUT'")
-                .await;
+            let output = Self::run_ssh_command_silent(
+                node,
+                "cloud-init status --wait --long || echo 'TIMEOUT'",
+            )
+            .await;
 
             if let Ok(status) = output {
                 if status.contains("status: done") {
@@ -273,11 +290,12 @@ impl ImageBuilder {
             .await;
 
             if let Ok(lock_status) = lock_check
-                && lock_status.trim() == "FREE" {
-                    info!("apt lock is free, cloud-init likely done");
-                    tokio::time::sleep(Duration::from_secs(5)).await;
-                    return Ok(());
-                }
+                && lock_status.trim() == "FREE"
+            {
+                info!("apt lock is free, cloud-init likely done");
+                tokio::time::sleep(Duration::from_secs(5)).await;
+                return Ok(());
+            }
 
             debug!("Still waiting for cloud-init/apt...");
             tokio::time::sleep(Duration::from_secs(10)).await;
@@ -302,10 +320,11 @@ impl ImageBuilder {
                 .await;
 
             if let Ok(lock_status) = lock_check
-                && lock_status.trim() == "FREE" {
-                    info!("Cloud-init/apt ready");
-                    return Ok(());
-                }
+                && lock_status.trim() == "FREE"
+            {
+                info!("Cloud-init/apt ready");
+                return Ok(());
+            }
 
             debug!("Waiting for cloud-init/apt...");
             tokio::time::sleep(Duration::from_secs(10)).await;
@@ -340,8 +359,10 @@ impl ImageBuilder {
 
         let output = tokio::process::Command::new("ssh")
             .args([
-                "-o", "StrictHostKeyChecking=no",
-                "-o", "UserKnownHostsFile=/dev/null",
+                "-o",
+                "StrictHostKeyChecking=no",
+                "-o",
+                "UserKnownHostsFile=/dev/null",
                 &format!("builder@{}", node.ip_address),
                 command,
             ])
@@ -368,8 +389,10 @@ impl ImageBuilder {
     ) -> Result<()> {
         let output = tokio::process::Command::new("ssh")
             .args([
-                "-o", "StrictHostKeyChecking=no",
-                "-o", "UserKnownHostsFile=/dev/null",
+                "-o",
+                "StrictHostKeyChecking=no",
+                "-o",
+                "UserKnownHostsFile=/dev/null",
                 &format!("{}@{}", user, node.ip_address),
                 command,
             ])
@@ -394,9 +417,12 @@ impl ImageBuilder {
         async move {
             let output = tokio::process::Command::new("ssh")
                 .args([
-                    "-o", "StrictHostKeyChecking=no",
-                    "-o", "UserKnownHostsFile=/dev/null",
-                    "-o", "ConnectTimeout=5",
+                    "-o",
+                    "StrictHostKeyChecking=no",
+                    "-o",
+                    "UserKnownHostsFile=/dev/null",
+                    "-o",
+                    "ConnectTimeout=5",
                     &format!("builder@{}", ip),
                     &cmd,
                 ])
@@ -416,9 +442,12 @@ impl ImageBuilder {
     ) -> Result<String> {
         let output = tokio::process::Command::new("ssh")
             .args([
-                "-o", "StrictHostKeyChecking=no",
-                "-o", "UserKnownHostsFile=/dev/null",
-                "-o", "ConnectTimeout=5",
+                "-o",
+                "StrictHostKeyChecking=no",
+                "-o",
+                "UserKnownHostsFile=/dev/null",
+                "-o",
+                "ConnectTimeout=5",
                 &format!("{}@{}", user, node.ip_address),
                 command,
             ])

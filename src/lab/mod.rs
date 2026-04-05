@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! Lab management and high-level API
 
 pub mod registry;
@@ -139,24 +139,22 @@ impl Lab {
         };
 
         match lab.create_network().await {
-            Ok(()) => {
-                match lab.create_nodes().await {
-                    Ok(()) => {
-                        if let Err(e) = lab.apply_network_conditions().await {
-                            warn!("Failed to apply network conditions: {}", e);
-                        }
-                        let mut state = lab.state.write().await;
-                        state.status = LabStatus::Running;
-                        info!("Lab {} created successfully", name);
+            Ok(()) => match lab.create_nodes().await {
+                Ok(()) => {
+                    if let Err(e) = lab.apply_network_conditions().await {
+                        warn!("Failed to apply network conditions: {}", e);
                     }
-                    Err(e) => {
-                        let mut state = lab.state.write().await;
-                        state.status = LabStatus::Failed;
-                        state.error = Some(format!("Failed to create nodes: {}", e));
-                        return Err(e);
-                    }
+                    let mut state = lab.state.write().await;
+                    state.status = LabStatus::Running;
+                    info!("Lab {} created successfully", name);
                 }
-            }
+                Err(e) => {
+                    let mut state = lab.state.write().await;
+                    state.status = LabStatus::Failed;
+                    state.error = Some(format!("Failed to create nodes: {}", e));
+                    return Err(e);
+                }
+            },
             Err(e) => {
                 let mut state = lab.state.write().await;
                 state.status = LabStatus::Failed;

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! Timeout and Retry Utilities
 //!
 //! Pure, testable functions for timeout and retry logic that don't depend on
@@ -79,7 +79,7 @@ impl BackoffConfig {
 /// let result = retry_with_backoff(
 ///     || async {
 ///         // Your operation here
-///         Ok::<_, String>(42)
+///         Ok::<_, std::convert::Infallible>(42)
 ///     },
 ///     BackoffConfig::default(),
 /// ).await?;
@@ -320,11 +320,7 @@ mod tests {
                         *a += 1;
                         *a
                     };
-                    if count < 3 {
-                        Err("not yet")
-                    } else {
-                        Ok(42)
-                    }
+                    if count < 3 { Err("not yet") } else { Ok(42) }
                 }
             },
             BackoffConfig::quick(),

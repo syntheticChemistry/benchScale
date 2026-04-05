@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! JSON-RPC 2.0 server for benchScale (UniBin compliance).
 //!
 //! Implements newline-delimited JSON-RPC over TCP per
@@ -155,15 +155,15 @@ async fn dispatch(line: &str, state: &ServerState) -> RpcResponse {
 
     match methods::dispatch(&request.method, request.params, state).await {
         Ok(result) => RpcResponse::success(id, result),
-        Err(MethodError::NotFound) => {
-            RpcResponse::error(id, error_codes::METHOD_NOT_FOUND, format!("Method not found: {}", request.method))
-        }
+        Err(MethodError::NotFound) => RpcResponse::error(
+            id,
+            error_codes::METHOD_NOT_FOUND,
+            format!("Method not found: {}", request.method),
+        ),
         Err(MethodError::InvalidParams(msg)) => {
             RpcResponse::error(id, error_codes::INVALID_PARAMS, msg)
         }
-        Err(MethodError::Internal(msg)) => {
-            RpcResponse::error(id, error_codes::INTERNAL_ERROR, msg)
-        }
+        Err(MethodError::Internal(msg)) => RpcResponse::error(id, error_codes::INTERNAL_ERROR, msg),
     }
 }
 

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! Serial console utilities for VM log parsing
 //!
 //! Provides parsing and analysis of serial console logs,
@@ -85,12 +85,12 @@ pub async fn read_serial_log(path: &Path) -> std::io::Result<String> {
 mod tests {
     use super::*;
 
-    const SAMPLE_LOG: &str = r#"[2025-12-27 10:23:45] [Info] BiomeOS Init Starting
+    const SAMPLE_LOG: &str = r"[2025-12-27 10:23:45] [Info] BiomeOS Init Starting
 [2025-12-27 10:23:45] [Info] Filesystem: rootfs mounted (rw)
 [2025-12-27 10:23:46] [Info] Network: eth0 configured (10.42.0.10/24)
 [2025-12-27 10:23:47] [Warn] Optional service skipped
 [2025-12-27 10:23:48] [Info] Application service started successfully (PID 234)
-[2025-12-27 10:23:49] [Success] BiomeOS Init Complete (178ms)"#;
+[2025-12-27 10:23:49] [Success] BiomeOS Init Complete (178ms)";
 
     #[test]
     fn test_is_boot_complete() {

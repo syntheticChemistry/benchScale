@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! Libvirt Auto-Recovery Module (Evolution #20)
 //!
 //! This module provides automatic recovery from libvirt state corruption,
@@ -153,10 +153,7 @@ impl LibvirtRecovery {
             );
         }
 
-        warn!(
-            "❌ Recovery failed after {} attempts",
-            self.max_attempts
-        );
+        warn!("❌ Recovery failed after {} attempts", self.max_attempts);
         result.error = Some(format!(
             "Failed after {} attempts. Final state: {}",
             self.max_attempts,
@@ -349,4 +346,3 @@ mod tests {
         assert!(summary.contains("restarted libvirtd"));
     }
 }
-

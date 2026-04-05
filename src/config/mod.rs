@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! Configuration Module
 //!
 //! **Phase 2: Configuration Externalization**
@@ -66,15 +66,15 @@
 //! };
 //! ```
 
-pub mod timeouts;
 pub mod monitoring;
 pub mod network;
 pub mod storage;
+pub mod timeouts;
 
-pub use timeouts::TimeoutConfig;
 pub use monitoring::MonitoringConfig;
 pub use network::{DhcpRange, NetworkConfig};
 pub use storage::StorageConfig;
+pub use timeouts::TimeoutConfig;
 
 use serde::{Deserialize, Serialize};
 
@@ -133,12 +133,22 @@ impl BenchScaleConfig {
     /// # Ok::<(), anyhow::Error>(())
     /// ```
     pub fn from_file(path: impl AsRef<std::path::Path>) -> anyhow::Result<Self> {
-        let contents = std::fs::read_to_string(path.as_ref())
-            .map_err(|e| anyhow::anyhow!("Failed to read config file {}: {}", path.as_ref().display(), e))?;
-        
-        let config: Self = serde_yaml::from_str(&contents)
-            .map_err(|e| anyhow::anyhow!("Failed to parse config file {}: {}", path.as_ref().display(), e))?;
-        
+        let contents = std::fs::read_to_string(path.as_ref()).map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to read config file {}: {}",
+                path.as_ref().display(),
+                e
+            )
+        })?;
+
+        let config: Self = serde_yaml::from_str(&contents).map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to parse config file {}: {}",
+                path.as_ref().display(),
+                e
+            )
+        })?;
+
         config.validate()?;
         Ok(config)
     }
@@ -156,13 +166,18 @@ impl BenchScaleConfig {
     /// ```
     pub fn to_file(&self, path: impl AsRef<std::path::Path>) -> anyhow::Result<()> {
         self.validate()?;
-        
+
         let yaml = serde_yaml::to_string(self)
             .map_err(|e| anyhow::anyhow!("Failed to serialize config: {}", e))?;
-        
-        std::fs::write(path.as_ref(), yaml)
-            .map_err(|e| anyhow::anyhow!("Failed to write config file {}: {}", path.as_ref().display(), e))?;
-        
+
+        std::fs::write(path.as_ref(), yaml).map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to write config file {}: {}",
+                path.as_ref().display(),
+                e
+            )
+        })?;
+
         Ok(())
     }
 
@@ -173,19 +188,19 @@ impl BenchScaleConfig {
         self.timeouts
             .validate()
             .map_err(|e| anyhow::anyhow!("Invalid timeout config: {}", e))?;
-        
+
         self.monitoring
             .validate()
             .map_err(|e| anyhow::anyhow!("Invalid monitoring config: {}", e))?;
-        
+
         self.network
             .validate()
             .map_err(|e| anyhow::anyhow!("Invalid network config: {}", e))?;
-        
+
         self.storage
             .validate()
             .map_err(|e| anyhow::anyhow!("Invalid storage config: {}", e))?;
-        
+
         Ok(())
     }
 
@@ -213,7 +228,10 @@ impl BenchScaleConfig {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn merge_with_capabilities(&mut self, capabilities: &crate::capabilities::SystemCapabilities) {
+    pub fn merge_with_capabilities(
+        &mut self,
+        capabilities: &crate::capabilities::SystemCapabilities,
+    ) {
         // Merge network configuration
         self.network.merge_with_capabilities(&capabilities.network);
 
@@ -436,7 +454,9 @@ storage:
 
     #[test]
     fn test_phase_3a_merge_with_capabilities() {
-        use crate::capabilities::{NetworkCapabilities, StorageCapabilities, SystemCapabilities, VirtCapabilities};
+        use crate::capabilities::{
+            NetworkCapabilities, StorageCapabilities, SystemCapabilities, VirtCapabilities,
+        };
         use std::path::PathBuf;
 
         // Create capabilities with discovered values
@@ -484,13 +504,21 @@ storage:
         assert_eq!(config.network.interface, Some("eth0".to_string()));
 
         // Storage should have discovered path
-        assert_eq!(config.storage.vm_images_dir, Some(PathBuf::from("/custom/libvirt/images")));
-        assert_eq!(config.storage.cloud_init_dir, Some(PathBuf::from("/tmp/cloud-init")));
+        assert_eq!(
+            config.storage.vm_images_dir,
+            Some(PathBuf::from("/custom/libvirt/images"))
+        );
+        assert_eq!(
+            config.storage.cloud_init_dir,
+            Some(PathBuf::from("/tmp/cloud-init"))
+        );
     }
 
     #[test]
     fn test_phase_3a_explicit_config_takes_priority() {
-        use crate::capabilities::{NetworkCapabilities, StorageCapabilities, SystemCapabilities, VirtCapabilities};
+        use crate::capabilities::{
+            NetworkCapabilities, StorageCapabilities, SystemCapabilities, VirtCapabilities,
+        };
         use std::path::PathBuf;
 
         // Create capabilities
@@ -544,7 +572,9 @@ storage:
         // Explicit values should be preserved
         assert_eq!(config.network.network_name, "production"); // NOT "virbr0"
         assert_eq!(config.network.interface, Some("enp0s3".to_string())); // NOT "eth0"
-        assert_eq!(config.storage.vm_images_dir, Some(PathBuf::from("/my/custom/path"))); // NOT discovered
+        assert_eq!(
+            config.storage.vm_images_dir,
+            Some(PathBuf::from("/my/custom/path"))
+        ); // NOT discovered
     }
 }
-

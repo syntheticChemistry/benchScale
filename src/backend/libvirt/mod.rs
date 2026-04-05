@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 #![cfg_attr(feature = "libvirt", allow(unsafe_code))]
 
 //! LibvirtBackend - KVM/QEMU backend for benchScale
@@ -59,6 +59,7 @@
 //!     3072,  // 3GB RAM
 //!     2,     // 2 vCPUs  
 //!     25,    // 25GB disk
+//!     None,  // static IP from pool (or Some("192.168.122.50".into()))
 //! ).await?;
 //!
 //! println!("VM created at {}", vm.ip_address);
@@ -78,7 +79,6 @@
 //!
 //! let cloud_init = CloudInit::builder()
 //!     .add_user("ubuntu", "ssh-rsa AAAAB3...")
-//!     .password("ubuntu", "password123")
 //!     .package("ubuntu-desktop-minimal")
 //!     .build();
 //!
@@ -90,6 +90,7 @@
 //!     3072, 2, 25,
 //!     "ubuntu", "password123",
 //!     Duration::from_secs(600), // 10 minute timeout
+//!     None, // static IP from pool (or Some("192.168.122.50".into()))
 //! ).await?;
 //!
 //! // SSH is guaranteed to work now!
@@ -172,27 +173,27 @@ use super::{ssh, vm_utils};
 #[cfg(feature = "libvirt")]
 mod backend_impl;
 #[cfg(feature = "libvirt")]
-mod utils;
-#[cfg(feature = "libvirt")]
-mod vm_lifecycle;
-#[cfg(feature = "libvirt")]
-mod vm_ready;
-#[cfg(feature = "libvirt")]
-mod vm_guard;
-#[cfg(feature = "libvirt")]
-mod vm_registry;
+/// Deep boot diagnostics for failed VM boots (Evolution #13)
+pub mod boot_diagnostics;
 #[cfg(feature = "libvirt")]
 /// DHCP lease discovery for dynamic IP allocation (Evolution #12)
 pub mod dhcp_discovery;
-#[cfg(feature = "libvirt")]
-/// Deep boot diagnostics for failed VM boots (Evolution #13)
-pub mod boot_diagnostics;
 #[cfg(feature = "libvirt")]
 /// Libvirt health check for system stability (Evolution #20)
 pub mod health_check;
 #[cfg(feature = "libvirt")]
 /// Auto-recovery from libvirt state corruption (Evolution #20)
 pub mod recovery;
+#[cfg(feature = "libvirt")]
+mod utils;
+#[cfg(feature = "libvirt")]
+mod vm_guard;
+#[cfg(feature = "libvirt")]
+mod vm_lifecycle;
+#[cfg(feature = "libvirt")]
+mod vm_ready;
+#[cfg(feature = "libvirt")]
+mod vm_registry;
 
 // Public exports
 #[cfg(feature = "libvirt")]
@@ -223,8 +224,8 @@ pub use vm_registry::{VmRegistry, VmRegistryEntry, VmStatus};
 /// ```no_run
 /// use benchscale::LibvirtBackend;
 ///
-/// # async fn example() -> anyhow::Result<()> {
-/// let backend = LibvirtBackend::new().await?;
+/// # fn example() -> anyhow::Result<()> {
+/// let backend = LibvirtBackend::new()?;
 /// // Backend is ready to create VMs
 /// # Ok(())
 /// # }
@@ -299,7 +300,7 @@ impl LibvirtBackend {
     ///
     /// # async fn example() -> anyhow::Result<()> {
     /// let backend = LibvirtBackend::new()?;
-    /// 
+    ///
     /// // Before critical operations
     /// backend.ensure_healthy().await?;
     /// # Ok(())
@@ -331,7 +332,7 @@ impl LibvirtBackend {
                 for issue in &health.issues {
                     warn!("   • {}", issue);
                 }
-                
+
                 // Provide recovery instructions without blocking
                 if !health.orphaned_processes.is_empty() {
                     warn!("   💡 To clean up orphaned processes (no sudo needed):");
@@ -340,7 +341,7 @@ impl LibvirtBackend {
                     warn!("      Or manually restart default network:");
                     warn!("      virsh net-destroy default && virsh net-start default");
                 }
-                
+
                 warn!("   Proceeding with build (graceful degradation)...");
                 Ok(()) // DON'T BLOCK on warnings
             }
@@ -356,7 +357,10 @@ impl LibvirtBackend {
                     .map_err(|e| crate::Error::Backend(format!("Recovery failed: {}", e)))?;
 
                 if result.success {
-                    info!("✅ Infrastructure recovery successful: {}", result.summary());
+                    info!(
+                        "✅ Infrastructure recovery successful: {}",
+                        result.summary()
+                    );
                     Ok(())
                 } else {
                     Err(crate::Error::Backend(format!(
@@ -435,16 +439,16 @@ impl LibvirtBackend {
 
             if !interface.is_empty() && interface.len() < 20 {
                 // Basic sanity check
-            info!(
-                "✅ Discovered interface '{}' for VM '{}'",
-                interface, vm_name
+                info!(
+                    "✅ Discovered interface '{}' for VM '{}'",
+                    interface, vm_name
+                );
+                return Ok(interface);
+            }
+            warn!(
+                "Interface discovery returned invalid result: '{}'",
+                interface
             );
-            return Ok(interface);
-        }
-        warn!(
-            "Interface discovery returned invalid result: '{}'",
-            interface
-        );
         } else {
             warn!(
                 "Interface discovery failed: {}",
@@ -517,10 +521,7 @@ impl LibvirtBackend {
                 let from_dom = || -> Option<String> {
                     let domain = Domain::lookup_by_name(&*conn, vm_name).ok()?;
                     let ifaces = domain
-                        .interface_addresses(
-                            virt::sys::VIR_DOMAIN_INTERFACE_ADDRESSES_SRC_LEASE,
-                            0,
-                        )
+                        .interface_addresses(virt::sys::VIR_DOMAIN_INTERFACE_ADDRESSES_SRC_LEASE, 0)
                         .ok()?;
                     Self::first_ipv4_from_lease_interfaces(&ifaces)
                 };
@@ -662,7 +663,7 @@ impl LibvirtBackend {
     /// # Example
     ///
     /// ```no_run
-    /// use benchscale::{LibvirtBackend, config::LibvirtConfig};
+    /// use benchscale::{LibvirtBackend, config_legacy::LibvirtConfig};
     ///
     /// # fn example() -> anyhow::Result<()> {
     /// let config = LibvirtConfig::default();
@@ -716,7 +717,7 @@ impl LibvirtBackend {
     /// # Example
     ///
     /// ```no_run
-    /// use benchscale::{LibvirtBackend, config::LibvirtConfig};
+    /// use benchscale::{LibvirtBackend, config_legacy::LibvirtConfig};
     ///
     /// # async fn example() -> anyhow::Result<()> {
     /// let config = LibvirtConfig::default();
@@ -724,7 +725,9 @@ impl LibvirtBackend {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn with_config_and_discovery(config: crate::config_legacy::LibvirtConfig) -> Result<Self> {
+    pub async fn with_config_and_discovery(
+        config: crate::config_legacy::LibvirtConfig,
+    ) -> Result<Self> {
         let conn = Connect::open(Some(&config.uri))
             .map_err(|e| crate::Error::Backend(format!("Failed to connect to libvirt: {}", e)))?;
 

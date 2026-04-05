@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! Cloud-init configuration for VM provisioning
 //!
 //! Provides a type-safe, builder-based API for generating cloud-init
@@ -380,26 +380,34 @@ impl CloudInitBuilder {
 
         // Set environment variables for package installation (runs as root, no sudo needed!)
         // These are executed before package installation begins
-        self.config.bootcmd.push("mkdir -p /etc/needrestart/conf.d".to_string());
+        self.config
+            .bootcmd
+            .push("mkdir -p /etc/needrestart/conf.d".to_string());
         self.config.bootcmd.push(
             r#"printf '%s\n' '$nrconf{restart} = "a";' > /etc/needrestart/conf.d/no-prompt.conf"#
                 .to_string(),
         );
 
         // Also set environment for good measure
-        self.config.bootcmd.push("export DEBIAN_FRONTEND=noninteractive".to_string());
-        self.config.bootcmd.push("export NEEDRESTART_MODE=a".to_string());
-        self.config.bootcmd.push("export NEEDRESTART_SUSPEND=1".to_string());
+        self.config
+            .bootcmd
+            .push("export DEBIAN_FRONTEND=noninteractive".to_string());
+        self.config
+            .bootcmd
+            .push("export NEEDRESTART_MODE=a".to_string());
+        self.config
+            .bootcmd
+            .push("export NEEDRESTART_SUSPEND=1".to_string());
 
         // DEEP DEBT FIX #1: Disable man-db triggers entirely
         // man-db index rebuilding was causing 5-10 min delays (NOW FIXED!)
         // This prevents dpkg from running man-db triggers during package installation
         self.config.bootcmd.push(
-            r"echo 'path-exclude=/usr/share/man/*' >> /etc/dpkg/dpkg.cfg.d/01_nodoc".to_string()
+            r"echo 'path-exclude=/usr/share/man/*' >> /etc/dpkg/dpkg.cfg.d/01_nodoc".to_string(),
         );
-        self.config.bootcmd.push(
-            r"rm -f /var/lib/man-db/auto-update".to_string()
-        );
+        self.config
+            .bootcmd
+            .push(r"rm -f /var/lib/man-db/auto-update".to_string());
 
         // DEEP DEBT FIX #2: Remove needrestart entirely
         // Needrestart causes 7+ minute hangs after package installation (even when "suspended")
@@ -413,21 +421,23 @@ impl CloudInitBuilder {
     }
 
     /// Configure local package mirror for airgap operation
-    /// 
+    ///
     /// This adds a local APT source that VMs will check first, dramatically speeding up
     /// package installation (10-50x faster) and enabling airgap deployments.
-    /// 
+    ///
     /// # Example
     /// ```
-    /// CloudInitBuilder::new("myvm")
+    /// use benchscale::CloudInit;
+    ///
+    /// let _ = CloudInit::builder()
     ///     .with_noninteractive_apt()
-    ///     .with_local_mirror("http://192.168.122.1:8080")  // Host serves packages
-    ///     .package("ubuntu-desktop-minimal")  // Now installs from local cache!
+    ///     .with_local_mirror("http://192.168.122.1:8080") // Host serves packages
+    ///     .package("ubuntu-desktop-minimal") // Now installs from local cache!
     ///     .build();
     /// ```
     pub fn with_local_mirror(mut self, mirror_url: impl Into<String>) -> Self {
         let url = mirror_url.into();
-        
+
         // PHASE 1: Simple local cache approach
         // Pre-download .deb files directly to /var/cache/apt/archives before apt-get runs
         // This avoids needing a full repository structure
@@ -440,12 +450,12 @@ wget -q -r -np -nH --cut-dirs=2 -R "index.html*" {}/apt-cache/archives/ 2>/dev/n
 # apt will use these cached files automatically!"#,
             url
         ));
-        
+
         // Keep internet sources as fallback (hybrid approach for Phase 1)
-        self.config.bootcmd.push(
-            "# Internet sources remain as fallback for dependencies".to_string()
-        );
-        
+        self.config
+            .bootcmd
+            .push("# Internet sources remain as fallback for dependencies".to_string());
+
         self
     }
 
@@ -550,7 +560,6 @@ impl Default for CloudInitBuilder {
         Self::new()
     }
 }
-
 
 #[cfg(test)]
 mod tests;

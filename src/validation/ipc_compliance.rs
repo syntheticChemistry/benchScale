@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! IPC compliance testing for primal health endpoints.
 //!
 //! Validates that primals respond correctly to mandatory JSON-RPC 2.0
@@ -215,9 +215,24 @@ mod tests {
         let report = ComplianceReport {
             endpoint: "127.0.0.1:9000".into(),
             results: vec![
-                ComplianceResult { method: "health.liveness".into(), passed: true, response_ms: 1, error: None },
-                ComplianceResult { method: "health.readiness".into(), passed: true, response_ms: 1, error: None },
-                ComplianceResult { method: "health.check".into(), passed: true, response_ms: 1, error: None },
+                ComplianceResult {
+                    method: "health.liveness".into(),
+                    passed: true,
+                    response_ms: 1,
+                    error: None,
+                },
+                ComplianceResult {
+                    method: "health.readiness".into(),
+                    passed: true,
+                    response_ms: 1,
+                    error: None,
+                },
+                ComplianceResult {
+                    method: "health.check".into(),
+                    passed: true,
+                    response_ms: 1,
+                    error: None,
+                },
             ],
             compliant: true,
         };
@@ -229,8 +244,18 @@ mod tests {
         let report = ComplianceReport {
             endpoint: "127.0.0.1:9000".into(),
             results: vec![
-                ComplianceResult { method: "health.liveness".into(), passed: true, response_ms: 1, error: None },
-                ComplianceResult { method: "health.readiness".into(), passed: false, response_ms: 5000, error: Some("timeout".into()) },
+                ComplianceResult {
+                    method: "health.liveness".into(),
+                    passed: true,
+                    response_ms: 1,
+                    error: None,
+                },
+                ComplianceResult {
+                    method: "health.readiness".into(),
+                    passed: false,
+                    response_ms: 5000,
+                    error: Some("timeout".into()),
+                },
             ],
             compliant: false,
         };
@@ -248,8 +273,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_validate_unreachable_endpoint() {
-        let v = IpcComplianceValidator::new()
-            .with_connect_timeout(Duration::from_millis(100));
+        let v = IpcComplianceValidator::new().with_connect_timeout(Duration::from_millis(100));
         let report = v.validate("127.0.0.1:1".parse().expect("addr")).await;
         assert!(!report.compliant);
         assert_eq!(report.results.len(), 3);

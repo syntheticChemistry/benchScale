@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! Topology definitions and YAML parsing
 
 use serde::{Deserialize, Serialize};
@@ -222,24 +222,25 @@ impl TopologyConfig {
 /// Validate network conditions
 fn validate_network_conditions(conditions: &NetworkConditions) -> Result<()> {
     if let Some(packet_loss) = conditions.packet_loss_percent
-        && !(0.0..=100.0).contains(&packet_loss) {
-            return Err(Error::Topology(format!(
-                "Packet loss must be between 0 and 100, got: {}",
-                packet_loss
-            )));
-        }
+        && !(0.0..=100.0).contains(&packet_loss)
+    {
+        return Err(Error::Topology(format!(
+            "Packet loss must be between 0 and 100, got: {}",
+            packet_loss
+        )));
+    }
 
     if let Some(latency) = conditions.latency_ms
-        && latency > 10000 {
-            return Err(Error::Topology(format!(
-                "Latency must be <= 10000ms, got: {}",
-                latency
-            )));
-        }
+        && latency > 10000
+    {
+        return Err(Error::Topology(format!(
+            "Latency must be <= 10000ms, got: {}",
+            latency
+        )));
+    }
 
     Ok(())
 }
-
 
 #[cfg(test)]
 mod tests;

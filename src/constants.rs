@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! Constants and default values for benchScale
 //!
 //! This module provides capability-based defaults that can be discovered
@@ -22,8 +22,7 @@ pub mod network {
 
     /// Default subnet for benchScale networks (override with `BENCHSCALE_DEFAULT_SUBNET`)
     pub fn default_subnet() -> String {
-        std::env::var("BENCHSCALE_DEFAULT_SUBNET")
-            .unwrap_or_else(|_| "10.100.0.0/24".to_string())
+        std::env::var("BENCHSCALE_DEFAULT_SUBNET").unwrap_or_else(|_| "10.100.0.0/24".to_string())
     }
 
     /// IP pool start (for deterministic allocation)

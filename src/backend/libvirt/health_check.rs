@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! Libvirt Health Check Module (Evolution #20)
 //!
 //! This module provides automatic detection of libvirt system health issues,
@@ -375,4 +375,3 @@ mod tests {
         assert!(!degraded.is_unhealthy());
     }
 }
-

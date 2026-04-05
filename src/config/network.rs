@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! Network Configuration
 //!
 //! **Phase 2C: Configuration Externalization**
@@ -215,7 +215,10 @@ impl NetworkConfig {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn merge_with_capabilities(&mut self, capabilities: &crate::capabilities::NetworkCapabilities) {
+    pub fn merge_with_capabilities(
+        &mut self,
+        capabilities: &crate::capabilities::NetworkCapabilities,
+    ) {
         // If network_name is default and capabilities has a different one, use it
         if self.network_name == "default" && capabilities.default_network != "default" {
             self.network_name.clone_from(&capabilities.default_network);
@@ -449,4 +452,3 @@ enable_dhcp_discovery: false
         assert_eq!(config.dhcp_discovery_timeout_secs, 60);
     }
 }
-

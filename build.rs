@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 fn main() {
     // Link against libvirt when libvirt feature is enabled
     #[cfg(feature = "libvirt")]

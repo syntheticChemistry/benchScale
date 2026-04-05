@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! DHCP Lease Discovery for Libvirt VMs
 //!
 //! Evolution #12: Robust DHCP IP Discovery
@@ -19,15 +19,15 @@
 //! We query libvirt network DHCP leases and match VMs by MAC address, which is the
 //! most reliable identifier since hostnames might not be set yet during early boot.
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use libc;
 use std::ffi::CStr;
 use std::ptr;
 use std::time::Duration;
-use virt::connect::Connect;
-use virt::network::Network;
 use tokio::time::sleep;
 use tracing::{debug, info, warn};
+use virt::connect::Connect;
+use virt::network::Network;
 
 /// A DHCP lease entry from libvirt
 #[derive(Debug, Clone)]
@@ -129,10 +129,7 @@ pub async fn discover_dhcp_ip(mac_address: &str, config: DiscoveryConfig) -> Res
                 }
             }
             Err(e) => {
-                warn!(
-                    "Failed to query DHCP leases (attempt {}): {}",
-                    attempt, e
-                );
+                warn!("Failed to query DHCP leases (attempt {}): {}", attempt, e);
             }
         }
 
@@ -160,8 +157,8 @@ pub async fn discover_dhcp_ip(mac_address: &str, config: DiscoveryConfig) -> Res
 ///
 /// A vector of all DHCP leases, or an error if the query failed
 pub(crate) fn query_dhcp_leases(network_name: &str) -> Result<Vec<DhcpLease>> {
-    let mut conn = Connect::open(None)
-        .map_err(|e| anyhow!("Failed to connect to libvirt: {}", e))?;
+    let mut conn =
+        Connect::open(None).map_err(|e| anyhow!("Failed to connect to libvirt: {}", e))?;
     let result = query_dhcp_leases_with_connect(&conn, network_name);
     let _ = conn.close();
     result
@@ -239,4 +236,3 @@ fn c_string_from_ptr(p: *mut libc::c_char) -> String {
     }
     unsafe { CStr::from_ptr(p).to_string_lossy().into_owned() }
 }
-

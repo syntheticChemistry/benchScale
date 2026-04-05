@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! Backend abstraction for container runtimes
 
 use async_trait::async_trait;
@@ -31,10 +31,10 @@ pub mod vm_utils;
 #[cfg(feature = "libvirt")]
 pub mod serial_console;
 
+pub mod cleanup;
 #[cfg(feature = "libvirt")]
 pub mod health;
 pub mod senescence;
-pub mod cleanup;
 
 #[cfg(feature = "libvirt")]
 pub use health::{HealthCheck, HealthMonitor, HealthStatus};
@@ -50,7 +50,7 @@ pub mod timeout_utils;
 
 #[cfg(feature = "libvirt")]
 pub use timeout_utils::{
-    retry_with_backoff, wait_for_condition, wait_for_condition_backoff, BackoffConfig,
+    BackoffConfig, retry_with_backoff, wait_for_condition, wait_for_condition_backoff,
 };
 
 #[cfg(all(feature = "libvirt", test))]
@@ -196,6 +196,7 @@ pub trait Backend: Send + Sync {
     /// let vm = backend.create_desktop_vm(
     ///     "my-desktop",
     ///     &base_image,
+    ///     &cloud_init,
     ///     4096,  // 4GB RAM
     ///     2,     // 2 vCPUs
     ///     20,    // 20GB disk

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! Lab registry for persistent lab state management
 //!
 //! Enables listing, loading, and managing labs across CLI invocations.
@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use tokio::fs;
 use tracing::{debug, info, warn};
 
-use crate::{topology::Topology, Error, LabStatus, Result};
+use crate::{Error, LabStatus, Result, topology::Topology};
 
 /// Lab metadata stored in registry
 #[derive(Debug, Clone, Serialize, Deserialize)]

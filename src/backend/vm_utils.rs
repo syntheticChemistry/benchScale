@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! VM disk management utilities for LibvirtBackend
 //!
 //! Handles qcow2 disk image operations including copy-on-write overlays.

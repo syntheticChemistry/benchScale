@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright © 2024-2025 DataScienceBioLab
 
 //! VM Senescence Monitoring
@@ -22,7 +22,7 @@ use tracing::{debug, info, warn};
 
 // Evolution #22: DHCP lease re-discovery
 #[cfg(feature = "libvirt")]
-use crate::backend::libvirt::dhcp_discovery::{discover_dhcp_ip, DiscoveryConfig};
+use crate::backend::libvirt::dhcp_discovery::{DiscoveryConfig, discover_dhcp_ip};
 
 /// VM health status
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -199,7 +199,11 @@ impl SenescenceMonitor {
     ///
     /// **Evolution #22:** This enables automatic IP re-discovery during long builds.
     /// The monitor will check for DHCP lease changes every 10 health checks (100s).
-    pub fn with_mac_address(vm_name: String, ip_address: String, mac_address: Option<String>) -> Self {
+    pub fn with_mac_address(
+        vm_name: String,
+        ip_address: String,
+        mac_address: Option<String>,
+    ) -> Self {
         let metrics = SenescenceMetrics {
             ip_address,
             vm_name,
@@ -219,8 +223,8 @@ impl SenescenceMonitor {
             start_time: Instant::now(),
             check_interval: Duration::from_secs(10),
             stall_threshold: Duration::from_secs(120), // 2 minutes without progress
-            max_failures: 10, // Default: quick VMs (100s tolerance)
-            ip_rediscovery_interval: 10, // Re-discover IP every 10 checks = 100s
+            max_failures: 10,                          // Default: quick VMs (100s tolerance)
+            ip_rediscovery_interval: 10,               // Re-discover IP every 10 checks = 100s
         }
     }
 
@@ -245,7 +249,10 @@ impl SenescenceMonitor {
     /// Check if VM is healthy
     pub async fn is_healthy(&self) -> bool {
         let metrics = self.metrics.read().await;
-        matches!(metrics.health, HealthStatus::Healthy | HealthStatus::Unknown)
+        matches!(
+            metrics.health,
+            HealthStatus::Healthy | HealthStatus::Unknown
+        )
     }
 
     /// Check if VM appears stalled
@@ -344,10 +351,9 @@ impl SenescenceMonitor {
         metrics.ssh_ok = ssh_ok;
 
         // Check 3: Cloud-init status (if SSH available)
-        if ssh_ok
-            && let Ok(progress) = self.check_cloud_init(&metrics.ip_address, username).await {
-                metrics.cloud_init = Some(progress);
-            }
+        if ssh_ok && let Ok(progress) = self.check_cloud_init(&metrics.ip_address, username).await {
+            metrics.cloud_init = Some(progress);
+        }
 
         // Update health status
         let new_health = if ssh_ok && ping_ok {
@@ -452,21 +458,21 @@ impl SenescenceMonitor {
             ])
             .output()
             .await
-            .map_err(|e| Error::Monitoring(format!("Failed to execute cloud-init status command: {e}")))?;
+            .map_err(|e| {
+                Error::Monitoring(format!("Failed to execute cloud-init status command: {e}"))
+            })?;
 
         if !output.status.success() {
             return Err(Error::Monitoring("cloud-init status command failed".into()));
         }
 
         let status_json = String::from_utf8_lossy(&output.stdout);
-        let status: serde_json::Value = serde_json::from_str(&status_json)
-            .map_err(|e| Error::Monitoring(format!("Failed to parse cloud-init status JSON: {e}")))?;
+        let status: serde_json::Value = serde_json::from_str(&status_json).map_err(|e| {
+            Error::Monitoring(format!("Failed to parse cloud-init status JSON: {e}"))
+        })?;
 
         Ok(CloudInitProgress {
-            status: status["status"]
-                .as_str()
-                .unwrap_or("unknown")
-                .to_string(),
+            status: status["status"].as_str().unwrap_or("unknown").to_string(),
             detail: status["detail"].as_str().map(String::from),
             errors: status["errors"]
                 .as_array()
@@ -492,11 +498,18 @@ impl SenescenceMonitor {
 
             match metrics.health {
                 HealthStatus::Healthy => {
-                    info!("VM {} is healthy after {:?}", metrics.vm_name, start.elapsed());
+                    info!(
+                        "VM {} is healthy after {:?}",
+                        metrics.vm_name,
+                        start.elapsed()
+                    );
                     return Ok(());
                 }
                 HealthStatus::Failed => {
-                    return Err(Error::Monitoring(format!("VM {} failed health checks", metrics.vm_name)));
+                    return Err(Error::Monitoring(format!(
+                        "VM {} failed health checks",
+                        metrics.vm_name
+                    )));
                 }
                 HealthStatus::Stalled => {
                     warn!("VM {} appears stalled", metrics.vm_name);
@@ -512,8 +525,7 @@ impl SenescenceMonitor {
             if start.elapsed() > timeout {
                 return Err(Error::Monitoring(format!(
                     "Timeout waiting for VM {} to become healthy after {:?}",
-                    metrics.vm_name,
-                    timeout
+                    metrics.vm_name, timeout
                 )));
             }
         }
@@ -550,15 +562,17 @@ impl SenescenceMonitor {
                 if !cloud_init.errors.is_empty() {
                     return Err(Error::Monitoring(format!(
                         "Cloud-init failed on VM {}: {:?}",
-                        metrics.vm_name,
-                        cloud_init.errors
+                        metrics.vm_name, cloud_init.errors
                     )));
                 }
             }
 
             match metrics.health {
                 HealthStatus::Failed => {
-                    return Err(Error::Monitoring(format!("VM {} failed during cloud-init", metrics.vm_name)));
+                    return Err(Error::Monitoring(format!(
+                        "VM {} failed during cloud-init",
+                        metrics.vm_name
+                    )));
                 }
                 HealthStatus::Stalled => {
                     warn!(
@@ -572,8 +586,7 @@ impl SenescenceMonitor {
             if start.elapsed() > timeout {
                 warn!(
                     "Cloud-init timeout on VM {} after {:?}, but VM is still running",
-                    metrics.vm_name,
-                    timeout
+                    metrics.vm_name, timeout
                 );
                 return Ok(()); // Don't fail, just warn
             }
@@ -623,4 +636,3 @@ mod tests {
         assert!(!monitor.is_stalled().await);
     }
 }
-

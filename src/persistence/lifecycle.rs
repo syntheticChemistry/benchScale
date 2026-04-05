@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! Lifecycle Manager - High-level VM orchestration with persistence
 //!
 //! Provides production-grade VM lifecycle management with:
@@ -47,7 +47,7 @@ pub struct VmConfig {
 /// # #[cfg(feature = "libvirt")]
 /// # {
 /// let registry = VmRegistry::new("vms.db").await?;
-/// let backend = Arc::new(LibvirtBackend::new()?) as Arc<dyn benchscale::backend::Backend>;
+/// let backend = Arc::new(LibvirtBackend::new()?);
 /// let manager = LifecycleManager::new(registry, backend);
 ///
 /// let vm_id = manager.create_vm(VmConfig {
@@ -70,15 +70,15 @@ pub struct VmConfig {
 ///
 /// # async fn example() -> anyhow::Result<()> {
 /// let registry = VmRegistry::new("vms.db").await?;
-/// let backend = Arc::new(LibvirtBackend::new()?) as Arc<dyn benchscale::backend::Backend>;
+/// let backend = Arc::new(LibvirtBackend::new()?);
 /// let manager = LifecycleManager::new(registry, backend);
-/// // Works with any Backend!
+/// // Works with any concrete Backend type (e.g. LibvirtBackend)
 /// # Ok(())
 /// # }
 /// ```
 pub struct LifecycleManager<B: Backend> {
     registry: VmRegistry,
-    backend: Arc<B>,
+    _backend: Arc<B>,
 }
 
 impl<B: Backend> LifecycleManager<B> {
@@ -88,7 +88,10 @@ impl<B: Backend> LifecycleManager<B> {
     /// * `registry` - VM registry for persistent state
     /// * `backend` - Any Backend implementation (libvirt, VMware, AWS, etc.)
     pub fn new(registry: VmRegistry, backend: Arc<B>) -> Self {
-        Self { registry, backend }
+        Self {
+            registry,
+            _backend: backend,
+        }
     }
 
     /// Create VM with full lifecycle tracking
@@ -605,9 +608,11 @@ mod tests {
 
         // Check history
         let history = manager.get_vm_history(&vm_id).await.unwrap();
-        assert!(history
-            .iter()
-            .any(|e| matches!(e.event_type, EventType::Handoff { .. })));
+        assert!(
+            history
+                .iter()
+                .any(|e| matches!(e.event_type, EventType::Handoff { .. }))
+        );
     }
 
     #[tokio::test]

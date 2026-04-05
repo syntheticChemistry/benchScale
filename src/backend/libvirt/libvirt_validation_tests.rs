@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Integration tests for cloud-init validation helpers
 //
 // These tests verify the behavior of wait_for_cloud_init, wait_for_ssh,
@@ -27,7 +27,7 @@ mod cloud_init_validation_tests {
     use tokio::time::Instant;
 
     #[tokio::test]
-    #[ignore] // Requires libvirt daemon with proper permissions
+    #[ignore = "Requires libvirt daemon with proper permissions"]
     async fn test_wait_for_ssh_timeout_behavior() {
         // Test that wait_for_ssh properly times out
         let backend = LibvirtBackend::new().expect("Failed to create backend");
@@ -57,7 +57,7 @@ mod cloud_init_validation_tests {
     }
 
     #[tokio::test]
-    #[ignore] // Requires libvirt daemon with proper permissions
+    #[ignore = "Requires libvirt daemon with proper permissions"]
     async fn test_wait_for_cloud_init_timeout_behavior() {
         // Test that wait_for_cloud_init properly times out
         let backend = LibvirtBackend::new().expect("Failed to create backend");
@@ -81,7 +81,7 @@ mod cloud_init_validation_tests {
     }
 
     #[tokio::test]
-    #[ignore] // Requires libvirt daemon with proper permissions
+    #[ignore = "Requires libvirt daemon with proper permissions"]
     async fn test_exponential_backoff_ssh() {
         // Verify timeout behavior (not strict timing due to test environment variability)
         let backend = LibvirtBackend::new().expect("Failed to create backend");
@@ -103,7 +103,7 @@ mod cloud_init_validation_tests {
     }
 
     #[test]
-    #[ignore] // Requires libvirt daemon with proper permissions
+    #[ignore = "Requires libvirt daemon with proper permissions"]
     fn test_backend_creation() {
         // Verify backend can be created
         let result = LibvirtBackend::new();
@@ -111,7 +111,7 @@ mod cloud_init_validation_tests {
     }
 
     #[tokio::test]
-    #[ignore] // Requires libvirt daemon with proper permissions
+    #[ignore = "Requires libvirt daemon with proper permissions"]
     async fn test_wait_for_ip_private_helper() {
         // Test the private wait_for_ip helper
         let backend = LibvirtBackend::new().expect("Failed to create backend");
@@ -143,7 +143,7 @@ mod integration_tests {
     /// - Ubuntu cloud image at /tmp/test-cloud-image.img
     /// - Sufficient permissions for libvirt
     #[tokio::test]
-    #[ignore]
+    #[ignore = "Requires real VM, cloud image at /tmp/test-cloud-image.img, and libvirt"]
     async fn test_real_vm_cloud_init_validation() {
         use std::path::Path;
 
@@ -165,6 +165,7 @@ mod integration_tests {
                 2048,
                 2,
                 10,
+                None,
             )
             .await
             .expect("VM creation failed");
@@ -190,7 +191,7 @@ mod integration_tests {
 
     /// Test the create_desktop_vm_ready convenience method
     #[tokio::test]
-    #[ignore]
+    #[ignore = "Requires real VM, cloud image at /tmp/test-cloud-image.img, and libvirt"]
     async fn test_real_vm_create_ready() {
         use std::path::Path;
 
@@ -213,6 +214,7 @@ mod integration_tests {
                 "testuser",
                 "testpass123",
                 Duration::from_secs(300),
+                None,
             )
             .await
             .expect("VM creation with validation failed");

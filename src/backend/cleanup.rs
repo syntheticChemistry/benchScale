@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright © 2024-2025 DataScienceBioLab
 //
 //! VM Lifecycle Cleanup - Deep Debt Solution
@@ -12,6 +12,7 @@
 
 use anyhow::{Context, Result};
 use std::path::PathBuf;
+#[cfg(not(feature = "libvirt"))]
 use std::process::Command;
 use tracing::{error, info, warn};
 
@@ -74,14 +75,16 @@ impl VmCleanup {
                 Ok(domain) => {
                     if let Err(e) = domain.destroy() {
                         let msg = e.message();
-                        if !msg.contains("domain is not running") && !msg.contains("failed to get domain")
+                        if !msg.contains("domain is not running")
+                            && !msg.contains("failed to get domain")
                         {
                             warn!("Failed to destroy VM {}: {}", vm_name, msg);
                         }
                     }
                 }
                 Err(e) => {
-                    if e.code() != ErrorNumber::NoDomain && !e.message().contains("failed to get domain")
+                    if e.code() != ErrorNumber::NoDomain
+                        && !e.message().contains("failed to get domain")
                     {
                         warn!("Failed to destroy VM {}: {}", vm_name, e.message());
                     }
@@ -98,7 +101,9 @@ impl VmCleanup {
             if !destroy_output.status.success() {
                 let stderr = String::from_utf8_lossy(&destroy_output.stderr);
                 // Don't error if VM doesn't exist
-                if !stderr.contains("domain is not running") && !stderr.contains("failed to get domain") {
+                if !stderr.contains("domain is not running")
+                    && !stderr.contains("failed to get domain")
+                {
                     warn!("Failed to destroy VM {}: {}", vm_name, stderr);
                 }
             }
@@ -118,7 +123,8 @@ impl VmCleanup {
                     }
                 }
                 Err(e) => {
-                    if e.code() != ErrorNumber::NoDomain && !e.message().contains("failed to get domain")
+                    if e.code() != ErrorNumber::NoDomain
+                        && !e.message().contains("failed to get domain")
                     {
                         warn!("Failed to undefine VM {}: {}", vm_name, e.message());
                     }
@@ -151,8 +157,9 @@ impl VmCleanup {
         // Remove cloud-init ISO
         let cidata_path = self.image_dir.join(format!("{}-cidata.iso", vm_name));
         if cidata_path.exists() {
-            std::fs::remove_file(&cidata_path)
-                .with_context(|| format!("Failed to remove cloud-init ISO: {}", cidata_path.display()))?;
+            std::fs::remove_file(&cidata_path).with_context(|| {
+                format!("Failed to remove cloud-init ISO: {}", cidata_path.display())
+            })?;
             info!("   Removed cloud-init ISO: {:?}", cidata_path);
         }
 
@@ -182,8 +189,7 @@ impl VmCleanup {
                 .context("Failed to list VMs")?;
 
             let vms = String::from_utf8_lossy(&list_output.stdout);
-            vms
-                .lines()
+            vms.lines()
                 .filter(|line| !line.is_empty() && line.starts_with(prefix))
                 .map(std::string::ToString::to_string)
                 .collect()
@@ -233,30 +239,30 @@ impl VmCleanup {
         let mut cleaned = Vec::new();
 
         // Check all .qcow2 files in image directory
-        for entry in std::fs::read_dir(&self.image_dir)
-            .context("Failed to read image directory")?
-        {
+        for entry in std::fs::read_dir(&self.image_dir).context("Failed to read image directory")? {
             let entry = entry?;
             let path = entry.path();
 
             if let Some(ext) = path.extension()
                 && ext == "qcow2"
-                    && let Some(file_stem) = path.file_stem() {
-                        let vm_name = file_stem.to_string_lossy().to_string();
-                        
-                        // Skip base images (these are templates)
-                        if vm_name.contains("cloudimg") || vm_name.contains("base") {
-                            continue;
-                        }
+                && let Some(file_stem) = path.file_stem()
+            {
+                let vm_name = file_stem.to_string_lossy().to_string();
 
-                        // If no VM exists for this disk, it's orphaned
-                        if !vms.contains(&vm_name) {
-                            warn!("   Found orphaned disk: {:?}", path);
-                            std::fs::remove_file(&path)
-                                .with_context(|| format!("Failed to remove orphaned disk: {}", path.display()))?;
-                            cleaned.push(path);
-                        }
-                    }
+                // Skip base images (these are templates)
+                if vm_name.contains("cloudimg") || vm_name.contains("base") {
+                    continue;
+                }
+
+                // If no VM exists for this disk, it's orphaned
+                if !vms.contains(&vm_name) {
+                    warn!("   Found orphaned disk: {:?}", path);
+                    std::fs::remove_file(&path).with_context(|| {
+                        format!("Failed to remove orphaned disk: {}", path.display())
+                    })?;
+                    cleaned.push(path);
+                }
+            }
         }
 
         info!("✅ Cleaned up {} orphaned disk images", cleaned.len());
@@ -326,4 +332,3 @@ mod tests {
         assert_eq!(cleanup.image_dir, expected);
     }
 }
-

@@ -1,7 +1,8 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! Docker backend implementation using bollard
 
 use async_trait::async_trait;
+use bollard::Docker;
 use bollard::container::{
     Config, CreateContainerOptions, LogOutput, LogsOptions, RemoveContainerOptions,
     StartContainerOptions, StopContainerOptions, UploadToContainerOptions,
@@ -10,7 +11,6 @@ use bollard::exec::{CreateExecOptions, StartExecResults};
 use bollard::image::CreateImageOptions;
 use bollard::network::{ConnectNetworkOptions, CreateNetworkOptions, InspectNetworkOptions};
 use bollard::service::Ipam;
-use bollard::Docker;
 use futures_util::stream::StreamExt;
 use std::collections::HashMap;
 use std::default::Default;
@@ -52,7 +52,11 @@ impl DockerBackend {
             "BENCHSCALE_HARDENED_IMAGE_{}",
             base_image
                 .chars()
-                .map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_uppercase() } else { '_' })
+                .map(|c| if c.is_ascii_alphanumeric() {
+                    c.to_ascii_uppercase()
+                } else {
+                    '_'
+                })
                 .collect::<String>()
         );
         std::env::var(key).ok()
@@ -131,7 +135,8 @@ impl DockerBackend {
             .exec_command(
                 container_id,
                 vec![
-                    "sh".into(), "-c".into(),
+                    "sh".into(),
+                    "-c".into(),
                     "apt-get update -qq && apt-get install -y -qq iproute2 2>/dev/null".into(),
                 ],
             )
@@ -144,7 +149,12 @@ impl DockerBackend {
         let apk = self
             .exec_command(
                 container_id,
-                vec!["apk".into(), "add".into(), "--no-cache".into(), "iproute2".into()],
+                vec![
+                    "apk".into(),
+                    "add".into(),
+                    "--no-cache".into(),
+                    "iproute2".into(),
+                ],
             )
             .await?;
 
@@ -291,8 +301,11 @@ impl Backend for DockerBackend {
         let env_vec: Vec<String> = env.iter().map(|(k, v)| format!("{}={}", k, v)).collect();
 
         let _endpoint_config: HashMap<String, bollard::models::EndpointSettings> =
-            std::iter::once((network.to_string(), bollard::models::EndpointSettings::default()))
-                .collect();
+            std::iter::once((
+                network.to_string(),
+                bollard::models::EndpointSettings::default(),
+            ))
+            .collect();
 
         let config = Config {
             image: Some(image.clone()),
@@ -415,11 +428,12 @@ impl Backend for DockerBackend {
         for container in containers {
             if let Some(network_settings) = container.network_settings
                 && let Some(networks) = network_settings.networks
-                    && networks.contains_key(network)
-                        && let Some(id) = container.id
-                            && let Ok(node) = self.get_node(&id).await {
-                                nodes.push(node);
-                            }
+                && networks.contains_key(network)
+                && let Some(id) = container.id
+                && let Ok(node) = self.get_node(&id).await
+            {
+                nodes.push(node);
+            }
         }
 
         Ok(nodes)

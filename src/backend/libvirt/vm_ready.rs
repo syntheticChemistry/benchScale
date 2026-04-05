@@ -1,17 +1,17 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! VM readiness validation for LibvirtBackend
 //!
 //! This module provides functions to wait for VMs to become fully operational,
 //! including cloud-init completion and SSH availability. These are critical
 //! for ensuring VMs are ready before attempting to use them.
 
-use crate::backend::NodeInfo;
 use crate::Result;
+use crate::backend::NodeInfo;
 use std::time::Duration;
 use tracing::{info, warn};
 
-use super::ssh::SshClient;
 use super::LibvirtBackend;
+use super::ssh::SshClient;
 
 impl LibvirtBackend {
     /// Wait for a VM to acquire an IP address
@@ -63,11 +63,15 @@ impl LibvirtBackend {
     ///
     /// # Example
     /// ```no_run
-    /// # use benchscale::LibvirtBackend;
+    /// # use benchscale::{LibvirtBackend, CloudInit};
+    /// # use std::path::Path;
     /// # use std::time::Duration;
     /// # async fn example() -> anyhow::Result<()> {
     /// let backend = LibvirtBackend::new()?;
-    /// let node = backend.create_desktop_vm(...).await?;
+    /// let cloud_init = CloudInit::builder().add_user("u", "ssh-rsa AAA").build();
+    /// let node = backend
+    ///     .create_desktop_vm("vm", Path::new("/tmp/base.img"), &cloud_init, 1024, 1, 10, None)
+    ///     .await?;
     /// backend.wait_for_cloud_init(&node.id, Some(&node.ip_address), "ubuntu", "password", Duration::from_secs(600)).await?;
     /// // Now safe to use SSH
     /// # Ok(())
@@ -163,11 +167,15 @@ impl LibvirtBackend {
     ///
     /// # Example
     /// ```no_run
-    /// # use benchscale::LibvirtBackend;
+    /// # use benchscale::{LibvirtBackend, CloudInit};
+    /// # use std::path::Path;
     /// # use std::time::Duration;
     /// # async fn example() -> anyhow::Result<()> {
     /// let backend = LibvirtBackend::new()?;
-    /// let node = backend.create_desktop_vm(...).await?;
+    /// let cloud_init = CloudInit::builder().add_user("u", "ssh-rsa AAA").build();
+    /// let node = backend
+    ///     .create_desktop_vm("vm", Path::new("/tmp/base.img"), &cloud_init, 1024, 1, 10, None)
+    ///     .await?;
     /// backend.wait_for_ssh(&node.ip_address, "ubuntu", "password", Duration::from_secs(300)).await?;
     /// // SSH is ready
     /// # Ok(())
@@ -251,7 +259,6 @@ impl LibvirtBackend {
     ///
     /// let cloud_init = CloudInit::builder()
     ///     .add_user("ubuntu", "ssh-rsa AAAAB3...")
-    ///     .password("ubuntu", "password123")
     ///     .package("ubuntu-desktop-minimal")
     ///     .build();
     ///
@@ -263,6 +270,7 @@ impl LibvirtBackend {
     ///     "ubuntu",
     ///     "password123",
     ///     Duration::from_secs(600), // Wait up to 10 min
+    ///     None,
     /// ).await?;
     ///
     /// // SSH is guaranteed to work now
@@ -285,7 +293,15 @@ impl LibvirtBackend {
     ) -> Result<NodeInfo> {
         // Create the VM
         let node = self
-            .create_desktop_vm(name, base_image, cloud_init, memory_mb, vcpus, disk_size_gb, static_ip)
+            .create_desktop_vm(
+                name,
+                base_image,
+                cloud_init,
+                memory_mb,
+                vcpus,
+                disk_size_gb,
+                static_ip,
+            )
             .await?;
 
         // Wait for cloud-init to complete with known static IP

@@ -1,8 +1,8 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! benchScale CLI — typed argument parsing via clap
 #![allow(deprecated)] // CLI still uses legacy `Config` until migrated to BenchScaleConfig
 
-use benchscale::{init, Backend, Config, DockerBackend, Lab, LabRegistry, Topology};
+use benchscale::{Backend, Config, DockerBackend, Lab, LabRegistry, Topology, init};
 use clap::{Parser, Subcommand};
 use tracing::{error, info};
 
@@ -199,10 +199,7 @@ async fn list_labs() -> anyhow::Result<()> {
         println!("   ID: {}", lab.id);
         println!("   Backend: {}", lab.backend_type);
         println!("   Nodes: {}", lab.node_ids.len());
-        println!(
-            "   Created: {}",
-            lab.created_at.format("%Y-%m-%d %H:%M:%S")
-        );
+        println!("   Created: {}", lab.created_at.format("%Y-%m-%d %H:%M:%S"));
         println!();
     }
 
@@ -257,10 +254,7 @@ async fn validate_ipc(endpoint: &str) -> anyhow::Result<()> {
 
     for result in &report.results {
         let status = if result.passed { "✓" } else { "✗" };
-        println!(
-            "  {status} {} ({}ms)",
-            result.method, result.response_ms
-        );
+        println!("  {status} {} ({}ms)", result.method, result.response_ms);
         if let Some(ref err) = result.error {
             println!("    → {err}");
         }

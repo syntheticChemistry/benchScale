@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! Cross-architecture binary resolution.
 //!
 //! Resolves primal binaries by target architecture from a
@@ -92,9 +92,7 @@ impl BinaryResolver {
                 .join("primals")
                 .join(self.arch.dir_name())
                 .join(primal_name),
-            self.base_path
-                .join(self.arch.dir_name())
-                .join(primal_name),
+            self.base_path.join(self.arch.dir_name()).join(primal_name),
             self.base_path.join(primal_name),
         ];
 
@@ -113,10 +111,7 @@ impl BinaryResolver {
 
     /// List all available primal binaries for this architecture.
     pub fn list_available(&self) -> Vec<String> {
-        let arch_dir = self
-            .base_path
-            .join("primals")
-            .join(self.arch.dir_name());
+        let arch_dir = self.base_path.join("primals").join(self.arch.dir_name());
 
         if !arch_dir.is_dir() {
             let fallback = self.base_path.join(self.arch.dir_name());

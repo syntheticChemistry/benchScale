@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! VM State Machine and Lifecycle Events
 //!
 //! Defines the VM lifecycle states and valid transitions for production-grade
@@ -42,21 +42,14 @@ impl VmState {
     /// - Paused → Running | Stopping
     /// - Failed → Starting (recover)
     pub fn can_transition_to(&self, next: VmState) -> bool {
-        use VmState::*;
+        use VmState::{Created, Failed, Paused, Running, Starting, Stopped, Stopping};
         matches!(
             (self, next),
-            (Created, Starting)
-                | (Starting, Running)
-                | (Starting, Failed)
-                | (Running, Stopping)
-                | (Running, Paused)
-                | (Running, Failed)
-                | (Stopping, Stopped)
-                | (Stopping, Failed)
-                | (Stopped, Starting)
-                | (Paused, Running)
-                | (Paused, Stopping)
-                | (Failed, Starting) // Restart after failure
+            (Created | Stopped | Failed, Starting)
+                | (Starting, Running | Failed)
+                | (Running, Stopping | Paused | Failed)
+                | (Stopping, Stopped | Failed)
+                | (Paused, Running | Stopping)
         )
     }
 

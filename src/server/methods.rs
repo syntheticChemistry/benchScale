@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! JSON-RPC method implementations for benchScale.
 //!
 //! Method families:
@@ -9,7 +9,7 @@
 
 use std::sync::Arc;
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tokio::sync::RwLock;
 use tracing::{info, warn};
 
@@ -35,10 +35,7 @@ impl ServerState {
         let config = crate::config_legacy::Config::from_env();
         let backend = DockerBackend::new().map_err(|e| anyhow::anyhow!("Docker init: {e}"))?;
 
-        let available = backend
-            .is_available()
-            .await
-            .unwrap_or(false);
+        let available = backend.is_available().await.unwrap_or(false);
 
         if !available {
             warn!("Docker is not available — lab operations will fail");
@@ -99,7 +96,12 @@ async fn health_check(state: &ServerState) -> MethodResult {
         *r = docker_ok;
     }
 
-    let lab_count = state.registry.list_labs().await.map(|v| v.len()).unwrap_or(0);
+    let lab_count = state
+        .registry
+        .list_labs()
+        .await
+        .map(|v| v.len())
+        .unwrap_or(0);
 
     Ok(json!({
         "status": if docker_ok { "healthy" } else { "degraded" },
@@ -120,9 +122,11 @@ async fn lab_create(params: Value, state: &ServerState) -> MethodResult {
         .ok_or_else(|| MethodError::InvalidParams("missing \"name\" string".into()))?
         .to_string();
 
-    let topology_value = params
-        .get("topology")
-        .ok_or_else(|| MethodError::InvalidParams("missing \"topology\" (inline object or file path string)".into()))?;
+    let topology_value = params.get("topology").ok_or_else(|| {
+        MethodError::InvalidParams(
+            "missing \"topology\" (inline object or file path string)".into(),
+        )
+    })?;
 
     let topology: Topology = if let Some(path_str) = topology_value.as_str() {
         Topology::from_file(path_str)
@@ -165,11 +169,13 @@ async fn lab_create(params: Value, state: &ServerState) -> MethodResult {
             .get("arch")
             .and_then(Value::as_str)
             .unwrap_or("x86_64");
-        let arch = deploy::Arch::from_str_loose(arch_str)
-            .unwrap_or(deploy::Arch::X86_64);
+        let arch = deploy::Arch::from_str_loose(arch_str).unwrap_or(deploy::Arch::X86_64);
 
         let available = deploy::list_available_primals(plasmid_path, arch);
-        info!("plasmidBin: {} binaries available for {arch}", available.len());
+        info!(
+            "plasmidBin: {} binaries available for {arch}",
+            available.len()
+        );
 
         let primal_refs: Vec<&str> = available.iter().map(String::as_str).collect();
 
@@ -180,7 +186,9 @@ async fn lab_create(params: Value, state: &ServerState) -> MethodResult {
                 plasmid_path,
                 arch,
                 &primal_refs,
-            ).await {
+            )
+            .await
+            {
                 Ok(deployed) => {
                     for d in &deployed {
                         deployed_primals.push(json!({
@@ -226,7 +234,10 @@ async fn lab_destroy(params: Value, state: &ServerState) -> MethodResult {
     }
 
     if metadata.network_id.is_some()
-        && let Err(e) = state.backend.delete_network(&metadata.topology.network.name).await
+        && let Err(e) = state
+            .backend
+            .delete_network(&metadata.topology.network.name)
+            .await
     {
         warn!("failed to delete network: {e}");
     }
@@ -286,9 +297,11 @@ fn lab_metadata_to_json(m: &LabMetadata) -> Value {
 // ---------------------------------------------------------------------------
 
 async fn topology_validate(params: Value) -> MethodResult {
-    let topology_value = params
-        .get("topology")
-        .ok_or_else(|| MethodError::InvalidParams("missing \"topology\" (inline object or file path string)".into()))?;
+    let topology_value = params.get("topology").ok_or_else(|| {
+        MethodError::InvalidParams(
+            "missing \"topology\" (inline object or file path string)".into(),
+        )
+    })?;
 
     let topology: Topology = if let Some(path_str) = topology_value.as_str() {
         Topology::from_file(path_str)
@@ -344,11 +357,7 @@ async fn node_health(params: Value, state: &ServerState) -> MethodResult {
     }
 
     let container_name = format!("benchscale-{}-{}", lab_name, node_name);
-    let running = state
-        .backend
-        .is_available()
-        .await
-        .unwrap_or(false);
+    let running = state.backend.is_available().await.unwrap_or(false);
 
     Ok(json!({
         "lab": lab_name,

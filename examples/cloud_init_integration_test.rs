@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Integration test demonstrating benchScale cloud-init validation
 //
 // This test creates a real VM using the new wait_for_cloud_init() API
@@ -66,6 +66,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             2048, // 2GB RAM
             2,    // 2 vCPUs
             10,   // 10GB disk
+            None,
         )
         .await?;
     let creation_time = start.elapsed();
@@ -92,6 +93,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match backend
         .wait_for_cloud_init(
             &node.id,
+            Some(&node.ip_address),
             "testuser",
             "testpass123",
             Duration::from_secs(300), // 5 minute timeout

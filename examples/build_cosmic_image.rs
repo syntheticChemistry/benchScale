@@ -1,5 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
-#!/usr/bin/env rust-script
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! Example: Build Pop!_OS COSMIC + RustDesk template using benchScale ImageBuilder
 //!
 //! This demonstrates the proper way to build VM templates with:
@@ -43,13 +42,13 @@ async fn main() -> anyhow::Result<()> {
     });
 
     let cloud_init = CloudInit::builder()
-        .hostname("cosmic-builder")
-        .add_user("cosmic", ssh_key.as_deref())
-        .password("cosmic", "cosmic")
+        .add_user("cosmic", ssh_key.as_deref().unwrap_or(""))
+        .cmd("echo 'cosmic:cosmic' | chpasswd")
+        .cmd("hostnamectl set-hostname cosmic-builder || true")
         .build();
 
     // Build template with monitored steps
-    let builder = ImageBuilder::new("popos-24-cosmic-rustdesk")?
+    let builder = ImageBuilder::new_libvirt("popos-24-cosmic-rustdesk")?
         .from_cloud_image(base_image)
         .with_memory(4096)
         .with_vcpus(2)

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! VM Registry with SQLite Backend
 //!
 //! Provides persistent storage for VM state, configuration, and lifecycle events.
@@ -88,7 +88,7 @@ impl VmRegistry {
     async fn initialize_schema(&self) -> Result<()> {
         // VMs table
         sqlx::query(
-            r#"
+            r"
             CREATE TABLE IF NOT EXISTS vms (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL UNIQUE,
@@ -102,7 +102,7 @@ impl VmRegistry {
                 project TEXT,
                 tags TEXT NOT NULL
             )
-            "#,
+            ",
         )
         .execute(&self.pool)
         .await
@@ -110,7 +110,7 @@ impl VmRegistry {
 
         // Lifecycle events table
         sqlx::query(
-            r#"
+            r"
             CREATE TABLE IF NOT EXISTS lifecycle_events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 vm_id TEXT NOT NULL,
@@ -120,7 +120,7 @@ impl VmRegistry {
                 details TEXT,
                 FOREIGN KEY (vm_id) REFERENCES vms(id)
             )
-            "#,
+            ",
         )
         .execute(&self.pool)
         .await
@@ -128,7 +128,7 @@ impl VmRegistry {
 
         // Handoffs table
         sqlx::query(
-            r#"
+            r"
             CREATE TABLE IF NOT EXISTS handoffs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 vm_id TEXT NOT NULL,
@@ -138,7 +138,7 @@ impl VmRegistry {
                 reason TEXT,
                 FOREIGN KEY (vm_id) REFERENCES vms(id)
             )
-            "#,
+            ",
         )
         .execute(&self.pool)
         .await
@@ -150,10 +150,10 @@ impl VmRegistry {
     /// Register a new VM
     pub async fn register(&self, record: VmRecord) -> Result<()> {
         sqlx::query(
-            r#"
+            r"
             INSERT INTO vms (id, name, created_at, updated_at, state, ip_address, config, metadata, owner, project, tags)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            "#,
+            ",
         )
         .bind(&record.id)
         .bind(&record.name)
@@ -499,9 +499,11 @@ mod tests {
 
         // Check history
         let history = registry.get_history("vm-1").await.unwrap();
-        assert!(history
-            .iter()
-            .any(|e| matches!(e.event_type, EventType::Handoff { .. })));
+        assert!(
+            history
+                .iter()
+                .any(|e| matches!(e.event_type, EventType::Handoff { .. }))
+        );
     }
 
     #[tokio::test]

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! End-to-End tests for LibvirtBackend with IP Pool
 //!
 //! These tests validate the IP pool integration with actual VM creation.
@@ -9,10 +9,10 @@
 //!
 //! Run with: cargo test --features libvirt --test libvirt_e2e_tests -- --ignored
 
+use benchscale::CloudInit;
 #[cfg(feature = "libvirt")]
 use benchscale::backend::{Backend, LibvirtBackend};
 use benchscale::config::BenchScaleConfig;
-use benchscale::CloudInit;
 
 /// Helper to check if libvirt is available
 async fn is_libvirt_available() -> bool {
@@ -66,6 +66,7 @@ async fn test_create_single_vm_with_ip_pool() {
             1024,
             1,
             10,
+            None,
         )
         .await;
 
@@ -118,6 +119,7 @@ async fn test_concurrent_vm_creation_no_ip_conflict() {
         1024,
         1,
         10,
+        None,
     );
     let vm2_future = backend.create_desktop_vm(
         "benchscale-concurrent-2",
@@ -126,6 +128,7 @@ async fn test_concurrent_vm_creation_no_ip_conflict() {
         1024,
         1,
         10,
+        None,
     );
 
     let (r1, r2) = tokio::join!(vm1_future, vm2_future);
@@ -188,6 +191,7 @@ async fn test_ip_release_on_delete() {
             1024,
             1,
             10,
+            None,
         )
         .await
         .expect("Failed to create VM");
@@ -210,6 +214,7 @@ async fn test_ip_release_on_delete() {
             1024,
             1,
             10,
+            None,
         )
         .await
         .expect("Failed to create second VM");

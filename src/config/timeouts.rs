@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! Timeout Configuration
 //!
 //! **Phase 2: Configuration Externalization**
@@ -190,46 +190,55 @@ impl TimeoutConfig {
     /// ```rust
     /// use benchscale::config::TimeoutConfig;
     ///
-    /// std::env::set_var("BENCHSCALE_CLOUD_INIT_TIMEOUT", "3600");
+    /// unsafe {
+    ///     std::env::set_var("BENCHSCALE_CLOUD_INIT_TIMEOUT", "3600");
+    /// }
     /// let mut config = TimeoutConfig::default();
     /// config.apply_env_overrides();
     /// assert_eq!(config.cloud_init_secs, 3600);
     /// ```
     pub fn apply_env_overrides(&mut self) {
         if let Ok(val) = std::env::var("BENCHSCALE_CLOUD_INIT_TIMEOUT")
-            && let Ok(secs) = val.parse::<u64>() {
-                self.cloud_init_secs = secs;
-            }
+            && let Ok(secs) = val.parse::<u64>()
+        {
+            self.cloud_init_secs = secs;
+        }
 
         if let Ok(val) = std::env::var("BENCHSCALE_DHCP_DISCOVERY_TIMEOUT")
-            && let Ok(secs) = val.parse::<u64>() {
-                self.dhcp_discovery_secs = secs;
-            }
+            && let Ok(secs) = val.parse::<u64>()
+        {
+            self.dhcp_discovery_secs = secs;
+        }
 
         if let Ok(val) = std::env::var("BENCHSCALE_VM_BOOT_TIMEOUT")
-            && let Ok(secs) = val.parse::<u64>() {
-                self.vm_boot_secs = secs;
-            }
+            && let Ok(secs) = val.parse::<u64>()
+        {
+            self.vm_boot_secs = secs;
+        }
 
         if let Ok(val) = std::env::var("BENCHSCALE_SSH_TIMEOUT")
-            && let Ok(secs) = val.parse::<u64>() {
-                self.ssh_connection_secs = secs;
-            }
+            && let Ok(secs) = val.parse::<u64>()
+        {
+            self.ssh_connection_secs = secs;
+        }
 
         if let Ok(val) = std::env::var("BENCHSCALE_PING_TIMEOUT")
-            && let Ok(secs) = val.parse::<u64>() {
-                self.ping_timeout_secs = secs;
-            }
+            && let Ok(secs) = val.parse::<u64>()
+        {
+            self.ping_timeout_secs = secs;
+        }
 
         if let Ok(val) = std::env::var("BENCHSCALE_POST_BOOT_STEP_TIMEOUT")
-            && let Ok(secs) = val.parse::<u64>() {
-                self.post_boot_step_secs = secs;
-            }
+            && let Ok(secs) = val.parse::<u64>()
+        {
+            self.post_boot_step_secs = secs;
+        }
 
         if let Ok(val) = std::env::var("BENCHSCALE_REBOOT_TIMEOUT")
-            && let Ok(secs) = val.parse::<u64>() {
-                self.reboot_timeout_secs = secs;
-            }
+            && let Ok(secs) = val.parse::<u64>()
+        {
+            self.reboot_timeout_secs = secs;
+        }
     }
 
     /// Validate configuration values
@@ -336,7 +345,7 @@ mod tests {
     #[test]
     fn test_validation_rejects_excessive() {
         let config = TimeoutConfig {
-            cloud_init_secs: 100000, // > 24 hours
+            cloud_init_secs: 100_000, // > 24 hours
             ..Default::default()
         };
         assert!(config.validate().is_err());
@@ -376,4 +385,3 @@ cloud_init_secs: 7200
         assert_eq!(config.ssh_connection_secs, 30);
     }
 }
-

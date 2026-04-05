@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 use super::*;
 use crate::backend::{NetworkInfo, NodeInfo};
 use std::collections::HashMap;
@@ -16,8 +16,16 @@ impl crate::backend::Backend for MockBackend {
             gateway: "192.168.1.1".to_string(),
         })
     }
-    async fn delete_network(&self, _name: &str) -> Result<()> { Ok(()) }
-    async fn create_node(&self, name: &str, _image: &str, _network: &str, _env: HashMap<String, String>) -> Result<NodeInfo> {
+    async fn delete_network(&self, _name: &str) -> Result<()> {
+        Ok(())
+    }
+    async fn create_node(
+        &self,
+        name: &str,
+        _image: &str,
+        _network: &str,
+        _env: HashMap<String, String>,
+    ) -> Result<NodeInfo> {
         Ok(NodeInfo {
             id: format!("{}-id", name),
             name: name.to_string(),
@@ -28,9 +36,15 @@ impl crate::backend::Backend for MockBackend {
             metadata: HashMap::new(),
         })
     }
-    async fn start_node(&self, _node_id: &str) -> Result<()> { Ok(()) }
-    async fn stop_node(&self, _node_id: &str) -> Result<()> { Ok(()) }
-    async fn delete_node(&self, _node_id: &str) -> Result<()> { Ok(()) }
+    async fn start_node(&self, _node_id: &str) -> Result<()> {
+        Ok(())
+    }
+    async fn stop_node(&self, _node_id: &str) -> Result<()> {
+        Ok(())
+    }
+    async fn delete_node(&self, _node_id: &str) -> Result<()> {
+        Ok(())
+    }
     async fn get_node(&self, node_id: &str) -> Result<NodeInfo> {
         Ok(NodeInfo {
             id: node_id.to_string(),
@@ -42,18 +56,38 @@ impl crate::backend::Backend for MockBackend {
             metadata: HashMap::new(),
         })
     }
-    async fn list_nodes(&self, _network: &str) -> Result<Vec<NodeInfo>> { Ok(vec![]) }
-    async fn exec_command(&self, _node_id: &str, _command: Vec<String>) -> Result<crate::backend::ExecResult> {
+    async fn list_nodes(&self, _network: &str) -> Result<Vec<NodeInfo>> {
+        Ok(vec![])
+    }
+    async fn exec_command(
+        &self,
+        _node_id: &str,
+        _command: Vec<String>,
+    ) -> Result<crate::backend::ExecResult> {
         Ok(crate::backend::ExecResult {
             exit_code: 0,
             stdout: "".to_string(),
             stderr: "".to_string(),
         })
     }
-    async fn copy_to_node(&self, _node_id: &str, _src: &str, _dest: &str) -> Result<()> { Ok(()) }
-    async fn get_logs(&self, _node_id: &str) -> Result<String> { Ok("".to_string()) }
-    async fn apply_network_conditions(&self, _node_id: &str, _latency_ms: Option<u32>, _packet_loss_percent: Option<f32>, _bandwidth_kbps: Option<u32>) -> Result<()> { Ok(()) }
-    async fn is_available(&self) -> Result<bool> { Ok(true) }
+    async fn copy_to_node(&self, _node_id: &str, _src: &str, _dest: &str) -> Result<()> {
+        Ok(())
+    }
+    async fn get_logs(&self, _node_id: &str) -> Result<String> {
+        Ok("".to_string())
+    }
+    async fn apply_network_conditions(
+        &self,
+        _node_id: &str,
+        _latency_ms: Option<u32>,
+        _packet_loss_percent: Option<f32>,
+        _bandwidth_kbps: Option<u32>,
+    ) -> Result<()> {
+        Ok(())
+    }
+    async fn is_available(&self) -> Result<bool> {
+        Ok(true)
+    }
 }
 
 #[test]

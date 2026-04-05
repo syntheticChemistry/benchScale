@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! End-to-End RustDesk VM Creation and Validation Tests
 //!
 //! These tests validate the complete workflow of creating a VM with RustDesk
@@ -6,10 +6,10 @@
 //!
 //! Run with: cargo test --features libvirt --test rustdesk_e2e -- --ignored
 
+use benchscale::CloudInit;
 #[cfg(feature = "libvirt")]
 use benchscale::backend::{Backend, LibvirtBackend};
 use benchscale::config::BenchScaleConfig;
-use benchscale::CloudInit;
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::Duration;
@@ -78,7 +78,7 @@ async fn test_e2e_full_rustdesk_workflow() {
 
     println!("📦 Creating VM with desktop environment...");
     let vm = match backend
-        .create_desktop_vm(vm_name, &template, &cloud_init, 4096, 2, 120)
+        .create_desktop_vm(vm_name, &template, &cloud_init, 4096, 2, 120, None)
         .await
     {
         Ok(vm) => vm,
@@ -250,7 +250,7 @@ async fn test_e2e_vnc_accessibility() {
 
     println!("📦 Creating VM...");
     let vm = backend
-        .create_desktop_vm(vm_name, &template, &cloud_init, 2048, 2, 60)
+        .create_desktop_vm(vm_name, &template, &cloud_init, 2048, 2, 60, None)
         .await
         .expect("Failed to create VM");
 
@@ -336,6 +336,7 @@ async fn test_e2e_desktop_vm_vs_server_vm() {
             2048,
             2,
             60,
+            None,
         )
         .await
         .expect("Failed to create desktop VM");

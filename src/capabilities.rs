@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! Runtime capability discovery for benchScale
 //!
 //! This module implements capability-based configuration: the system discovers
@@ -163,9 +163,7 @@ impl NetworkCapabilities {
             })
         })
         .await
-        .map_err(|e| {
-            crate::Error::Backend(format!("Failed to query libvirt network: {}", e))
-        })??;
+        .map_err(|e| crate::Error::Backend(format!("Failed to query libvirt network: {}", e)))??;
 
         // Parse XML for network configuration
         // Look for <ip address="192.168.122.1" netmask="255.255.255.0">
@@ -358,23 +356,23 @@ impl StorageCapabilities {
         let xml = tokio::task::spawn_blocking(|| {
             let conn = Connect::open(Some("qemu:///system"))
                 .map_err(|e| crate::Error::Backend(format!("Failed to query pool: {}", e)))?;
-            let pool = StoragePool::lookup_by_name(&conn, "default").map_err(|_| {
-                crate::Error::Backend("Failed to get pool config".to_string())
-            })?;
-            pool.get_xml_desc(0).map_err(|_| {
-                crate::Error::Backend("Failed to get pool config".to_string())
-            })
+            let pool = StoragePool::lookup_by_name(&conn, "default")
+                .map_err(|_| crate::Error::Backend("Failed to get pool config".to_string()))?;
+            pool.get_xml_desc(0)
+                .map_err(|_| crate::Error::Backend("Failed to get pool config".to_string()))
         })
         .await
         .map_err(|e| crate::Error::Backend(format!("Failed to query pool: {}", e)))??;
 
         // Look for `<path>…</path>` in pool XML
         for line in xml.lines() {
-            if line.contains("<path>") && line.contains("</path>")
+            if line.contains("<path>")
+                && line.contains("</path>")
                 && let Some(path_str) = line.split("<path>").nth(1)
-                    && let Some(path) = path_str.split("</path>").next() {
-                        return Ok(PathBuf::from(path.trim()));
-                    }
+                && let Some(path) = path_str.split("</path>").next()
+            {
+                return Ok(PathBuf::from(path.trim()));
+            }
         }
 
         Err(crate::Error::Backend("No path in pool XML".to_string()))
@@ -455,11 +453,12 @@ mod tests {
         if let Ok(caps) = result {
             assert!(!caps.network.gateway.is_empty());
             assert!(!caps.network.subnet.is_empty());
-            assert!(caps
-                .storage
-                .images_dir
-                .to_string_lossy()
-                .contains("libvirt"));
+            assert!(
+                caps.storage
+                    .images_dir
+                    .to_string_lossy()
+                    .contains("libvirt")
+            );
         }
     }
 

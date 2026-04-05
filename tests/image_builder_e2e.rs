@@ -1,9 +1,9 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! E2E tests for ImageBuilder
 //!
 //! Tests the complete image building workflow with real VMs.
 
-#![cfg(test)]
+#![cfg(all(test, feature = "libvirt"))]
 
 use benchscale::{BuildStep, CloudInit, ImageBuilder};
 use std::path::PathBuf;
@@ -24,7 +24,7 @@ async fn test_basic_image_build() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let builder = ImageBuilder::new("test-basic-image")?
+    let builder = ImageBuilder::new_libvirt("test-basic-image")?
         .from_cloud_image(base_image)
         .with_memory(2048)
         .with_vcpus(1)
@@ -58,7 +58,7 @@ async fn test_image_build_with_packages() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let builder = ImageBuilder::new("test-with-packages")?
+    let builder = ImageBuilder::new_libvirt("test-with-packages")?
         .from_cloud_image(base_image)
         .with_memory(2048)
         .with_vcpus(1)
@@ -95,13 +95,13 @@ async fn test_image_build_with_user_verification() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let builder = ImageBuilder::new("test-user-verify")?
+    let builder = ImageBuilder::new_libvirt("test-user-verify")?
         .from_cloud_image(base_image)
         .with_memory(4096)
         .with_vcpus(2)
         .add_step(BuildStep::WaitForCloudInit)
         .add_step(BuildStep::InstallPackages(vec![
-            "ubuntu-desktop".to_string()
+            "ubuntu-desktop".to_string(),
         ]))
         .add_step(BuildStep::Reboot)
         .add_step(BuildStep::UserVerification {
@@ -139,7 +139,7 @@ async fn test_intermediate_save() -> anyhow::Result<()> {
 
     let intermediate_path = PathBuf::from("/tmp/test-intermediate.qcow2");
 
-    let builder = ImageBuilder::new("test-intermediate")?
+    let builder = ImageBuilder::new_libvirt("test-intermediate")?
         .from_cloud_image(base_image)
         .with_memory(2048)
         .with_vcpus(1)
@@ -179,13 +179,13 @@ async fn test_apt_lock_handling() -> anyhow::Result<()> {
     }
 
     let cloud_init = CloudInit::builder()
-        .add_user("builder", "")  // Empty SSH key (will use password)
+        .add_user("builder", "") // Empty SSH key (will use password)
         // Add packages in cloud-init to create apt lock situation
         .package("htop")
         .package("tree")
         .build();
 
-    let builder = ImageBuilder::new("test-apt-lock")?
+    let builder = ImageBuilder::new_libvirt("test-apt-lock")?
         .from_cloud_image(base_image)
         .with_memory(2048)
         .with_vcpus(1)

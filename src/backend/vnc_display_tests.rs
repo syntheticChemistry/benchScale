@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! Unit tests for libvirt display and VNC configuration
 //!
 //! These tests validate that VNC and display options are correctly configured
@@ -6,7 +6,6 @@
 
 #[cfg(test)]
 mod vnc_display_tests {
-    
 
     #[test]
     fn test_vnc_graphics_argument() {
@@ -203,7 +202,6 @@ mod vnc_display_tests {
 
 #[cfg(test)]
 mod libvirt_integration_tests {
-    
 
     #[test]
     fn test_virsh_vncdisplay_command() {
@@ -240,7 +238,10 @@ mod libvirt_integration_tests {
         // Validate virt-install command structure for desktop VM
         let img = crate::constants::paths::default_system_vm_images_dir();
         let disk_main = format!("path={},format=qcow2", img.join("test.qcow2").display());
-        let disk_cidata = format!("path={},device=cdrom", img.join("test-cidata.iso").display());
+        let disk_cidata = format!(
+            "path={},device=cdrom",
+            img.join("test-cidata.iso").display()
+        );
         let command_args = vec![
             "virt-install".to_string(),
             "--name".to_string(),
@@ -271,10 +272,7 @@ mod libvirt_integration_tests {
         assert!(command_args.iter().any(|s| s == "--import"));
 
         // Verify graphics is VNC
-        let graphics_idx = command_args
-            .iter()
-            .position(|x| x == "--graphics")
-            .unwrap();
+        let graphics_idx = command_args.iter().position(|x| x == "--graphics").unwrap();
         assert!(command_args[graphics_idx + 1].contains("vnc"));
     }
 
@@ -284,12 +282,7 @@ mod libvirt_integration_tests {
         let img = crate::constants::paths::default_system_vm_images_dir();
         let disk_main = format!("path={},format=qcow2", img.join("vm.qcow2").display());
         let disk_cidata = format!("path={},device=cdrom", img.join("vm-cidata.iso").display());
-        let disk_args = vec![
-            "--disk",
-            disk_main.as_str(),
-            "--disk",
-            disk_cidata.as_str(),
-        ];
+        let disk_args = vec!["--disk", disk_main.as_str(), "--disk", disk_cidata.as_str()];
 
         // Should have main disk
         assert!(disk_args.iter().any(|arg| arg.contains(".qcow2")));

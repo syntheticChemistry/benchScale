@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! Utility functions for LibvirtBackend
 //!
 //! This module contains helper functions for template management, IP discovery,
@@ -167,9 +167,8 @@ impl LibvirtBackend {
     ///
     pub(super) async fn get_vm_ip_by_name(&self, name: &str) -> Result<String> {
         let conn = self.conn.lock().await;
-        let domain = Domain::lookup_by_name(&*conn, name).map_err(|e| {
-            crate::Error::Backend(format!("Failed to look up domain: {}", e))
-        })?;
+        let domain = Domain::lookup_by_name(&*conn, name)
+            .map_err(|e| crate::Error::Backend(format!("Failed to look up domain: {}", e)))?;
         let interfaces = domain
             .interface_addresses(virt::sys::VIR_DOMAIN_INTERFACE_ADDRESSES_SRC_LEASE, 0)
             .map_err(|e| {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 use anyhow::Result;
-use tracing::{error, info, warn, debug};
 use std::path::PathBuf;
+use tracing::{debug, error, info, warn};
 use virt::connect::Connect;
 use virt::domain::Domain;
 
@@ -38,10 +38,11 @@ impl VmGuard {
     ///
     /// # Example
     /// ```rust,no_run
-    /// use benchscale::{LibvirtBackend, VmGuard};
+    /// use benchscale::LibvirtBackend;
+    /// use benchscale::backend::libvirt::VmGuard;
     ///
-    /// # async fn example() -> anyhow::Result<()> {
-    /// let backend = LibvirtBackend::new().await?;
+    /// # fn example() -> anyhow::Result<()> {
+    /// let backend = LibvirtBackend::new()?;
     /// let conn = backend.raw_connection()?;
     /// let images_dir = backend.capabilities().storage.images_dir.clone();
     ///
@@ -53,14 +54,14 @@ impl VmGuard {
     pub fn new(vm_name: String, connection: Connect, images_dir: PathBuf) -> Self {
         info!("🔒 VmGuard: Tracking VM '{}'", vm_name);
         debug!("  Images dir: {}", images_dir.display());
-        
+
         // Register VM in registry (best effort, don't fail if registry unavailable)
         if let Ok(mut registry) = VmRegistry::new() {
             if let Err(e) = registry.register(vm_name.clone(), None) {
                 warn!("Failed to register VM in registry: {}", e);
             }
         }
-        
+
         Self {
             vm_name,
             connection,
@@ -75,12 +76,12 @@ impl VmGuard {
     pub fn preserve(mut self) -> Self {
         info!("✅ VmGuard: Preserving VM '{}'", self.vm_name);
         self.keep_on_drop = true;
-        
+
         // Update registry status (best effort)
         if let Ok(mut registry) = VmRegistry::new() {
             let _ = registry.update_status(&self.vm_name, VmStatus::Completed);
         }
-        
+
         self
     }
 
@@ -163,7 +164,7 @@ impl Drop for VmGuard {
         let preserve_on_failure = std::env::var("PRESERVE_VM_ON_FAILURE")
             .map(|v| v == "1" || v.to_lowercase() == "true")
             .unwrap_or(false);
-        
+
         if preserve_on_failure {
             warn!(
                 "🔬 VmGuard: PRESERVE_VM_ON_FAILURE set - VM '{}' will NOT be cleaned up",
@@ -171,7 +172,7 @@ impl Drop for VmGuard {
             );
             return;
         }
-        
+
         if !self.keep_on_drop {
             warn!(
                 "⚠️  VmGuard: VM '{}' not preserved, cleaning up on drop...",
@@ -188,12 +189,9 @@ impl Drop for VmGuard {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_vm_guard_preserve() {
         // This test just verifies the API compiles
         // Actual cleanup would require a real libvirt connection
     }
 }
-

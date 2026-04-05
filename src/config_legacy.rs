@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! Configuration system for benchScale
 //!
 //! Provides centralized configuration with environment variable support
@@ -10,10 +10,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 /// Global configuration for benchScale
-#[deprecated(
-    since = "2.1.0",
-    note = "Use config::BenchScaleConfig instead"
-)]
+#[deprecated(since = "2.1.0", note = "Use config::BenchScaleConfig instead")]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
     /// Docker configuration
@@ -186,9 +183,7 @@ mod defaults {
     pub fn base_image_path() -> PathBuf {
         std::env::var("BENCHSCALE_BASE_IMAGE_PATH")
             .map(PathBuf::from)
-            .unwrap_or_else(|_| {
-                crate::config::StorageConfig::default().vm_images_dir_or_default()
-            })
+            .unwrap_or_else(|_| crate::config::StorageConfig::default().vm_images_dir_or_default())
     }
 
     pub fn overlay_dir() -> PathBuf {
@@ -584,6 +579,7 @@ mod tests {
     #[test]
     fn test_env_var_docker_hardened() {
         clear_benchscale_env();
+        std::thread::sleep(std::time::Duration::from_millis(50));
         unsafe { std::env::set_var("BENCHSCALE_USE_HARDENED", "true") };
 
         let config = Config::from_env();

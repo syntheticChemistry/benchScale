@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! Storage Configuration
 //!
 //! **Phase 2C: Configuration Externalization**
@@ -140,21 +140,25 @@ impl StorageConfig {
 
         // Path validation (if specified)
         if let Some(ref path) = self.vm_images_dir
-            && !path.is_absolute() {
-                anyhow::bail!("vm_images_dir must be an absolute path");
-            }
+            && !path.is_absolute()
+        {
+            anyhow::bail!("vm_images_dir must be an absolute path");
+        }
         if let Some(ref path) = self.base_images_dir
-            && !path.is_absolute() {
-                anyhow::bail!("base_images_dir must be an absolute path");
-            }
+            && !path.is_absolute()
+        {
+            anyhow::bail!("base_images_dir must be an absolute path");
+        }
         if let Some(ref path) = self.intermediate_dir
-            && !path.is_absolute() {
-                anyhow::bail!("intermediate_dir must be an absolute path");
-            }
+            && !path.is_absolute()
+        {
+            anyhow::bail!("intermediate_dir must be an absolute path");
+        }
         if let Some(ref path) = self.cloud_init_dir
-            && !path.is_absolute() {
-                anyhow::bail!("cloud_init_dir must be an absolute path");
-            }
+            && !path.is_absolute()
+        {
+            anyhow::bail!("cloud_init_dir must be an absolute path");
+        }
 
         Ok(())
     }
@@ -220,7 +224,10 @@ impl StorageConfig {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn merge_with_capabilities(&mut self, capabilities: &crate::capabilities::StorageCapabilities) {
+    pub fn merge_with_capabilities(
+        &mut self,
+        capabilities: &crate::capabilities::StorageCapabilities,
+    ) {
         // If vm_images_dir not set, use discovered
         if self.vm_images_dir.is_none() {
             self.vm_images_dir = Some(capabilities.images_dir.clone());
@@ -234,9 +241,10 @@ impl StorageConfig {
 
         // If intermediate_dir not set, default to vm_images_dir/intermediate
         if self.intermediate_dir.is_none()
-            && let Some(ref images_dir) = self.vm_images_dir {
-                self.intermediate_dir = Some(images_dir.join("intermediate"));
-            }
+            && let Some(ref images_dir) = self.vm_images_dir
+        {
+            self.intermediate_dir = Some(images_dir.join("intermediate"));
+        }
 
         // If cloud_init_dir not set, use discovered
         if self.cloud_init_dir.is_none() {
@@ -352,7 +360,10 @@ mod tests {
             vm_images_dir: Some(PathBuf::from("/custom/path")),
             ..Default::default()
         };
-        assert_eq!(config.vm_images_dir_or_default(), PathBuf::from("/custom/path"));
+        assert_eq!(
+            config.vm_images_dir_or_default(),
+            PathBuf::from("/custom/path")
+        );
     }
 
     #[test]
@@ -372,7 +383,10 @@ mod tests {
             base_images_dir: Some(PathBuf::from("/custom/base")),
             ..Default::default()
         };
-        assert_eq!(config.base_images_dir_or_default(), PathBuf::from("/custom/base"));
+        assert_eq!(
+            config.base_images_dir_or_default(),
+            PathBuf::from("/custom/base")
+        );
     }
 
     #[test]
@@ -443,7 +457,10 @@ max_disk_size_gb: 150
             config.vm_images_dir,
             Some(PathBuf::from("/var/lib/libvirt/images"))
         );
-        assert_eq!(config.base_images_dir, Some(PathBuf::from("/mnt/base-images")));
+        assert_eq!(
+            config.base_images_dir,
+            Some(PathBuf::from("/mnt/base-images"))
+        );
         assert_eq!(config.max_disk_size_gb, 150);
         assert!(config.validate().is_ok());
     }
@@ -454,4 +471,3 @@ max_disk_size_gb: 150
         assert!(config.enable_cow);
     }
 }
-

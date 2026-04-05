@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Production-Ready Example: Cloud-Init VM with Guaranteed SSH Access
 //
 // This example demonstrates the recommended way to create VMs with benchScale,
@@ -118,6 +118,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             username,
             password,
             Duration::from_secs(600), // Wait up to 10 minutes
+            None,
         )
         .await;
 
@@ -190,7 +191,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("   • How long it waited");
             println!("   • Suggestions for debugging");
             println!();
-            return Err(e);
+            return Err(Box::new(e) as Box<dyn std::error::Error>);
         }
     }
 

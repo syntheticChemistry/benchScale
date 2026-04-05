@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: AGPL-3.0-only
-    use super::*;
+// SPDX-License-Identifier: AGPL-3.0-or-later
+use super::*;
 use crate::scenarios::TestScenario;
 use crate::topology::{NetworkConfig, NodeConfig, TopologyMetadata};
 use async_trait::async_trait;
@@ -116,12 +116,7 @@ impl Backend for MockBackend {
         })
     }
 
-    async fn copy_to_node(
-        &self,
-        _node_id: &str,
-        _src_path: &str,
-        _dest_path: &str,
-    ) -> Result<()> {
+    async fn copy_to_node(&self, _node_id: &str, _src_path: &str, _dest_path: &str) -> Result<()> {
         Ok(())
     }
 

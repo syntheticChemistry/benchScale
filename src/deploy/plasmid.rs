@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! plasmidBin binary resolution for lab deployment.
 //!
 //! Given a `plasmidBin` directory, resolves primal binaries by

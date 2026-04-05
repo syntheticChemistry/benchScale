@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! Monitoring Configuration
 //!
 //! **Phase 2: Configuration Externalization**
@@ -337,4 +337,3 @@ enable_ip_rediscovery: false
         assert_eq!(config.ip_rediscovery_duration().as_secs(), 100);
     }
 }
-

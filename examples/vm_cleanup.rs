@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright © 2024-2025 DataScienceBioLab
 //
 //! VM Cleanup CLI Tool
@@ -43,9 +43,7 @@ enum Commands {
 }
 
 fn main() -> Result<()> {
-    tracing_subscriber::fmt()
-        .with_max_level(Level::INFO)
-        .init();
+    tracing_subscriber::fmt().with_max_level(Level::INFO).init();
 
     let cli = Cli::parse();
     let cleanup = VmCleanup::default();
@@ -75,4 +73,3 @@ fn main() -> Result<()> {
 
     Ok(())
 }
-

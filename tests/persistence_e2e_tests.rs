@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! End-to-End Tests for Persistence Layer
 //!
 //! Tests complete lifecycle scenarios including:
@@ -270,9 +270,11 @@ mod persistence_e2e {
             .unwrap();
 
         assert_eq!(alice_vms.len(), 2);
-        assert!(alice_vms
-            .iter()
-            .all(|vm| vm.owner == Some("alice".to_string())));
+        assert!(
+            alice_vms
+                .iter()
+                .all(|vm| vm.owner == Some("alice".to_string()))
+        );
 
         // List Bob's VMs
         let bob_vms = manager

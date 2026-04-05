@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! # benchScale: Laboratory Substrate for Distributed System Testing
 //!
 //! A pure Rust framework for creating reproducible, isolated test environments
@@ -38,7 +38,7 @@
 //! ```
 
 #![deny(unsafe_code)]
-#![deny(clippy::unwrap_used)]
+#![cfg_attr(not(test), deny(clippy::unwrap_used))]
 #![warn(missing_docs)]
 #![warn(clippy::all)]
 #![warn(clippy::pedantic)]
@@ -59,6 +59,7 @@
 #![allow(clippy::doc_markdown)]
 #![allow(clippy::unused_async)] // Trait impls and future-proofing
 #![allow(clippy::option_if_let_else)] // if-let is often clearer than map_or_else
+#![allow(clippy::needless_raw_string_hashes)] // r#" often clearer for embedded quotes; pedantic noise
 
 pub mod backend;
 pub mod capabilities;
@@ -70,12 +71,12 @@ pub mod config;
 /// Legacy configuration (backward compatibility)
 pub mod config_legacy;
 pub mod constants;
+/// Cross-architecture binary resolution for primal deployment
+pub mod deploy;
 pub mod error;
 pub mod image_builder;
 pub mod lab;
 pub mod network;
-/// Cross-architecture binary resolution for primal deployment
-pub mod deploy;
 pub mod scenarios;
 /// JSON-RPC 2.0 server (UniBin `server --port` mode)
 pub mod server;

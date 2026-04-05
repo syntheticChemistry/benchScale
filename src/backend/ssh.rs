@@ -1,11 +1,11 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! SSH client utilities for LibvirtBackend
 //!
 //! Provides SSH connection management and command execution for VM access.
 
 use crate::{Error, Result};
 use russh::client::AuthResult;
-use russh::{client, ChannelMsg, Disconnect};
+use russh::{ChannelMsg, Disconnect, client};
 use std::sync::Arc;
 use tracing::{debug, info};
 

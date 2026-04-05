@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -24,12 +24,18 @@ pub struct VmRegistryEntry {
     pub updated_at: u64,
 }
 
+/// High-level VM lifecycle phase for registry bookkeeping
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum VmStatus {
+    /// VM record allocated, infrastructure not ready
     Creating,
+    /// Image build or provisioning in progress
     Building,
+    /// VM is up (may still be booting)
     Running,
+    /// Last operation failed
     Failed,
+    /// Build / lifecycle completed successfully
     Completed,
 }
 
@@ -61,10 +67,8 @@ impl VmRegistry {
         }
 
         let entries = if path.exists() {
-            let data = fs::read_to_string(path)
-                .context("Failed to read registry file")?;
-            serde_json::from_str(&data)
-                .context("Failed to parse registry JSON")?
+            let data = fs::read_to_string(path).context("Failed to read registry file")?;
+            serde_json::from_str(&data).context("Failed to parse registry JSON")?
         } else {
             HashMap::new()
         };
@@ -105,8 +109,11 @@ impl VmRegistry {
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs();
-            
-            debug!("Updating VM '{}' status: {:?} -> {:?}", name, entry.status, status);
+
+            debug!(
+                "Updating VM '{}' status: {:?} -> {:?}",
+                name, entry.status, status
+            );
             entry.status = status;
             entry.updated_at = now;
             self.save()?;
@@ -180,11 +187,10 @@ impl VmRegistry {
 
     /// Save registry to disk
     fn save(&self) -> Result<()> {
-        let json = serde_json::to_string_pretty(&self.entries)
-            .context("Failed to serialize registry")?;
-        
-        fs::write(&self.registry_path, json)
-            .context("Failed to write registry file")?;
+        let json =
+            serde_json::to_string_pretty(&self.entries).context("Failed to serialize registry")?;
+
+        fs::write(&self.registry_path, json).context("Failed to write registry file")?;
 
         debug!("Registry saved to {}", self.registry_path.display());
         Ok(())
@@ -236,7 +242,7 @@ mod tests {
             name: "orphan-vm".to_string(),
             created_at: 1000,
             static_ip: None,
-            creator_pid: 999999, // Very unlikely to exist
+            creator_pid: 999_999, // Very unlikely to exist
             status: VmStatus::Building,
             updated_at: 1000,
         };
@@ -275,4 +281,3 @@ mod tests {
         assert_eq!(stale_vms[0].name, "stale-vm");
     }
 }
-

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! Image Builder for benchScale
 //!
 //! Provides high-level API for building VM templates with proper monitoring,
@@ -11,7 +11,7 @@
 //! use std::path::Path;
 //!
 //! # async fn example() -> anyhow::Result<()> {
-//! let builder = ImageBuilder::new("popos-cosmic")?;
+//! let builder = ImageBuilder::new_libvirt("popos-cosmic")?;
 //!
 //! // Build with user interaction
 //! let template = builder
@@ -26,7 +26,7 @@
 //!     .build()
 //!     .await?;
 //!
-//! println!("Template saved to: {}", template.display());
+//! println!("Template saved to: {}", template.template_path.display());
 //! # Ok(())
 //! # }
 //! ```
@@ -39,9 +39,9 @@ mod tests;
 
 use crate::backend::{Backend, NodeInfo, NodeStatus};
 use crate::{CloudInit, Error, Result};
-use tracing::info;
 use std::path::PathBuf;
 use std::sync::Arc;
+use tracing::info;
 
 #[cfg(feature = "libvirt")]
 use crate::backend::LibvirtBackend;
@@ -304,8 +304,8 @@ impl ImageBuilder {
 
         info!("Builder VM created: {} at {}", node.name, node.ip_address);
 
-        let vnc_display = Self::get_vnc_display(&vm_name)
-            .unwrap_or_else(|_| "(unknown)".to_string());
+        let vnc_display =
+            Self::get_vnc_display(&vm_name).unwrap_or_else(|_| "(unknown)".to_string());
         info!("  VNC: {}", vnc_display);
 
         for (idx, step) in self.steps.iter().enumerate() {

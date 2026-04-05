@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! VM health monitoring and status checking
 //!
 //! Provides health check capabilities for VMs including boot status,
@@ -177,15 +177,15 @@ impl Default for HealthMonitor {
 mod tests {
     use super::*;
 
-    const HEALTHY_LOG: &str = r#"[2025-12-27 10:23:45] [Info] BiomeOS Init Starting
-[2025-12-27 10:23:49] [Success] BiomeOS Init Complete (178ms)"#;
+    const HEALTHY_LOG: &str = r"[2025-12-27 10:23:45] [Info] BiomeOS Init Starting
+[2025-12-27 10:23:49] [Success] BiomeOS Init Complete (178ms)";
 
-    const UNHEALTHY_LOG: &str = r#"[2025-12-27 10:23:45] [Info] BiomeOS Init Starting
+    const UNHEALTHY_LOG: &str = r"[2025-12-27 10:23:45] [Info] BiomeOS Init Starting
 [2025-12-27 10:23:46] [Error] Failed to mount filesystem
-[2025-12-27 10:23:49] [Success] BiomeOS Init Complete (178ms)"#;
+[2025-12-27 10:23:49] [Success] BiomeOS Init Complete (178ms)";
 
-    const BOOTING_LOG: &str = r#"[2025-12-27 10:23:45] [Info] BiomeOS Init Starting
-[2025-12-27 10:23:46] [Info] Loading kernel modules..."#;
+    const BOOTING_LOG: &str = r"[2025-12-27 10:23:45] [Info] BiomeOS Init Starting
+[2025-12-27 10:23:46] [Info] Loading kernel modules...";
 
     #[tokio::test]
     async fn test_healthy_vm() {
