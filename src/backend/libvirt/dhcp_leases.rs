@@ -30,12 +30,7 @@ impl LeaseList {
         // SAFETY: `network.as_ptr()` is a valid `virNetwork*` for the duration of this call.
         // `leases` is a valid out-parameter; libvirt writes the array pointer and returns the count.
         let n = unsafe {
-            sys::virNetworkGetDHCPLeases(
-                network.as_ptr(),
-                mac,
-                ptr::addr_of_mut!(leases),
-                flags,
-            )
+            sys::virNetworkGetDHCPLeases(network.as_ptr(), mac, ptr::addr_of_mut!(leases), flags)
         };
         if n < 0 {
             return Err(n);

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Current: integration tests against a live lab via primalSpring (see scripts/README.md).
+#
 # benchScale Test Runner — delegates to primalSpring validation pipeline
 #
 # This script wraps primalSpring's validate_local_lab.sh to run ecoPrimals

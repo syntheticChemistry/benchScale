@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Current helper script; canonical lab creation is `cargo run -- create` / `benchscale create` (see scripts/README.md).
+#
 # benchScale Lab Creation Script
 #
 # Creates a lab environment from a topology manifest

@@ -478,7 +478,9 @@ mod tests {
 
     #[test]
     fn test_default_config() {
-        let _lock = CONFIG_ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = CONFIG_ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let _env = BenchscaleEnvSnapshot::new();
 
         // Small delay to ensure cleanup from other tests
@@ -491,7 +493,9 @@ mod tests {
 
     #[test]
     fn test_config_from_env() {
-        let _lock = CONFIG_ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = CONFIG_ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let _env = BenchscaleEnvSnapshot::new();
         let _ssh = EnvGuard::set("BENCHSCALE_SSH_PORT", "2222");
         let config = Config::from_env();
@@ -500,7 +504,9 @@ mod tests {
 
     #[test]
     fn test_ssh_timeout_conversion() {
-        let _lock = CONFIG_ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = CONFIG_ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let _env = BenchscaleEnvSnapshot::new();
 
         let config = Config::default();
@@ -509,7 +515,9 @@ mod tests {
 
     #[test]
     fn test_image_pull_timeout_conversion() {
-        let _lock = CONFIG_ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = CONFIG_ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let _env = BenchscaleEnvSnapshot::new();
         let config = Config::default();
         // Just test it returns a valid duration
@@ -518,7 +526,9 @@ mod tests {
 
     #[test]
     fn test_network_timeout_conversion() {
-        let _lock = CONFIG_ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = CONFIG_ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let _env = BenchscaleEnvSnapshot::new();
         let config = Config::default();
         // Just test it returns a valid duration
@@ -527,7 +537,9 @@ mod tests {
 
     #[test]
     fn test_lab_create_timeout_conversion() {
-        let _lock = CONFIG_ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = CONFIG_ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let _env = BenchscaleEnvSnapshot::new();
         let config = Config::default();
         // Just test it returns a valid duration
@@ -536,7 +548,9 @@ mod tests {
 
     #[test]
     fn test_config_to_file() {
-        let _lock = CONFIG_ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = CONFIG_ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let _env = BenchscaleEnvSnapshot::new();
         let config = Config::default();
         let temp_file =
@@ -550,7 +564,9 @@ mod tests {
 
     #[test]
     fn test_config_from_file() {
-        let _lock = CONFIG_ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = CONFIG_ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let _env = BenchscaleEnvSnapshot::new();
         let config = Config::default();
         let temp_file =
@@ -572,7 +588,9 @@ mod tests {
 
     #[test]
     fn test_docker_config_defaults() {
-        let _lock = CONFIG_ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = CONFIG_ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let _env = BenchscaleEnvSnapshot::new();
         let config = DockerConfig::default();
         // Just test the structure is valid
@@ -581,7 +599,9 @@ mod tests {
 
     #[test]
     fn test_libvirt_config_defaults() {
-        let _lock = CONFIG_ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = CONFIG_ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let _env = BenchscaleEnvSnapshot::new();
         let config = LibvirtConfig::default();
         // Just test the structure is valid
@@ -591,7 +611,9 @@ mod tests {
 
     #[test]
     fn test_ssh_config_defaults() {
-        let _lock = CONFIG_ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = CONFIG_ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let _env = BenchscaleEnvSnapshot::new();
         let config = SshConfig::default();
         // Just test the structure is valid
@@ -620,7 +642,9 @@ mod tests {
 
     #[test]
     fn test_env_var_ssh_port() {
-        let _lock = CONFIG_ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = CONFIG_ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let _env = BenchscaleEnvSnapshot::new();
 
         // Small delay to ensure env is clean
@@ -638,7 +662,9 @@ mod tests {
 
     #[test]
     fn test_env_var_docker_hardened() {
-        let _lock = CONFIG_ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = CONFIG_ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let _env = BenchscaleEnvSnapshot::new();
         std::thread::sleep(std::time::Duration::from_millis(50));
         let _hardened = EnvGuard::set("BENCHSCALE_USE_HARDENED", "true");
@@ -649,7 +675,9 @@ mod tests {
 
     #[test]
     fn test_env_var_libvirt_uri() {
-        let _lock = CONFIG_ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = CONFIG_ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let _env = BenchscaleEnvSnapshot::new();
         std::thread::sleep(std::time::Duration::from_millis(50));
 
@@ -661,7 +689,9 @@ mod tests {
 
     #[test]
     fn test_config_cloning() {
-        let _lock = CONFIG_ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = CONFIG_ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let _env = BenchscaleEnvSnapshot::new();
         let config1 = Config::default();
         let config2 = config1.clone();

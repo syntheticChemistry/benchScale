@@ -66,9 +66,9 @@
 //! };
 //! ```
 
-pub mod monitoring;
 /// Deprecated TOML-era configuration; prefer [`BenchScaleConfig`] for new code.
 pub mod legacy;
+pub mod monitoring;
 pub mod network;
 pub mod storage;
 pub mod timeouts;

@@ -31,7 +31,10 @@ pub struct ServerState {
 impl ServerState {
     /// Create a new server state, initializing Docker backend.
     pub async fn new() -> anyhow::Result<Self> {
-        #[expect(deprecated, reason = "Server bootstrap uses legacy Config::from_env until BenchScaleConfig wiring")]
+        #[expect(
+            deprecated,
+            reason = "Server bootstrap uses legacy Config::from_env until BenchScaleConfig wiring"
+        )]
         let config = crate::config_legacy::Config::from_env();
         let backend = DockerBackend::new().map_err(|e| anyhow::anyhow!("Docker init: {e}"))?;
 
@@ -442,13 +445,9 @@ mod tests {
                 "image": "alpine:latest",
             }]
         });
-        let v = dispatch(
-            "topology.validate",
-            json!({ "topology": topo }),
-            &state,
-        )
-        .await
-        .expect("validate");
+        let v = dispatch("topology.validate", json!({ "topology": topo }), &state)
+            .await
+            .expect("validate");
         assert_eq!(v["valid"], true);
         assert_eq!(v["name"], "t");
         assert_eq!(v["nodes"], 1);
@@ -462,13 +461,9 @@ mod tests {
             "network": { "name": "n", "subnet": "10.0.0.0" },
             "nodes": []
         });
-        let v = dispatch(
-            "topology.validate",
-            json!({ "topology": topo }),
-            &state,
-        )
-        .await
-        .expect("validate");
+        let v = dispatch("topology.validate", json!({ "topology": topo }), &state)
+            .await
+            .expect("validate");
         assert_eq!(v["valid"], false);
         assert!(v["error"].as_str().unwrap_or("").contains("subnet"));
     }

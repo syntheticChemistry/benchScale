@@ -2,9 +2,9 @@
 
 **Pure Rust laboratory substrate for distributed system testing**
 
-🟢 **Status**: Production Ready — v3.0.0, Rust 2024 edition  
-📅 **Last Updated**: March 29, 2026  
-🧪 **Tests**: 232 passing  
+🟢 **Status**: Production Ready — v3.1.0, Rust 2024 edition  
+📅 **Last Updated**: April 5, 2026  
+🧪 **Tests**: 343 passing (7 ignored)  
 🔒 **Safety**: `deny(unsafe_code)`, `deny(clippy::unwrap_used)`, `clippy::pedantic` + `clippy::nursery`  
 📜 **License**: AGPL-3.0-or-later (scyBorg Provenance Trio)
 
@@ -15,6 +15,8 @@
 benchScale is a pure Rust framework for creating reproducible, isolated test environments for distributed systems. It provides Docker and libvirt backends, network simulation with named presets, topology-driven lab creation, and a JSON-RPC 2.0 server mode for programmatic control.
 
 **Ecosystem role**: Infrastructure tooling for the ecoPrimals ecosystem. Used by biomeOS for VM federation testing, primalSpring for validation pipelines, and hotSpring for GPU sovereign compute isolation.
+
+**Deep debt resolution sprint (v3.1.0)**: Raised line coverage from ~35.5% to ~61.9%, expanded the library test suite to 343 tests, tightened unsafe boundaries (EnvGuard, safe FFI, `nix` for signals), upgraded `thiserror` to 2.x, refactored modules (`vm_state`, `stages`, `config/legacy`), aligned lint policy on `#[expect(...)]` with reasons, and set `tarpaulin` fail-under 60%. See `CHANGELOG.md` for the full list.
 
 ## Features
 

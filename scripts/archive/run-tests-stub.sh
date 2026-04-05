@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Archived stub — superseded by ../run-tests.sh (primalSpring validation delegation).
+#
 # benchScale Test Runner Script
 #
 # Runs tests on a lab environment

@@ -416,7 +416,13 @@ mod tests {
     #[test]
     fn backoff_doubles_until_cap() {
         assert_eq!(next_backoff(Duration::from_secs(2)), Duration::from_secs(4));
-        assert_eq!(next_backoff(Duration::from_secs(16)), Duration::from_secs(30));
-        assert_eq!(next_backoff(Duration::from_secs(30)), Duration::from_secs(30));
+        assert_eq!(
+            next_backoff(Duration::from_secs(16)),
+            Duration::from_secs(30)
+        );
+        assert_eq!(
+            next_backoff(Duration::from_secs(30)),
+            Duration::from_secs(30)
+        );
     }
 }

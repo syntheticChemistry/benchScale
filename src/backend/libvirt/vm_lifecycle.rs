@@ -11,11 +11,11 @@ use std::process::Command;
 use std::time::Duration;
 use tracing::{info, warn};
 
+use super::LibvirtBackend;
 use super::vm_state::{
     desktop_dhcp_node_metadata, qemu_mac_from_vm_name, release_pool_ip_if_needed,
     spawn_release_pool_ip_if_needed,
 };
-use super::LibvirtBackend;
 
 impl LibvirtBackend {
     /// Create a VM from a registered template

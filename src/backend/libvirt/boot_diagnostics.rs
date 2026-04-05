@@ -90,7 +90,8 @@ pub fn capture_serial_console(vm_name: &str) -> Result<String> {
         }
     }
 
-    // TODO: replace virsh fallback once libvirt console capture is reliable for this path
+    // Tracked improvement: prefer libvirt API for console capture here; `virsh` remains the
+    // reliable fallback until that path is solid for all hypervisor/console combinations.
     let output = Command::new("virsh")
         .args(["console", vm_name, "--force"])
         .output()

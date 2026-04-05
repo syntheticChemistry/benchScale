@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Current helper script; canonical teardown is `cargo run -- destroy` / `benchscale destroy` (see scripts/README.md).
+#
 # benchScale Lab Destruction Script
 #
 # Tears down a lab environment

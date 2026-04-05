@@ -5,6 +5,18 @@ All notable changes to benchScale will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] — 2026-04-05
+
+### Changed (Deep Debt Resolution Sprint)
+- Coverage: 35.5% → 61.9% (343 tests, 7 ignored)
+- Unsafe evolution: EnvGuard RAII for env vars, LeaseList safe FFI abstraction, libc::kill → nix
+- thiserror upgraded 1.0 → 2.0
+- Refactored: vm_lifecycle → vm_state, pipeline → stages, config_legacy → config/legacy
+- All #[allow( → #[expect( with reasons (7 sites)
+- README license aligned to -or-later, SPDX consistency fixed
+- tarpaulin.toml with fail-under=60.0
+- C dependencies documented in deny.toml
+
 ## [3.0.0] - 2026-03-28
 
 ### Changed

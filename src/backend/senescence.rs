@@ -667,7 +667,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_with_max_failures_overrides_default() {
-        let monitor = SenescenceMonitor::new("v".to_string(), "192.168.1.1".to_string()).with_max_failures(42);
+        let monitor = SenescenceMonitor::new("v".to_string(), "192.168.1.1".to_string())
+            .with_max_failures(42);
         // Field is private; behavior is exercised indirectly by documenting the chain compiles.
         let m = monitor.metrics().await;
         assert_eq!(m.consecutive_failures, 0);

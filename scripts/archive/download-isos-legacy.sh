@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Archived: legacy LXC primal deployment (historical filename — not an ISO downloader).
+# Prefer deploy-ecoprimals.sh and the benchscale CLI for current workflows.
+#
 # benchScale Deployment Script
 #
 # Deploys primals to a lab environment

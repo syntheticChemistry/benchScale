@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Current: primary script for deploying ecoPrimals artifacts into a lab (see scripts/README.md).
+#
 # deploy-ecoprimals.sh — Deploy ecoPrimals primal binaries + graphs into a benchScale lab
 #
 # Copies static musl binaries from plasmidBin, deploy graphs from primalSpring,

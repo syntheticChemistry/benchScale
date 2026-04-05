@@ -5,8 +5,8 @@
 
 use super::stages::{detect_ssh_user, get_actual_vm_ip, wait_for_ssh};
 use super::{BuildResult, ImageBuilder, Result};
-use crate::backend::{NodeInfo, NodeStatus};
 use crate::Error;
+use crate::backend::{NodeInfo, NodeStatus};
 use tracing::info;
 
 impl ImageBuilder {

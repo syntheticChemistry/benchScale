@@ -32,11 +32,7 @@ pub(crate) fn desktop_dhcp_node_metadata(mac_address: &str) -> HashMap<String, S
 }
 
 /// Release a pool-allocated IPv4 if this provisioning path used the pool.
-pub(crate) async fn release_pool_ip_if_needed(
-    from_pool: bool,
-    allocated_ip: &str,
-    pool: &IpPool,
-) {
+pub(crate) async fn release_pool_ip_if_needed(from_pool: bool, allocated_ip: &str, pool: &IpPool) {
     if !from_pool {
         return;
     }
@@ -46,11 +42,7 @@ pub(crate) async fn release_pool_ip_if_needed(
 }
 
 /// Same as [`release_pool_ip_if_needed`], but schedules release on the runtime (e.g. sync error paths).
-pub(crate) fn spawn_release_pool_ip_if_needed(
-    from_pool: bool,
-    allocated_ip: &str,
-    pool: &IpPool,
-) {
+pub(crate) fn spawn_release_pool_ip_if_needed(from_pool: bool, allocated_ip: &str, pool: &IpPool) {
     if !from_pool {
         return;
     }

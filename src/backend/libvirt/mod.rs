@@ -174,13 +174,13 @@ use super::{ssh, vm_utils};
 #[cfg(feature = "libvirt")]
 mod backend_impl;
 #[cfg(feature = "libvirt")]
-mod dhcp_leases;
-#[cfg(feature = "libvirt")]
 /// Deep boot diagnostics for failed VM boots (Evolution #13)
 pub mod boot_diagnostics;
 #[cfg(feature = "libvirt")]
 /// DHCP lease discovery for dynamic IP allocation (Evolution #12)
 pub mod dhcp_discovery;
+#[cfg(feature = "libvirt")]
+mod dhcp_leases;
 #[cfg(feature = "libvirt")]
 /// Libvirt health check for system stability (Evolution #20)
 pub mod health_check;
@@ -192,13 +192,13 @@ mod utils;
 #[cfg(feature = "libvirt")]
 mod vm_guard;
 #[cfg(feature = "libvirt")]
-mod vm_state;
-#[cfg(feature = "libvirt")]
 mod vm_lifecycle;
 #[cfg(feature = "libvirt")]
 mod vm_ready;
 #[cfg(feature = "libvirt")]
 mod vm_registry;
+#[cfg(feature = "libvirt")]
+mod vm_state;
 
 // Public exports
 #[cfg(feature = "libvirt")]
