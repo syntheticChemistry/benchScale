@@ -337,7 +337,7 @@ build_launch_cmd() {
             echo "$DEPLOY_DIR/bin/toadstool --port $port"
             ;;
         biomeos)
-            echo "BIOMEOS_HTTP_PORT=$port $DEPLOY_DIR/bin/biomeos neural-api"
+            echo "$DEPLOY_DIR/bin/biomeos neural-api --graphs-dir $DEPLOY_DIR/graphs --port $port --family-id '$family_id'"
             ;;
         neuralspring|healthspring_primal)
             echo "$DEPLOY_DIR/bin/$primal serve"
@@ -465,12 +465,22 @@ while IFS= read -r node; do
 done < <(get_node_names)
 
 echo ""
-log "Phase 3: Health check (5s grace)..."
-sleep 5
+log "Phase 3: Health check (15s grace, 3 retries)..."
+sleep 15
 
-while IFS= read -r node; do
-    health_check_node "$node"
-done < <(get_node_names)
+HEALTH_RETRIES=3
+HEALTH_RETRY_DELAY=10
+for attempt in $(seq 1 $HEALTH_RETRIES); do
+    all_live=true
+    while IFS= read -r node; do
+        health_check_node "$node" || all_live=false
+    done < <(get_node_names)
+    if [ "$all_live" = true ] || [ "$attempt" -eq "$HEALTH_RETRIES" ]; then
+        break
+    fi
+    log_info "Retry $attempt/$HEALTH_RETRIES in ${HEALTH_RETRY_DELAY}s (biomeOS may still be bootstrapping)..."
+    sleep "$HEALTH_RETRY_DELAY"
+done
 
 # Update lab state
 sed -i 's/^status:.*/status: deployed/' "$STATE_DIR/$LAB_NAME/info.yaml" 2>/dev/null || true

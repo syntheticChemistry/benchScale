@@ -73,14 +73,14 @@ Experiments: 2 pass, 0 fail, 0 skip
 |--------|------|--------|----------|
 | beardog | node-tower | LIVE (TCP 9100) | JSON-RPC |
 | songbird | node-tower | LIVE (HTTP 9200) | HTTP /health |
-| biomeos | node-tower | ZOMBIE | `neural-api` needs more deps |
+| biomeos | node-tower | **FIXED** (was ZOMBIE) | JSON-RPC TCP — deploy script now passes `--graphs-dir`, `--port`, `--family-id` |
 | groundspring | node-spring | Running (UDS) | Unix socket |
 | healthspring_primal | node-spring | Running (UDS) | Unix socket |
 | neuralspring | node-spring | Running (UDS) | Unix socket |
 | wetspring | node-spring | Running (UDS) | Unix socket |
 | ludospring | node-spring | Running (UDS) | Unix socket |
 
-- **7 of 8 primals alive** in Docker (biomeos the only failure)
+- **8 of 8 primals expected alive** in Docker (biomeos ZOMBIE **FIXED** — deploy script corrected April 7)
 - beardog + songbird reachable from host via Docker network IP
 - beardog responds to `health.liveness` and `capabilities.list` JSON-RPC
 - songbird responds to HTTP `GET /health` with `OK`
@@ -103,7 +103,7 @@ Experiments: 2 pass, 0 fail, 0 skip
 
 ## Remaining Gaps
 
-1. **biomeos** crashes (`neural-api` needs graph/biome.yaml to initialize)
+1. ~~**biomeos** crashes (`neural-api` needs graph/biome.yaml to initialize)~~ **RESOLVED** (April 7) — `deploy-ecoprimals.sh` now passes `--graphs-dir $DEPLOY_DIR/graphs --port $port --family-id '$family_id'` to biomeOS. Health check upgraded from 5s single-shot to 15s grace + 3 retries with 10s intervals.
 2. **Spring primals** listen on UDS only (no TCP health check from host)
 3. **mesh.peers** requires multiple Songbird instances or IPC socket access
 4. **Songbird JSON-RPC** only accessible via Unix socket, not HTTP port
