@@ -1,74 +1,86 @@
 metadata:
   name: ecoprimals-nucleus-3node
-  description: "Full NUCLEUS + NAT: primary node with Tower + storage + compute, spring node, and degraded mobile-like node behind NAT"
-  version: "2.0"
-  tags: ["ecoprimals", "nucleus", "nat", "cross-gate", "springs", "mobile"]
+  description: >-
+    Full NUCLEUS validation: primary node with all 13 primals (Tower+Node+Nest+Meta),
+    compute peer (Node Atomic only), and degraded mobile Tower behind NAT.
+    Validates remote plasmidBin pull, cross-gate health, and atomic composition.
+  version: "3.0"
+  tags: ["ecoprimals", "nucleus", "atomic", "validation", "cross-gate", "mobile"]
 
 network:
   name: ecoprimals-nucleus-net
   subnet: "10.61.0.0/24"
 
 nodes:
-  # Primary NUCLEUS: all core primals + biomeOS substrate
+  # ── Primary NUCLEUS: Full Atom (Tower + Node + Nest + Meta) ─────────
+  # All 13 core primals. This is the canonical NUCLEUS deployment target.
   - name: node-primary
     image: ubuntu
     env:
-      ROLE: nucleus-primary
+      ROLE: nucleus-full
       NODE_ID: "1"
-      PRIMALS: "beardog songbird nestgate toadstool squirrel biomeos"
+      PRIMALS: "beardog songbird toadstool barracuda coralreef nestgate rhizocrypt loamspine sweetgrass biomeos squirrel petaltongue"
       BEARDOG_PORT: "9100"
       SONGBIRD_PORT: "9200"
       NESTGATE_PORT: "9300"
       TOADSTOOL_PORT: "9400"
       SQUIRREL_PORT: "9500"
+      PETALTONGUE_PORT: "9600"
+      RHIZOCRYPT_PORT: "9700"
+      LOAMSPINE_PORT: "9710"
+      SWEETGRASS_PORT: "9720"
+      CORALREEF_PORT: "9730"
+      BARRACUDA_PORT: "9740"
       BIOMEOS_PORT: "9800"
       FAMILY_ID: "benchscale-nucleus-3node"
     network_conditions:
-      preset: basement_lan  # see network-presets.yaml
+      preset: basement_lan
       latency_ms: 0.5
       packet_loss_percent: 0.0
-      bandwidth_kbps: 10000000  # 10 Gbps
+      bandwidth_kbps: 10000000
       jitter_ms: 0.1
 
-  # Spring primals node
-  - name: node-springs
+  # ── Compute Peer: Node Atomic (Tower + Compute) ─────────────────────
+  # Node atomic validates cross-gate compute dispatch. Tower provides
+  # the trust boundary; toadStool + barraCuda + coralReef provide the
+  # compute substrate. Connects to primary for orchestration.
+  - name: node-compute
     image: ubuntu
     env:
-      ROLE: spring-primals
+      ROLE: node-atomic
       NODE_ID: "2"
-      PRIMALS: "groundspring healthspring_primal neuralspring wetspring ludospring"
-      GROUNDSPRING_PORT: "9110"
-      HEALTHSPRING_PRIMAL_PORT: "9120"
-      NEURALSPRING_PORT: "9130"
-      WETSPRING_PORT: "9140"
-      LUDOSPRING_PORT: "9150"
-      FAMILY_ID: "benchscale-nucleus-3node"
-      TOWER_HOST: "node-primary"
+      PRIMALS: "beardog songbird toadstool barracuda coralreef"
       BEARDOG_PORT: "9100"
       SONGBIRD_PORT: "9200"
-      BIOMEOS_PORT: "9800"
+      TOADSTOOL_PORT: "9400"
+      BARRACUDA_PORT: "9740"
+      CORALREEF_PORT: "9730"
+      FAMILY_ID: "benchscale-nucleus-3node"
+      TOWER_HOST: "node-primary"
     network_conditions:
-      preset: home_lan  # see network-presets.yaml
+      preset: home_lan
       latency_ms: 2
       packet_loss_percent: 0.01
-      bandwidth_kbps: 1000000  # 1 Gbps
+      bandwidth_kbps: 1000000
       jitter_ms: 1
 
-  # Degraded mobile-like node (simulates Pixel behind NAT)
-  # Only songbird in TCP --listen mode, no Unix sockets
+  # ── Mobile: Degraded Tower (BearDog + Songbird TCP only) ────────────
+  # Simulates a Pixel/mobile behind NAT. Minimal Tower atomic —
+  # songbird in TCP listen mode for cross-gate federation probing.
   - name: node-mobile
     image: ubuntu
     env:
       ROLE: mobile-degraded
       NODE_ID: "3"
-      PRIMALS: "songbird"
+      PRIMALS: "beardog songbird"
+      BEARDOG_PORT: "9100"
       SONGBIRD_PORT: "9200"
       BEHIND_NAT: "true"
       FAMILY_ID: "benchscale-nucleus-3node"
       TOWER_HOST: "node-primary"
     network_conditions:
-      preset: mobile_cell  # see network-presets.yaml
+      preset: mobile_cell
       latency_ms: 100
       packet_loss_percent: 2.0
-      bandwidth_kbps: 10000  # 10 Mbps
+      bandwidth_kbps: 10000
       jitter_ms: 30

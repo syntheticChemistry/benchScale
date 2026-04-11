@@ -1,11 +1,18 @@
 #!/usr/bin/env bash
 # Current: primary script for deploying ecoPrimals artifacts into a lab (see scripts/README.md).
 #
-# deploy-ecoprimals.sh — Deploy ecoPrimals primal binaries + graphs into a benchScale lab
+# deploy-ecoprimals.sh — Deploy ecoPrimals NUCLEUS primals into a benchScale lab
 #
-# Copies static musl binaries from plasmidBin, deploy graphs from primalSpring,
-# and launch profiles into each lab node. Then starts primals on their well-known
-# TCP ports per the topology YAML's PRIMALS env metadata.
+# Copies musl-static primal binaries from plasmidBin, deploy graphs from
+# primalSpring, and launch profiles into each lab node. Then starts primals
+# on their well-known TCP ports per the topology YAML's PRIMALS env metadata.
+#
+# All 13 NUCLEUS primals are supported:
+#   Tower:      beardog, songbird
+#   Node:       toadstool, barracuda, coralreef
+#   Nest:       nestgate, rhizocrypt, loamspine, sweetgrass
+#   Meta-tier:  biomeos, squirrel, petaltongue
+#   Defense:    skunkbat
 #
 # Usage:
 #   ./deploy-ecoprimals.sh --lab <lab-name> --plasmidbin <path> [--graphs <path>] [--seed <family-seed>]
@@ -35,7 +42,7 @@ usage() {
     cat << EOF
 Usage: $0 --lab <lab-name> --plasmidbin <path> [options]
 
-Deploy ecoPrimals primal + spring binaries into a benchScale lab.
+Deploy ecoPrimals NUCLEUS primal binaries into a benchScale lab.
 
 Required Arguments:
     --lab <name>            Lab name (must exist via create-lab.sh)
@@ -199,17 +206,13 @@ deploy_node() {
         arch_subdir="/aarch64"
     fi
 
-    # Copy binaries for each primal this node runs
+    # Copy primal binaries (plasmidBin ships primals only — no spring binaries)
     for primal in $primals_env; do
         local bin_path=""
-        # Check arch-specific paths first, then generic locations
         for candidate in \
             "$PLASMIDBIN_DIR/primals${arch_subdir}/$primal" \
-            "$PLASMIDBIN_DIR/springs${arch_subdir}/$primal" \
-            "$PLASMIDBIN_DIR/$primal" \
             "$PLASMIDBIN_DIR/primals/$primal" \
-            "$PLASMIDBIN_DIR/springs/$primal" \
-            "$PLASMIDBIN_DIR/bin/$primal"; do
+            "$PLASMIDBIN_DIR/$primal"; do
             if [ -f "$candidate" ] && [ -x "$candidate" ]; then
                 bin_path="$candidate"
                 break
@@ -294,6 +297,8 @@ build_primal_env() {
     case "$primal" in
         beardog)
             env_str="$env_str NODE_ID=tower1"
+            env_str="$env_str FAMILY_SEED='$family_id'"
+            env_str="$env_str BEARDOG_FAMILY_SEED='$family_id'"
             ;;
         songbird)
             env_str="$env_str BEARDOG_MODE=direct"
@@ -303,18 +308,45 @@ build_primal_env() {
             ;;
         nestgate)
             env_str="$env_str NESTGATE_FAMILY_ID='$family_id'"
+            env_str="$env_str NESTGATE_JWT_SECRET='benchscale-dev-jwt-${family_id}'"
             ;;
         toadstool)
             env_str="$env_str TOADSTOOL_SECURITY_WARNING_ACKNOWLEDGED=1"
             env_str="$env_str TOADSTOOL_FAMILY_ID='$family_id'"
             env_str="$env_str NESTGATE_SOCKET=tcp://${tower_host}:${NESTGATE_PORT:-9300}"
             ;;
-        groundspring|healthspring*|neuralspring|wetspring|ludospring|airspring*)
-            env_str="$env_str BARRACUDA_SOCKET=tcp://${tower_host}:9100"
+        barracuda)
+            env_str="$env_str BARRACUDA_FAMILY_ID='$family_id'"
+            env_str="$env_str TOADSTOOL_SOCKET=tcp://${tower_host}:${TOADSTOOL_PORT:-9400}"
+            ;;
+        coralreef)
+            env_str="$env_str CORALREEF_FAMILY_ID='$family_id'"
+            env_str="$env_str TOADSTOOL_SOCKET=tcp://${tower_host}:${TOADSTOOL_PORT:-9400}"
+            env_str="$env_str BARRACUDA_SOCKET=tcp://${tower_host}:${BARRACUDA_PORT:-9740}"
+            ;;
+        rhizocrypt)
+            env_str="$env_str BEARDOG_SOCKET=tcp://${tower_host}:${tower_beardog_port}"
+            ;;
+        loamspine)
+            env_str="$env_str BEARDOG_SOCKET=tcp://${tower_host}:${tower_beardog_port}"
+            env_str="$env_str RHIZOCRYPT_SOCKET=tcp://${tower_host}:${RHIZOCRYPT_PORT:-9700}"
+            ;;
+        sweetgrass)
+            env_str="$env_str BEARDOG_SOCKET=tcp://${tower_host}:${tower_beardog_port}"
+            ;;
+        squirrel)
+            env_str="$env_str BEARDOG_SOCKET=tcp://${tower_host}:${tower_beardog_port}"
+            env_str="$env_str SONGBIRD_SOCKET=tcp://${tower_host}:${tower_songbird_port}"
+            env_str="$env_str TOADSTOOL_SOCKET=tcp://${tower_host}:${TOADSTOOL_PORT:-9400}"
+            env_str="$env_str NESTGATE_SOCKET=tcp://${tower_host}:${NESTGATE_PORT:-9300}"
+            env_str="$env_str BIOMEOS_SOCKET_DIR=tcp://${tower_host}:${tower_biomeos_port}"
+            ;;
+        petaltongue)
             env_str="$env_str BEARDOG_SOCKET=tcp://${tower_host}:${tower_beardog_port}"
             env_str="$env_str BIOMEOS_SOCKET_DIR=tcp://${tower_host}:${tower_biomeos_port}"
-            env_str="$env_str NESTGATE_SOCKET=tcp://${tower_host}:${NESTGATE_PORT:-9300}"
-            env_str="$env_str TOADSTOOL_SOCKET=tcp://${tower_host}:${TOADSTOOL_PORT:-9400}"
+            ;;
+        biomeos)
+            env_str="$env_str BEARDOG_SOCKET=tcp://${tower_host}:${tower_beardog_port}"
             ;;
     esac
 
@@ -325,28 +357,43 @@ build_launch_cmd() {
     local primal="$1" port="$2" family_id="$3"
     case "$primal" in
         beardog)
-            echo "$DEPLOY_DIR/bin/beardog server --listen 0.0.0.0:$port --family-id '$family_id'"
+            echo "$DEPLOY_DIR/bin/beardog server --port $port --family-id '$family_id'"
             ;;
         songbird)
             echo "SONGBIRD_PORT=$port $DEPLOY_DIR/bin/songbird server --port $port"
             ;;
         nestgate)
-            echo "$DEPLOY_DIR/bin/nestgate daemon --socket-only --dev"
+            echo "$DEPLOY_DIR/bin/nestgate server --port $port --dev --family-id '$family_id'"
             ;;
         toadstool)
-            echo "$DEPLOY_DIR/bin/toadstool --port $port"
+            echo "$DEPLOY_DIR/bin/toadstool server --port $port"
+            ;;
+        barracuda)
+            echo "$DEPLOY_DIR/bin/barracuda server --port $port"
+            ;;
+        coralreef)
+            echo "$DEPLOY_DIR/bin/coralreef server --port $port"
+            ;;
+        rhizocrypt)
+            echo "$DEPLOY_DIR/bin/rhizocrypt server --port $port --host 0.0.0.0"
+            ;;
+        loamspine)
+            echo "$DEPLOY_DIR/bin/loamspine server --port $port"
+            ;;
+        sweetgrass)
+            echo "$DEPLOY_DIR/bin/sweetgrass server --port $port"
+            ;;
+        squirrel)
+            echo "$DEPLOY_DIR/bin/squirrel server --port $port"
+            ;;
+        petaltongue)
+            echo "PETALTONGUE_MODE=server PETALTONGUE_HEADLESS=true $DEPLOY_DIR/bin/petaltongue server --port $port"
             ;;
         biomeos)
-            echo "$DEPLOY_DIR/bin/biomeos neural-api --graphs-dir $DEPLOY_DIR/graphs --port $port --family-id '$family_id'"
-            ;;
-        neuralspring|healthspring_primal)
-            echo "$DEPLOY_DIR/bin/$primal serve"
-            ;;
-        groundspring|wetspring|ludospring)
-            echo "$DEPLOY_DIR/bin/$primal server"
+            echo "$DEPLOY_DIR/bin/biomeos neural-api --graphs-dir $DEPLOY_DIR/graphs --port $port --family-id '$family_id' --tcp-only"
             ;;
         *)
-            echo "$DEPLOY_DIR/bin/$primal server --listen 0.0.0.0:$port --family-id '$family_id'"
+            echo "$DEPLOY_DIR/bin/$primal server --port $port --family-id '$family_id'"
             ;;
     esac
 }
@@ -433,16 +480,32 @@ health_check_node() {
         case "$primal" in
             songbird)
                 probe_http_health "$node_ip" "$port" && live=true ;;
-            beardog)
-                probe_tcp_jsonrpc "$node_ip" "$port" && live=true ;;
+            beardog|sweetgrass)
+                # BTSP-secured: TCP probes are blocked by design.
+                # Check process is running instead of TCP health.
+                local cname
+                cname="$(container_name "$node")"
+                if docker exec "$cname" sh -c "ls /proc/*/exe 2>/dev/null | xargs readlink 2>/dev/null | grep -q $primal" 2>/dev/null; then
+                    log "  ✓ $primal :$port  RUNNING (BTSP secured)"
+                    continue
+                fi
+                ;;
+            barracuda)
+                # barraCuda requires GPU hardware — may crash in Docker.
+                probe_tcp_jsonrpc "$node_ip" "$port" && live=true
+                if [ "$live" != true ]; then
+                    log_warn "  ⚡ $primal :$port  NO_GPU (expected in Docker)"
+                    continue
+                fi
+                ;;
             *)
                 probe_tcp_jsonrpc "$node_ip" "$port" && live=true ;;
         esac
 
         if [ "$live" = true ]; then
-            log "  $primal :$port  LIVE"
+            log "  ✓ $primal :$port  LIVE"
         else
-            log_warn "  $primal :$port  DOWN (may need more startup time)"
+            log_warn "  ✗ $primal :$port  DOWN (may need more startup time)"
         fi
     done
 }
