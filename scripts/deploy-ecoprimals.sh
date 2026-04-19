@@ -199,20 +199,29 @@ deploy_node() {
         return
     fi
 
-    # Determine target architecture for binary resolution
+    # Determine target triple for binary resolution (genomeBin layout)
     local target_arch="${DEPLOY_ARCH:-x86_64}"
+    local target_triple=""
     local arch_subdir=""
-    if [ "$target_arch" = "aarch64" ]; then
-        arch_subdir="/aarch64"
-    fi
+    case "$target_arch" in
+        x86_64)  target_triple="x86_64-unknown-linux-musl" ;;
+        aarch64) target_triple="aarch64-unknown-linux-musl"; arch_subdir="/aarch64" ;;
+        armv7)   target_triple="armv7-unknown-linux-musleabihf" ;;
+        *)       target_triple="${target_arch}-unknown-linux-musl" ;;
+    esac
 
-    # Copy primal binaries (plasmidBin ships primals only — no spring binaries)
+    # Copy primal binaries — try genomeBin target-triple layout first, fall back to legacy
     for primal in $primals_env; do
         local bin_path=""
         for candidate in \
+            "$PLASMIDBIN_DIR/primals/${target_triple}/$primal" \
             "$PLASMIDBIN_DIR/primals${arch_subdir}/$primal" \
             "$PLASMIDBIN_DIR/primals/$primal" \
             "$PLASMIDBIN_DIR/$primal"; do
+            # Resolve symlinks so docker cp gets a real file
+            if [ -L "$candidate" ]; then
+                candidate="$(readlink -f "$candidate")"
+            fi
             if [ -f "$candidate" ] && [ -x "$candidate" ]; then
                 bin_path="$candidate"
                 break
@@ -257,8 +266,11 @@ deploy_node() {
         copy_to_node "$node" "$PLASMIDBIN_DIR/ports.env" "$DEPLOY_DIR/config/ports.env" 2>/dev/null || true
     fi
 
-    # Write family seed
-    exec_in_node "$node" sh -c "echo '$FAMILY_SEED' > $DEPLOY_DIR/.family.seed" 2>/dev/null || true
+    # Write family seed — prefer per-node FAMILY_ID from topology, fallback to global seed
+    local node_family_id
+    node_family_id="$(get_node_env "$node" "FAMILY_ID")"
+    node_family_id="${node_family_id:-$FAMILY_SEED}"
+    exec_in_node "$node" sh -c "echo '$node_family_id' > $DEPLOY_DIR/.family.seed" 2>/dev/null || true
 
     # Make binaries executable
     exec_in_node "$node" chmod +x "$DEPLOY_DIR/bin/"* 2>/dev/null || true
@@ -347,10 +359,42 @@ build_primal_env() {
             ;;
         biomeos)
             env_str="$env_str BEARDOG_SOCKET=tcp://${tower_host}:${tower_beardog_port}"
+            local bm_socket_dir
+            bm_socket_dir="$(get_node_env "$node" "BIOMEOS_SOCKET_DIR")"
+            [ -n "$bm_socket_dir" ] && env_str="$env_str BIOMEOS_SOCKET_DIR='$bm_socket_dir'"
             ;;
     esac
 
     echo "$env_str"
+}
+
+apply_launch_profile() {
+    local primal="$1"
+    local profiles_toml="$2"
+    local extra_env=""
+
+    if [ ! -f "$profiles_toml" ]; then
+        echo ""
+        return
+    fi
+
+    local in_section=false
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^\[profiles\."$primal"\.extra_env\] ]]; then
+            in_section=true
+            continue
+        fi
+        if $in_section; then
+            [[ "$line" =~ ^\[ ]] && break
+            [[ -z "$line" || "$line" =~ ^# ]] && continue
+            local key val
+            key="$(echo "$line" | cut -d= -f1 | tr -d ' ')"
+            val="$(echo "$line" | cut -d= -f2- | tr -d ' "'"'")"
+            [ -n "$key" ] && [ -n "$val" ] && extra_env="$extra_env $key='$val'"
+        fi
+    done < "$profiles_toml"
+
+    echo "$extra_env"
 }
 
 build_launch_cmd() {
@@ -424,6 +468,11 @@ start_node_primals() {
         local primal_env
         primal_env="$(build_primal_env "$node" "$primal" "$family_id")"
 
+        local profiles_toml="$DEPLOY_DIR/config/primal_launch_profiles.toml"
+        local profile_env
+        profile_env="$(apply_launch_profile "$primal" "$SCRIPT_DIR/../../../springs/primalSpring/config/primal_launch_profiles.toml")"
+        primal_env="$primal_env $profile_env"
+
         local launch_cmd
         launch_cmd="$(build_launch_cmd "$primal" "$port" "$family_id")"
 
@@ -431,7 +480,7 @@ start_node_primals() {
             "export $primal_env; \
              nohup sh -c '$launch_cmd' \
              > /var/log/${primal}.log 2>&1 &" 2>/dev/null && \
-            log "  + $primal listening on :$port (env wired)" || \
+            log "  + $primal listening on :$port (env wired, profile merged)" || \
             log_warn "  ! $primal failed to start (binary may be missing)"
     done
 }
@@ -527,6 +576,44 @@ while IFS= read -r node; do
     start_node_primals "$node"
 done < <(get_node_names)
 
+# ── Phase 2.5: Align biomeOS socket discovery with primal sockets ─────────
+
+align_biomeos_sockets() {
+    local node="$1"
+    local primals_env
+    primals_env="$(get_node_env "$node" "PRIMALS")"
+    echo "$primals_env" | grep -qw biomeos || return 0
+
+    local family_id
+    family_id="$(get_node_env "$node" "FAMILY_ID")"
+    family_id="${family_id:-$FAMILY_SEED}"
+
+    exec_in_node "$node" sh -c "
+        mkdir -p /tmp/biomeos /tmp/biomeos-default
+        # Symlink all family-scoped primal sockets from /tmp/ into /tmp/biomeos/
+        # so biomeOS can find them when it looks in its expected directories.
+        for src in /tmp/*-${family_id}.sock /tmp/*-${family_id}-*.sock; do
+            [ -S \"\$src\" ] || continue
+            base=\$(basename \"\$src\")
+            ln -sf \"\$src\" /tmp/biomeos/\$base 2>/dev/null
+            ln -sf \"\$src\" /tmp/biomeos-default/\$base 2>/dev/null
+        done
+        # Plain sockets (songbird.sock etc.) also get aliased
+        for src in /tmp/songbird.sock /tmp/beardog.sock; do
+            [ -S \"\$src\" ] || continue
+            base=\$(basename \"\$src\")
+            ln -sf \"\$src\" /tmp/biomeos/\$base 2>/dev/null
+            ln -sf \"\$src\" /tmp/biomeos-default/\$base 2>/dev/null
+        done
+    " 2>/dev/null && log "  + $node: biomeOS socket symlinks aligned" || true
+}
+
+echo ""
+log "Phase 2.5: Aligning biomeOS socket discovery..."
+while IFS= read -r node; do
+    align_biomeos_sockets "$node"
+done < <(get_node_names)
+
 echo ""
 log "Phase 3: Health check (15s grace, 3 retries)..."
 sleep 15
@@ -544,6 +631,49 @@ for attempt in $(seq 1 $HEALTH_RETRIES); do
     log_info "Retry $attempt/$HEALTH_RETRIES in ${HEALTH_RETRY_DELAY}s (biomeOS may still be bootstrapping)..."
     sleep "$HEALTH_RETRY_DELAY"
 done
+
+# ── Phase 4: Load graphs into biomeOS ─────────────────────────────────────────
+
+load_graphs_on_node() {
+    local node="$1"
+    local primals_env
+    primals_env="$(get_node_env "$node" "PRIMALS")"
+    echo "$primals_env" | grep -qw biomeos || return 0
+
+    local node_ip bm_port
+    node_ip="$(get_container_ip "$node")"
+    bm_port="$(get_node_env "$node" "BIOMEOS_PORT")"
+    bm_port="${bm_port:-9800}"
+
+    local graph_dir="$DEPLOY_DIR/graphs"
+    local loaded=0
+
+    local graph_files
+    graph_files="$(exec_in_node "$node" find "$graph_dir" -name '*.toml' -type f 2>/dev/null)" || return 0
+
+    for graph_path in $graph_files; do
+        local graph_id
+        graph_id="$(basename "$graph_path" .toml)"
+        local req="{\"jsonrpc\":\"2.0\",\"method\":\"graph.load\",\"params\":{\"path\":\"$graph_path\",\"id\":\"$graph_id\"},\"id\":1}"
+        local resp
+        resp="$(echo "$req" | timeout 5 nc -w 3 "$node_ip" "$bm_port" 2>/dev/null)" || continue
+        if echo "$resp" | grep -q '"result"'; then
+            ((loaded++)) || true
+        fi
+    done
+
+    if [ "$loaded" -gt 0 ]; then
+        log "  + $node: $loaded graph(s) loaded into biomeOS"
+    else
+        log_info "  $node: biomeOS graph.load returned no results (graphs may auto-load from --graphs-dir)"
+    fi
+}
+
+echo ""
+log "Phase 4: Loading graphs into biomeOS..."
+while IFS= read -r node; do
+    load_graphs_on_node "$node"
+done < <(get_node_names)
 
 # Update lab state
 sed -i 's/^status:.*/status: deployed/' "$STATE_DIR/$LAB_NAME/info.yaml" 2>/dev/null || true
