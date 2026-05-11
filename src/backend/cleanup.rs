@@ -1,202 +1,126 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright © 2024-2025 DataScienceBioLab
 //
-//! VM Lifecycle Cleanup - Deep Debt Solution
+//! VM Lifecycle Cleanup
 //!
-//! This module provides robust cleanup of VMs and their resources.
-//! It handles:
-//! - Orphaned QEMU processes
-//! - Stale disk images and cloud-init ISOs
-//! - Unreachable VMs that need forced cleanup
-//! - Bulk cleanup operations
+//! Robust cleanup of VMs and their resources using the `virt` crate API
+//! (no `virsh` CLI shell-outs). Handles orphaned QEMU processes, stale
+//! disk images, cloud-init ISOs, and bulk cleanup operations.
 
 use anyhow::{Context, Result};
 use std::path::PathBuf;
-#[cfg(not(feature = "libvirt"))]
-use std::process::Command;
 use tracing::{error, info, warn};
-
-#[cfg(feature = "libvirt")]
 use virt::error::ErrorNumber;
 
-#[cfg(feature = "libvirt")]
 fn libvirt_connect() -> anyhow::Result<virt::connect::Connect> {
     let uri = super::libvirt_uri();
     Ok(virt::connect::Connect::open(Some(&uri))?)
 }
 
-/// VM cleanup manager
+/// VM cleanup manager.
 pub struct VmCleanup {
     image_dir: PathBuf,
 }
 
 impl VmCleanup {
-    /// Create a new cleanup manager
+    /// Create a new cleanup manager.
     pub fn new(image_dir: impl Into<PathBuf>) -> Self {
         Self {
             image_dir: image_dir.into(),
         }
     }
 
-    /// Clean up a specific VM by name
+    /// Clean up a specific VM by name.
     ///
-    /// This will:
-    /// 1. Try to gracefully stop the VM via virsh
-    /// 2. Forcefully destroy if graceful stop fails
-    /// 3. Undefine the VM from libvirt
+    /// 1. Graceful shutdown via libvirt API
+    /// 2. Force destroy if still running
+    /// 3. Undefine from libvirt
     /// 4. Remove disk images and cloud-init ISOs
     pub fn cleanup_vm(&self, vm_name: &str) -> Result<()> {
-        info!("🧹 Cleaning up VM: {}", vm_name);
+        info!("Cleaning up VM: {}", vm_name);
 
-        // Try graceful shutdown first
-        #[cfg(feature = "libvirt")]
-        {
-            if let Ok(conn) = libvirt_connect() {
-                if let Ok(domain) = virt::domain::Domain::lookup_by_name(&conn, vm_name) {
-                    let _ = domain.shutdown();
-                }
+        if let Ok(conn) = libvirt_connect() {
+            if let Ok(domain) = virt::domain::Domain::lookup_by_name(&conn, vm_name) {
+                let _ = domain.shutdown();
             }
         }
-        #[cfg(not(feature = "libvirt"))]
-        {
-            let _ = Command::new("virsh")
-                .args(["shutdown", vm_name])
-                .output()
-                .context("Failed to gracefully shutdown VM");
-        }
 
-        // Wait a moment for graceful shutdown
         std::thread::sleep(std::time::Duration::from_secs(5));
 
         // Force destroy if still running
-        #[cfg(feature = "libvirt")]
-        {
-            let conn = libvirt_connect().context("Failed to destroy VM")?;
-            match virt::domain::Domain::lookup_by_name(&conn, vm_name) {
-                Ok(domain) => {
-                    if let Err(e) = domain.destroy() {
-                        let msg = e.message();
-                        if !msg.contains("domain is not running")
-                            && !msg.contains("failed to get domain")
-                        {
-                            warn!("Failed to destroy VM {}: {}", vm_name, msg);
-                        }
-                    }
-                }
-                Err(e) => {
-                    if e.code() != ErrorNumber::NoDomain
-                        && !e.message().contains("failed to get domain")
+        let conn = libvirt_connect().context("Failed to connect for VM destroy")?;
+        match virt::domain::Domain::lookup_by_name(&conn, vm_name) {
+            Ok(domain) => {
+                if let Err(e) = domain.destroy() {
+                    let msg = e.message();
+                    if !msg.contains("domain is not running")
+                        && !msg.contains("failed to get domain")
                     {
-                        warn!("Failed to destroy VM {}: {}", vm_name, e.message());
+                        warn!("Failed to destroy VM {}: {}", vm_name, msg);
                     }
                 }
             }
-        }
-        #[cfg(not(feature = "libvirt"))]
-        {
-            let destroy_output = Command::new("virsh")
-                .args(["destroy", vm_name])
-                .output()
-                .context("Failed to destroy VM")?;
-
-            if !destroy_output.status.success() {
-                let stderr = String::from_utf8_lossy(&destroy_output.stderr);
-                // Don't error if VM doesn't exist
-                if !stderr.contains("domain is not running")
-                    && !stderr.contains("failed to get domain")
+            Err(e) => {
+                if e.code() != ErrorNumber::NoDomain
+                    && !e.message().contains("failed to get domain")
                 {
-                    warn!("Failed to destroy VM {}: {}", vm_name, stderr);
+                    warn!("Failed to destroy VM {}: {}", vm_name, e.message());
                 }
             }
         }
 
         // Undefine the VM
-        #[cfg(feature = "libvirt")]
-        {
-            let conn = libvirt_connect().context("Failed to undefine VM")?;
-            match virt::domain::Domain::lookup_by_name(&conn, vm_name) {
-                Ok(domain) => {
-                    if let Err(e) = domain.undefine() {
-                        let msg = e.message();
-                        if !msg.contains("failed to get domain") {
-                            warn!("Failed to undefine VM {}: {}", vm_name, msg);
-                        }
-                    }
-                }
-                Err(e) => {
-                    if e.code() != ErrorNumber::NoDomain
-                        && !e.message().contains("failed to get domain")
-                    {
-                        warn!("Failed to undefine VM {}: {}", vm_name, e.message());
+        let conn = libvirt_connect().context("Failed to connect for VM undefine")?;
+        match virt::domain::Domain::lookup_by_name(&conn, vm_name) {
+            Ok(domain) => {
+                if let Err(e) = domain.undefine() {
+                    let msg = e.message();
+                    if !msg.contains("failed to get domain") {
+                        warn!("Failed to undefine VM {}: {}", vm_name, msg);
                     }
                 }
             }
-        }
-        #[cfg(not(feature = "libvirt"))]
-        {
-            let undefine_output = Command::new("virsh")
-                .args(["undefine", vm_name])
-                .output()
-                .context("Failed to undefine VM")?;
-
-            if !undefine_output.status.success() {
-                let stderr = String::from_utf8_lossy(&undefine_output.stderr);
-                if !stderr.contains("failed to get domain") {
-                    warn!("Failed to undefine VM {}: {}", vm_name, stderr);
+            Err(e) => {
+                if e.code() != ErrorNumber::NoDomain
+                    && !e.message().contains("failed to get domain")
+                {
+                    warn!("Failed to undefine VM {}: {}", vm_name, e.message());
                 }
             }
         }
 
-        // Remove disk images
         let disk_path = self.image_dir.join(format!("{}.qcow2", vm_name));
         if disk_path.exists() {
             std::fs::remove_file(&disk_path)
                 .with_context(|| format!("Failed to remove disk image: {}", disk_path.display()))?;
-            info!("   Removed disk image: {:?}", disk_path);
+            info!("  Removed disk image: {:?}", disk_path);
         }
 
-        // Remove cloud-init ISO
         let cidata_path = self.image_dir.join(format!("{}-cidata.iso", vm_name));
         if cidata_path.exists() {
             std::fs::remove_file(&cidata_path).with_context(|| {
                 format!("Failed to remove cloud-init ISO: {}", cidata_path.display())
             })?;
-            info!("   Removed cloud-init ISO: {:?}", cidata_path);
+            info!("  Removed cloud-init ISO: {:?}", cidata_path);
         }
 
-        info!("✅ VM {} cleaned up successfully", vm_name);
+        info!("VM {} cleaned up successfully", vm_name);
         Ok(())
     }
 
-    /// Clean up all VMs matching a prefix
+    /// Clean up all VMs matching a prefix.
     pub fn cleanup_matching(&self, prefix: &str) -> Result<Vec<String>> {
-        info!("🧹 Cleaning up all VMs matching prefix: {}", prefix);
+        info!("Cleaning up all VMs matching prefix: {}", prefix);
 
-        #[cfg(feature = "libvirt")]
-        let matching_vms: Vec<String> = {
-            let conn = libvirt_connect().context("Failed to list VMs")?;
-            let domains = conn.list_all_domains(0)?;
-            domains
-                .into_iter()
-                .filter_map(|d| d.get_name().ok())
-                .filter(|name| name.starts_with(prefix))
-                .collect()
-        };
-        #[cfg(not(feature = "libvirt"))]
-        let matching_vms: Vec<String> = {
-            let list_output = Command::new("virsh")
-                .args(["list", "--all", "--name"])
-                .output()
-                .context("Failed to list VMs")?;
+        let conn = libvirt_connect().context("Failed to list VMs")?;
+        let domains = conn.list_all_domains(0)?;
+        let matching_vms: Vec<String> = domains
+            .into_iter()
+            .filter_map(|d| d.get_name().ok())
+            .filter(|name| name.starts_with(prefix))
+            .collect();
 
-            let vms = String::from_utf8_lossy(&list_output.stdout);
-            vms.lines()
-                .filter(|line| !line.is_empty() && line.starts_with(prefix))
-                .map(std::string::ToString::to_string)
-                .collect()
-        };
-
-        info!("   Found {} matching VMs", matching_vms.len());
+        info!("  Found {} matching VMs", matching_vms.len());
 
         let mut cleaned = Vec::new();
         for vm_name in matching_vms {
@@ -209,37 +133,19 @@ impl VmCleanup {
         Ok(cleaned)
     }
 
-    /// Clean up orphaned disk images (no corresponding VM)
+    /// Clean up orphaned disk images (no corresponding VM).
     pub fn cleanup_orphaned_disks(&self) -> Result<Vec<PathBuf>> {
-        info!("🧹 Cleaning up orphaned disk images");
+        info!("Cleaning up orphaned disk images");
 
-        // Get list of all defined VMs
-        #[cfg(feature = "libvirt")]
-        let vms: std::collections::HashSet<String> = {
-            let conn = libvirt_connect().context("Failed to list VMs")?;
-            let domains = conn.list_all_domains(0)?;
-            domains
-                .into_iter()
-                .filter_map(|d| d.get_name().ok())
-                .collect()
-        };
-        #[cfg(not(feature = "libvirt"))]
-        let vms: std::collections::HashSet<String> = {
-            let list_output = Command::new("virsh")
-                .args(["list", "--all", "--name"])
-                .output()
-                .context("Failed to list VMs")?;
-
-            String::from_utf8_lossy(&list_output.stdout)
-                .lines()
-                .filter(|line| !line.is_empty())
-                .map(std::string::ToString::to_string)
-                .collect()
-        };
+        let conn = libvirt_connect().context("Failed to list VMs")?;
+        let domains = conn.list_all_domains(0)?;
+        let vms: std::collections::HashSet<String> = domains
+            .into_iter()
+            .filter_map(|d| d.get_name().ok())
+            .collect();
 
         let mut cleaned = Vec::new();
 
-        // Check all .qcow2 files in image directory
         for entry in std::fs::read_dir(&self.image_dir).context("Failed to read image directory")? {
             let entry = entry?;
             let path = entry.path();
@@ -250,14 +156,12 @@ impl VmCleanup {
             {
                 let vm_name = file_stem.to_string_lossy().to_string();
 
-                // Skip base images (these are templates)
                 if vm_name.contains("cloudimg") || vm_name.contains("base") {
                     continue;
                 }
 
-                // If no VM exists for this disk, it's orphaned
                 if !vms.contains(&vm_name) {
-                    warn!("   Found orphaned disk: {:?}", path);
+                    warn!("  Found orphaned disk: {:?}", path);
                     std::fs::remove_file(&path).with_context(|| {
                         format!("Failed to remove orphaned disk: {}", path.display())
                     })?;
@@ -266,41 +170,22 @@ impl VmCleanup {
             }
         }
 
-        info!("✅ Cleaned up {} orphaned disk images", cleaned.len());
+        info!("Cleaned up {} orphaned disk images", cleaned.len());
         Ok(cleaned)
     }
 
-    /// Emergency cleanup: Stop all QEMU processes and clean everything
-    ///
-    /// This is a nuclear option and should only be used in dire situations.
+    /// Emergency cleanup: stop all VMs and clean everything.
     pub fn emergency_cleanup(&self) -> Result<()> {
-        warn!("🚨 EMERGENCY CLEANUP - This will stop ALL VMs!");
+        warn!("EMERGENCY CLEANUP - This will stop ALL VMs!");
 
-        // List all VMs
-        #[cfg(feature = "libvirt")]
-        let vms: Vec<String> = {
-            let conn = libvirt_connect().context("Failed to list VMs")?;
-            let domains = conn.list_all_domains(0)?;
-            domains
-                .into_iter()
-                .filter_map(|d| d.get_name().ok())
-                .collect()
-        };
-        #[cfg(not(feature = "libvirt"))]
-        let vms: Vec<String> = {
-            let list_output = Command::new("virsh")
-                .args(["list", "--all", "--name"])
-                .output()
-                .context("Failed to list VMs")?;
+        let conn = libvirt_connect().context("Failed to list VMs")?;
+        let domains = conn.list_all_domains(0)?;
+        let vms: Vec<String> = domains
+            .into_iter()
+            .filter_map(|d| d.get_name().ok())
+            .collect();
 
-            String::from_utf8_lossy(&list_output.stdout)
-                .lines()
-                .filter(|line| !line.is_empty())
-                .map(std::string::ToString::to_string)
-                .collect()
-        };
-
-        info!("   Found {} VMs to clean", vms.len());
+        info!("  Found {} VMs to clean", vms.len());
 
         for vm_name in vms {
             if let Err(e) = self.cleanup_vm(&vm_name) {
@@ -308,10 +193,9 @@ impl VmCleanup {
             }
         }
 
-        // Clean up orphaned disks
         self.cleanup_orphaned_disks()?;
 
-        info!("✅ Emergency cleanup complete");
+        info!("Emergency cleanup complete");
         Ok(())
     }
 }

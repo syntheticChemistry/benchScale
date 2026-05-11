@@ -50,10 +50,21 @@ impl PciDevice {
         PathBuf::from(format!("/sys/bus/pci/devices/{}", self.bdf))
     }
 
-    /// Parse BDF into (domain, bus, slot, function).
+    /// Parse BDF string (e.g. `"0000:4d:00.0"`) into (domain, bus, slot, function).
     pub fn parse_bdf(&self) -> Option<(u16, u8, u8, u8)> {
-        crate::config_legacy::PciPassthroughDevice { bdf: self.bdf.clone(), no_flr: false }
-            .parse_bdf()
+        let parts: Vec<&str> = self.bdf.split(':').collect();
+        if parts.len() != 3 {
+            return None;
+        }
+        let domain = u16::from_str_radix(parts[0], 16).ok()?;
+        let bus = u8::from_str_radix(parts[1], 16).ok()?;
+        let slot_func: Vec<&str> = parts[2].split('.').collect();
+        if slot_func.len() != 2 {
+            return None;
+        }
+        let slot = u8::from_str_radix(slot_func[0], 16).ok()?;
+        let function = u8::from_str_radix(slot_func[1], 16).ok()?;
+        Some((domain, bus, slot, function))
     }
 
     /// Check whether this device supports Function Level Reset.

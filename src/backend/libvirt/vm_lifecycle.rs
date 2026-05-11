@@ -199,6 +199,7 @@ impl LibvirtBackend {
             network: "default",
             mac_address: Some(&mac_address),
             pci_devices,
+            emulator: None,
         };
 
         let domain_xml = generate_desktop_domain_xml(&domain_config);
@@ -337,6 +338,7 @@ impl LibvirtBackend {
             network: "default",
             mac_address: None,
             pci_devices: &[],
+            emulator: None,
         };
 
         let domain_xml = generate_desktop_domain_xml(&domain_config);

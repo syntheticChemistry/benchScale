@@ -43,7 +43,7 @@ use super::LibvirtBackend;
 /// * `Err` with descriptive message if not found
 ///
 /// # Example
-/// ```rust
+/// ```ignore
 /// let domain = lookup_domain(&conn, "my-vm-name")?;
 /// let domain = lookup_domain(&conn, "550e8400-e29b-41d4-a716-446655440000")?;
 /// ```

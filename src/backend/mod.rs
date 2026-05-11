@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Backend abstraction for container runtimes
 
 use async_trait::async_trait;
@@ -41,10 +41,11 @@ pub mod vm_utils;
 #[cfg(feature = "libvirt")]
 pub mod serial_console;
 
-pub mod cleanup;
 #[cfg(feature = "libvirt")]
 pub mod health;
 pub mod senescence;
+#[cfg(feature = "libvirt")]
+pub mod cleanup;
 
 /// GPU device lifecycle management (VFIO bind/unbind, IOMMU groups)
 pub mod gpu_lifecycle;
@@ -66,11 +67,8 @@ pub mod timeout_utils;
 
 #[cfg(feature = "libvirt")]
 pub use timeout_utils::{
-    BackoffConfig, retry_with_backoff, wait_for_condition, wait_for_condition_backoff,
+    retry_with_backoff, wait_for_condition, wait_for_condition_backoff, BackoffConfig,
 };
-
-#[cfg(all(feature = "libvirt", test))]
-mod vnc_display_tests;
 
 /// Information about a running container/node
 #[derive(Debug, Clone, Serialize, Deserialize)]

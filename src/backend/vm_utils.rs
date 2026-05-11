@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-only
 //! VM disk management utilities for LibvirtBackend
 //!
 //! Handles qcow2 disk image operations including copy-on-write overlays.
@@ -208,6 +208,8 @@ pub struct DesktopDomainConfig<'a> {
     /// included in the domain XML; `Hot*` devices must be attached after boot
     /// via `Domain::attach_device_flags`.
     pub pci_devices: &'a [crate::backend::gpu_lifecycle::VfioPassthrough],
+    /// QEMU emulator binary path. Defaults to `/usr/bin/qemu-system-x86_64`.
+    pub emulator: Option<&'a str>,
 }
 
 /// Generate a libvirt domain XML for a desktop VM with VNC graphics.
@@ -253,8 +255,41 @@ pub fn generate_desktop_domain_xml(config: &DesktopDomainConfig<'_>) -> String {
         format!("\n{hostdev_xml}")
     };
 
+    let emulator = config
+        .emulator
+        .unwrap_or("/usr/bin/qemu-system-x86_64");
+
+    // Collect QEMU device properties from all PCI devices into
+    // <qemu:commandline> arguments. Properties become -set device.hostN.key=val.
+    let qemu_args: Vec<String> = config
+        .pci_devices
+        .iter()
+        .filter(|d| d.attach_mode == crate::backend::gpu_lifecycle::AttachMode::Cold)
+        .enumerate()
+        .flat_map(|(idx, d)| {
+            d.qemu_properties.iter().map(move |(k, v)| {
+                format!(
+                    "  <qemu:arg value='-set'/>\n  <qemu:arg value='device.hostdev{}.{k}={v}'/>",
+                    idx
+                )
+            })
+        })
+        .collect();
+
+    let qemu_ns = if qemu_args.is_empty() {
+        ("", String::new())
+    } else {
+        (
+            " xmlns:qemu='http://libvirt.org/schemas/domain/qemu/1.0'",
+            format!(
+                "\n<qemu:commandline>\n{}\n</qemu:commandline>",
+                qemu_args.join("\n")
+            ),
+        )
+    };
+
     format!(
-        r#"<domain type='kvm'>
+        r#"<domain type='kvm'{qemu_xmlns}>
   <name>{name}</name>
   <memory unit='MiB'>{memory}</memory>
   <vcpu>{vcpus}</vcpu>
@@ -271,7 +306,7 @@ pub fn generate_desktop_domain_xml(config: &DesktopDomainConfig<'_>) -> String {
   <on_reboot>restart</on_reboot>
   <on_crash>destroy</on_crash>
   <devices>
-    <emulator>/usr/bin/qemu-system-x86_64</emulator>
+    <emulator>{emulator}</emulator>
     <disk type='file' device='disk'>
       <driver name='qemu' type='qcow2'/>
       <source file='{disk}'/>
@@ -285,8 +320,9 @@ pub fn generate_desktop_domain_xml(config: &DesktopDomainConfig<'_>) -> String {
     <video>
       <model type='virtio'/>
     </video>{hostdev}
-  </devices>
+  </devices>{qemu_cmd}
 </domain>"#,
+        qemu_xmlns = qemu_ns.0,
         name = config.name,
         memory = config.memory_mb,
         vcpus = config.vcpus,
@@ -295,6 +331,8 @@ pub fn generate_desktop_domain_xml(config: &DesktopDomainConfig<'_>) -> String {
         network = config.network,
         mac = mac_xml,
         hostdev = hostdev_section,
+        emulator = emulator,
+        qemu_cmd = qemu_ns.1,
     )
 }
 
@@ -342,6 +380,7 @@ mod tests {
             network: "default",
             mac_address: None,
             pci_devices: &[],
+            emulator: None,
         };
 
         let xml = generate_desktop_domain_xml(&config);
@@ -364,6 +403,7 @@ mod tests {
             network: "default",
             mac_address: Some("52:54:00:ab:cd:ef"),
             pci_devices: &[],
+            emulator: None,
         };
 
         let xml = generate_desktop_domain_xml(&config);
@@ -416,10 +456,88 @@ mod tests {
             network: "default",
             mac_address: None,
             pci_devices: &devices,
+            emulator: None,
         };
 
         let xml = generate_desktop_domain_xml(&config);
         assert!(xml.contains("0x02"), "cold-attach device should be in XML");
         assert!(!xml.contains("0x4d"), "hot-attach device should NOT be in XML");
+    }
+
+    #[test]
+    fn test_qemu_commandline_injection() {
+        use crate::backend::gpu_lifecycle::{AttachMode, PciDevice, VfioPassthrough};
+
+        let mut props = std::collections::HashMap::new();
+        props.insert("x-no-mmap".to_string(), "on".to_string());
+
+        let devices = vec![VfioPassthrough {
+            device: PciDevice {
+                bdf: "0000:02:00.0".to_string(),
+                iommu_group: None,
+                vendor_id: 0x10de,
+                device_id: 0x1db1,
+                driver: None,
+                reset_methods: vec![],
+            },
+            managed: false,
+            rom_bar: false,
+            attach_mode: AttachMode::Cold,
+            qemu_properties: props,
+        }];
+
+        let config = DesktopDomainConfig {
+            name: "qemu-props-vm",
+            disk_path: Path::new("/tmp/disk.qcow2"),
+            cdrom_path: None,
+            memory_mb: 8192,
+            vcpus: 4,
+            network: "default",
+            mac_address: None,
+            pci_devices: &devices,
+            emulator: None,
+        };
+
+        let xml = generate_desktop_domain_xml(&config);
+        assert!(xml.contains("xmlns:qemu="), "should have QEMU namespace");
+        assert!(xml.contains("<qemu:commandline>"), "should have commandline block");
+        assert!(xml.contains("x-no-mmap=on"), "should inject QEMU property");
+    }
+
+    #[test]
+    fn test_no_qemu_commandline_without_properties() {
+        let config = DesktopDomainConfig {
+            name: "no-props",
+            disk_path: Path::new("/tmp/disk.qcow2"),
+            cdrom_path: None,
+            memory_mb: 2048,
+            vcpus: 2,
+            network: "default",
+            mac_address: None,
+            pci_devices: &[],
+            emulator: None,
+        };
+
+        let xml = generate_desktop_domain_xml(&config);
+        assert!(!xml.contains("xmlns:qemu"), "should NOT have QEMU namespace without properties");
+        assert!(!xml.contains("<qemu:commandline>"), "should NOT have commandline block");
+    }
+
+    #[test]
+    fn test_custom_emulator_path() {
+        let config = DesktopDomainConfig {
+            name: "custom-emu",
+            disk_path: Path::new("/tmp/disk.qcow2"),
+            cdrom_path: None,
+            memory_mb: 2048,
+            vcpus: 2,
+            network: "default",
+            mac_address: None,
+            pci_devices: &[],
+            emulator: Some("/usr/local/bin/qemu-system-x86_64"),
+        };
+
+        let xml = generate_desktop_domain_xml(&config);
+        assert!(xml.contains("/usr/local/bin/qemu-system-x86_64"), "should use custom emulator");
     }
 }
