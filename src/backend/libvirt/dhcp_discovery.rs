@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-only
 //! DHCP Lease Discovery for Libvirt VMs
 //!
 //! Evolution #12: Robust DHCP IP Discovery
@@ -18,20 +18,15 @@
 //!
 //! We query libvirt network DHCP leases and match VMs by MAC address, which is the
 //! most reliable identifier since hostnames might not be set yet during early boot.
-//!
-//! `libc::c_char` in helpers matches libvirt’s exported C pointer types (virt FFI; not
-//! replaceable with rustix/nix).
 
 use super::dhcp_leases::LeaseList;
-use anyhow::{Result, anyhow};
-use libc;
-use std::ffi::CStr;
+use anyhow::{anyhow, Result};
 use std::ptr;
 use std::time::Duration;
-use tokio::time::sleep;
-use tracing::{debug, info, warn};
 use virt::connect::Connect;
 use virt::network::Network;
+use tokio::time::sleep;
+use tracing::{debug, info, warn};
 
 /// A DHCP lease entry from libvirt
 #[derive(Debug, Clone)]
@@ -133,7 +128,10 @@ pub async fn discover_dhcp_ip(mac_address: &str, config: DiscoveryConfig) -> Res
                 }
             }
             Err(e) => {
-                warn!("Failed to query DHCP leases (attempt {}): {}", attempt, e);
+                warn!(
+                    "Failed to query DHCP leases (attempt {}): {}",
+                    attempt, e
+                );
             }
         }
 
@@ -161,8 +159,8 @@ pub async fn discover_dhcp_ip(mac_address: &str, config: DiscoveryConfig) -> Res
 ///
 /// A vector of all DHCP leases, or an error if the query failed
 pub(crate) fn query_dhcp_leases(network_name: &str) -> Result<Vec<DhcpLease>> {
-    let mut conn =
-        Connect::open(None).map_err(|e| anyhow!("Failed to connect to libvirt: {}", e))?;
+    let mut conn = Connect::open(None)
+        .map_err(|e| anyhow!("Failed to connect to libvirt: {}", e))?;
     let result = query_dhcp_leases_with_connect(&conn, network_name);
     let _ = conn.close();
     result
@@ -183,48 +181,19 @@ pub(crate) fn query_dhcp_leases_with_connect(
             virt::error::Error::last_error()
         )
     })?;
-    if list.is_empty() {
-        return Ok(Vec::new());
-    }
 
-    let mut leases = Vec::new();
-    for i in 0..list.len() {
-        let lease_ptr = list.lease_ptr_at(i);
-        if lease_ptr.is_null() {
-            continue;
-        }
-        // SAFETY: `lease_ptr` comes from libvirt's lease array for this query; we only read fields
-        // before `list` is dropped (which frees the lease structs).
-        let lease = unsafe { &*lease_ptr };
-        let mac_address = c_string_from_ptr(lease.mac);
-        let ip_raw = c_string_from_ptr(lease.ipaddr);
-        let hostname = c_string_from_ptr(lease.hostname);
-        let type_ = lease.type_;
-        if type_ != virt::sys::VIR_IP_ADDR_TYPE_IPV4 as i32 {
-            continue;
-        }
-        let ip_address = ip_raw
-            .split('/')
-            .next()
-            .unwrap_or(ip_raw.as_str())
-            .to_string();
-        leases.push(DhcpLease {
-            mac_address,
-            ip_address,
-            hostname,
-            network: network_name.to_string(),
-        });
-    }
+    let leases = list
+        .ipv4_leases(network_name)
+        .into_iter()
+        .map(|l| DhcpLease {
+            mac_address: l.mac_address,
+            ip_address: l.ip_address,
+            hostname: l.hostname,
+            network: l.network,
+        })
+        .collect::<Vec<_>>();
 
     debug!("Parsed {} DHCP leases", leases.len());
     Ok(leases)
 }
 
-/// Converts a libvirt NUL-terminated lease field; `libc::c_char` matches libvirt’s C pointers.
-fn c_string_from_ptr(p: *mut libc::c_char) -> String {
-    if p.is_null() {
-        return String::new();
-    }
-    // SAFETY: Libvirt provides NUL-terminated C strings for lease fields; we only read until NUL.
-    unsafe { CStr::from_ptr(p).to_string_lossy().into_owned() }
-}

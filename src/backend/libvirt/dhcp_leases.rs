@@ -6,6 +6,7 @@
 //! a replacement for deallocating C-heap memory from libvirt.
 
 use libc;
+use std::ffi::CStr;
 use std::ptr;
 use virt::network::Network;
 use virt::sys;
@@ -58,6 +59,54 @@ impl LeaseList {
         // SAFETY: `leases` was returned by libvirt with `count` elements; `index` is in bounds.
         unsafe { *self.leases.add(index) }
     }
+
+    /// Parse all IPv4 leases into high-level structs.
+    ///
+    /// Consolidates the FFI field extraction so callers never touch raw pointers.
+    pub(crate) fn ipv4_leases(&self, network_name: &str) -> Vec<Ipv4Lease> {
+        let mut out = Vec::new();
+        for i in 0..self.len() {
+            let p = self.lease_ptr_at(i);
+            if p.is_null() {
+                continue;
+            }
+            // SAFETY: pointer is valid (owned by `self` until `Drop`).
+            let raw = unsafe { &*p };
+            if raw.type_ != sys::VIR_IP_ADDR_TYPE_IPV4 as i32 {
+                continue;
+            }
+            let ip_raw = c_str_or_empty(raw.ipaddr);
+            let ip_address = ip_raw
+                .split('/')
+                .next()
+                .unwrap_or(&ip_raw)
+                .to_string();
+            out.push(Ipv4Lease {
+                mac_address: c_str_or_empty(raw.mac),
+                ip_address,
+                hostname: c_str_or_empty(raw.hostname),
+                network: network_name.to_string(),
+            });
+        }
+        out
+    }
+}
+
+/// A parsed IPv4 DHCP lease.
+#[derive(Debug, Clone)]
+pub(crate) struct Ipv4Lease {
+    pub mac_address: String,
+    pub ip_address: String,
+    pub hostname: String,
+    pub network: String,
+}
+
+fn c_str_or_empty(p: *mut libc::c_char) -> String {
+    if p.is_null() {
+        return String::new();
+    }
+    // SAFETY: pointer comes from libvirt's lease struct, guaranteed NUL-terminated.
+    unsafe { CStr::from_ptr(p).to_string_lossy().into_owned() }
 }
 
 impl Drop for LeaseList {

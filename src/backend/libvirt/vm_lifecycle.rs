@@ -128,22 +128,9 @@ impl LibvirtBackend {
             .to_str()
             .ok_or_else(|| crate::Error::Backend("Invalid disk path".to_string()))?;
 
-        let base_image_str = base_image
-            .to_str()
-            .ok_or_else(|| crate::Error::Backend(format!("Invalid base image path (non-UTF8): {:?}", base_image)))?;
-
         info!("  Copying base image to {}", disk_path_str);
-        let output = Command::new("cp")
-            .args([base_image_str, disk_path_str])
-            .output()
+        std::fs::copy(base_image, &disk_path)
             .map_err(|e| crate::Error::Backend(format!("Failed to copy image: {}", e)))?;
-
-        if !output.status.success() {
-            return Err(crate::Error::Backend(format!(
-                "Failed to copy image: {}",
-                String::from_utf8_lossy(&output.stderr)
-            )));
-        }
 
         info!("  Resizing disk to {}GB", disk_size_gb);
         let output = Command::new("qemu-img")
@@ -357,7 +344,7 @@ impl LibvirtBackend {
         info!("  VM created, waiting for network");
 
         // 4. Wait for IP address
-        let timeout = Duration::from_secs(self.config.vm_ip_timeout_secs);
+        let timeout = Duration::from_secs(self.bench_config.timeouts.vm_boot_secs);
         let ip_address = self.wait_for_ip(name, timeout).await?;
 
         info!("  VM got IP: {}", ip_address);
@@ -379,24 +366,9 @@ impl LibvirtBackend {
             let intermediate_path =
                 intermediate_dir.join(format!("{}-intermediate-{}.qcow2", name, timestamp));
 
-            let intermediate_path_str = intermediate_path
-                .to_str()
-                .ok_or_else(|| crate::Error::Backend(format!("Invalid intermediate path (non-UTF8): {:?}", intermediate_path)))?;
-
-            let output = Command::new("cp")
-                .args([disk_path_str, intermediate_path_str])
-                .output()
-                .map_err(|e| {
-                    crate::Error::Backend(format!("Failed to save intermediate: {}", e))
-                })?;
-
-            if output.status.success() {
-                info!("  Intermediate saved: {}", intermediate_path.display());
-            } else {
-                warn!(
-                    "  Failed to save intermediate: {}",
-                    String::from_utf8_lossy(&output.stderr)
-                );
+            match std::fs::copy(&disk_path, &intermediate_path) {
+                Ok(_) => info!("  Intermediate saved: {}", intermediate_path.display()),
+                Err(e) => warn!("  Failed to save intermediate: {}", e),
             }
         }
 

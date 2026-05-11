@@ -178,7 +178,8 @@ impl Backend for LibvirtBackend {
         info!("Creating libvirt VM: {} from image {}", name, image);
 
         // 1. Create copy-on-write disk overlay
-        let disk_mgr = DiskManager::new(&self.config.overlay_dir);
+        let images_dir = self.bench_config.storage.images_dir();
+        let disk_mgr = DiskManager::new(images_dir.as_path());
         let overlay_path = disk_mgr
             .create_overlay(std::path::Path::new(image), name)
             .await?;
@@ -220,7 +221,7 @@ impl Backend for LibvirtBackend {
         drop(conn); // Release lock before async wait
 
         // 5. Wait for IP address (using configured timeout)
-        let timeout = Duration::from_secs(self.config.vm_ip_timeout_secs);
+        let timeout = Duration::from_secs(self.bench_config.timeouts.vm_boot_secs);
         let ip = self.wait_for_ip(name, timeout).await?;
 
         info!("VM {} created successfully with IP {}", name, ip);
@@ -346,7 +347,8 @@ impl Backend for LibvirtBackend {
         // Clean up disk overlay (best-effort)
         if let Some(name) = vm_name {
             info!("  Cleaning up disk overlay for {}...", name);
-            let disk_mgr = DiskManager::new(&self.config.overlay_dir);
+            let images_dir = self.bench_config.storage.images_dir();
+            let disk_mgr = DiskManager::new(images_dir.as_path());
             match disk_mgr.delete_overlay(&name).await {
                 Ok(()) => info!("  ✅ Disk overlay cleaned up"),
                 Err(e) => warn!("  ⚠️  Failed to delete disk overlay: {}", e),
@@ -436,8 +438,8 @@ impl Backend for LibvirtBackend {
         // Connect via SSH using configuration
         let mut ssh = SshClient::connect(
             &ip,
-            self.config.ssh.port,
-            &self.config.ssh.default_user,
+            self.bench_config.network.ssh_port,
+            &self.bench_config.network.ssh_default_user,
             "", // Password auth deprecated - use key-based auth via SSH agent
         )
         .await?;
@@ -467,8 +469,8 @@ impl Backend for LibvirtBackend {
         // Connect via SSH using configuration
         let mut ssh = SshClient::connect(
             &ip,
-            self.config.ssh.port,
-            &self.config.ssh.default_user,
+            self.bench_config.network.ssh_port,
+            &self.bench_config.network.ssh_default_user,
             "", // Password auth deprecated - use key-based auth via SSH agent
         )
         .await?;

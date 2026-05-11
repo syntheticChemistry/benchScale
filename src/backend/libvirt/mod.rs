@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-only
 #![cfg_attr(feature = "libvirt", allow(unsafe_code))]
 
 //! LibvirtBackend - KVM/QEMU backend for benchScale
@@ -22,7 +22,6 @@
 //! The LibvirtBackend is organized into functional modules:
 //!
 //! - **`mod.rs`** (this file) - Core struct, initialization, template discovery
-//! - **`vm_state.rs`** - Deterministic VM identity (MAC), pool IP release helpers, DHCP metadata
 //! - **`vm_lifecycle.rs`** - VM creation operations (desktop VMs, templates)
 //! - **`vm_ready.rs`** - Readiness validation (cloud-init, SSH waiting)
 //! - **`dhcp_discovery.rs`** - DHCP lease discovery for dynamic IPs (Evolution #12)
@@ -60,7 +59,7 @@
 //!     3072,  // 3GB RAM
 //!     2,     // 2 vCPUs  
 //!     25,    // 25GB disk
-//!     None,  // static IP from pool (or Some("192.168.122.50".into()))
+//!     None,
 //! ).await?;
 //!
 //! println!("VM created at {}", vm.ip_address);
@@ -91,7 +90,7 @@
 //!     3072, 2, 25,
 //!     "ubuntu", "password123",
 //!     Duration::from_secs(600), // 10 minute timeout
-//!     None, // static IP from pool (or Some("192.168.122.50".into()))
+//!     None,
 //! ).await?;
 //!
 //! // SSH is guaranteed to work now!
@@ -156,7 +155,7 @@
 
 use crate::Result;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
@@ -174,31 +173,29 @@ use super::{ssh, vm_utils};
 #[cfg(feature = "libvirt")]
 mod backend_impl;
 #[cfg(feature = "libvirt")]
-/// Deep boot diagnostics for failed VM boots (Evolution #13)
-pub mod boot_diagnostics;
+mod utils;
+#[cfg(feature = "libvirt")]
+mod vm_lifecycle;
+#[cfg(feature = "libvirt")]
+mod vm_ready;
+#[cfg(feature = "libvirt")]
+mod vm_guard;
+#[cfg(feature = "libvirt")]
+mod vm_registry;
+#[cfg(feature = "libvirt")]
+mod dhcp_leases;
 #[cfg(feature = "libvirt")]
 /// DHCP lease discovery for dynamic IP allocation (Evolution #12)
 pub mod dhcp_discovery;
 #[cfg(feature = "libvirt")]
-mod dhcp_leases;
+/// Deep boot diagnostics for failed VM boots (Evolution #13)
+pub mod boot_diagnostics;
 #[cfg(feature = "libvirt")]
 /// Libvirt health check for system stability (Evolution #20)
 pub mod health_check;
 #[cfg(feature = "libvirt")]
 /// Auto-recovery from libvirt state corruption (Evolution #20)
 pub mod recovery;
-#[cfg(feature = "libvirt")]
-mod utils;
-#[cfg(feature = "libvirt")]
-mod vm_guard;
-#[cfg(feature = "libvirt")]
-mod vm_lifecycle;
-#[cfg(feature = "libvirt")]
-mod vm_ready;
-#[cfg(feature = "libvirt")]
-mod vm_registry;
-#[cfg(feature = "libvirt")]
-mod vm_state;
 
 // Public exports
 #[cfg(feature = "libvirt")]
@@ -231,24 +228,19 @@ pub(crate) use super::libvirt_uri;
 /// ```no_run
 /// use benchscale::LibvirtBackend;
 ///
-/// # fn example() -> anyhow::Result<()> {
+/// # async fn example() -> anyhow::Result<()> {
 /// let backend = LibvirtBackend::new()?;
 /// // Backend is ready to create VMs
 /// # Ok(())
 /// # }
 /// ```
 #[cfg(feature = "libvirt")]
-#[allow(deprecated)]
 pub struct LibvirtBackend {
     /// Libvirt connection (wrapped in Arc<Mutex> for async safety)
     pub(crate) conn: Arc<Mutex<Connect>>,
 
-    /// Unified configuration (replaces deprecated LibvirtConfig)
+    /// Unified configuration
     pub(crate) bench_config: crate::config::BenchScaleConfig,
-
-    /// Legacy config (kept for backward-compatible overlay_dir/ssh access during migration)
-    #[deprecated(note = "Use bench_config instead — will be removed once all call-sites migrate")]
-    pub(crate) config: crate::config_legacy::LibvirtConfig,
 
     /// Runtime-discovered system capabilities
     pub(crate) capabilities: crate::capabilities::SystemCapabilities,
@@ -262,12 +254,54 @@ pub struct LibvirtBackend {
 
 #[cfg(feature = "libvirt")]
 impl LibvirtBackend {
+    #[allow(deprecated)]
+    fn bench_scale_config_from_libvirt_legacy(
+        lc: &crate::config_legacy::LibvirtConfig,
+    ) -> crate::config::BenchScaleConfig {
+        let mut bench = crate::config::BenchScaleConfig::default();
+        bench.timeouts.vm_boot_secs = lc.vm_ip_timeout_secs;
+        bench.timeouts.ssh_connection_secs = lc.ssh.timeout_secs;
+        bench.network.ssh_port = lc.ssh.port;
+        bench.network.ssh_default_user = lc.ssh.default_user.clone();
+        bench.storage.intermediate_dir = lc.template_dir.clone();
+        bench.storage.overlay_dir = Some(lc.overlay_dir.clone());
+        let vm_images = if lc.base_image_path.is_dir() {
+            lc.base_image_path.clone()
+        } else {
+            lc.base_image_path
+                .parent()
+                .map(Path::to_path_buf)
+                .unwrap_or_else(crate::constants::paths::default_system_vm_images_dir)
+        };
+        bench.storage.vm_images_dir = Some(vm_images);
+        bench
+    }
+
+    fn new_connected(
+        conn: Connect,
+        bench_config: crate::config::BenchScaleConfig,
+        capabilities: crate::capabilities::SystemCapabilities,
+    ) -> Result<Self> {
+        let ip_pool = crate::backend::IpPool::from_range(
+            &capabilities.network.ip_pool_start,
+            &capabilities.network.ip_pool_end,
+        )?;
+
+        Ok(Self {
+            conn: Arc::new(Mutex::new(conn)),
+            bench_config,
+            capabilities,
+            ip_pool,
+            templates: HashMap::new(),
+        })
+    }
+
     /// Get a raw libvirt connection for VmGuard or other direct libvirt operations
     ///
     /// This creates a new connection to libvirt (not from the Arc<Mutex> pool)
     /// for use cases that need direct ownership of a Connect instance.
     pub fn raw_connection(&self) -> Result<Connect> {
-        Connect::open(Some(&self.config.uri))
+        Connect::open(Some(&super::libvirt_uri()))
             .map_err(|e| crate::Error::Backend(format!("Failed to connect to libvirt: {}", e)))
     }
 
@@ -312,7 +346,7 @@ impl LibvirtBackend {
     ///
     /// # async fn example() -> anyhow::Result<()> {
     /// let backend = LibvirtBackend::new()?;
-    ///
+    /// 
     /// // Before critical operations
     /// backend.ensure_healthy().await?;
     /// # Ok(())
@@ -344,7 +378,7 @@ impl LibvirtBackend {
                 for issue in &health.issues {
                     warn!("   • {}", issue);
                 }
-
+                
                 // Provide recovery instructions without blocking
                 if !health.orphaned_processes.is_empty() {
                     warn!("   💡 To clean up orphaned processes (no sudo needed):");
@@ -353,7 +387,7 @@ impl LibvirtBackend {
                     warn!("      Or manually restart default network:");
                     warn!("      virsh net-destroy default && virsh net-start default");
                 }
-
+                
                 warn!("   Proceeding with build (graceful degradation)...");
                 Ok(()) // DON'T BLOCK on warnings
             }
@@ -369,10 +403,7 @@ impl LibvirtBackend {
                     .map_err(|e| crate::Error::Backend(format!("Recovery failed: {}", e)))?;
 
                 if result.success {
-                    info!(
-                        "✅ Infrastructure recovery successful: {}",
-                        result.summary()
-                    );
+                    info!("✅ Infrastructure recovery successful: {}", result.summary());
                     Ok(())
                 } else {
                     Err(crate::Error::Backend(format!(
@@ -425,53 +456,55 @@ impl LibvirtBackend {
         username: &str,
         vm_ip: &str,
     ) -> Result<String> {
-        use tokio::process::Command;
+        info!("Discovering network interface for VM '{}'", vm_name);
 
-        info!("🔍 Discovering network interface for VM '{}'", vm_name);
-
-        // Query the VM for its primary interface using 'ip route show default'
-        // This is more reliable than hardcoding interface names
-        let discover_cmd = format!(
-            "ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-             {}@{} \"ip -o -4 route show default | awk '{{print \\$5}}'\" 2>/dev/null",
-            username, vm_ip
-        );
-
-        let output = Command::new("sh")
-            .arg("-c")
-            .arg(&discover_cmd)
-            .output()
-            .await
-            .map_err(|e| {
-                crate::Error::Backend(format!("Failed to execute interface discovery: {}", e))
-            })?;
-
-        if output.status.success() {
-            let interface = String::from_utf8_lossy(&output.stdout).trim().to_string();
-
-            if !interface.is_empty() && interface.len() < 20 {
-                // Basic sanity check
-                info!(
-                    "✅ Discovered interface '{}' for VM '{}'",
-                    interface, vm_name
-                );
-                return Ok(interface);
+        let port = self.bench_config.network.ssh_port;
+        let ssh_result = match crate::backend::ssh::SshClient::connect_with_key(
+            vm_ip, port, username, None,
+        )
+        .await
+        {
+            Ok(c) => Ok(c),
+            Err(_) => {
+                crate::backend::ssh::SshClient::connect(vm_ip, port, username, "").await
             }
-            warn!(
-                "Interface discovery returned invalid result: '{}'",
-                interface
-            );
+        };
+
+        if let Ok(mut client) = ssh_result {
+            match client
+                .exec_stdout("ip -o -4 route show default | awk '{print $5}'")
+                .await
+            {
+                Ok(interface) => {
+                    let interface = interface.trim().to_string();
+                    if !interface.is_empty() && interface.len() < 20 {
+                        info!(
+                            "Discovered interface '{}' for VM '{}'",
+                            interface, vm_name
+                        );
+                        let _ = client.disconnect().await;
+                        return Ok(interface);
+                    }
+                    warn!(
+                        "Interface discovery returned invalid result: '{}'",
+                        interface
+                    );
+                }
+                Err(e) => {
+                    warn!("Interface discovery command failed: {}", e);
+                }
+            }
+            let _ = client.disconnect().await;
         } else {
             warn!(
-                "Interface discovery failed: {}",
-                String::from_utf8_lossy(&output.stderr)
+                "SSH connection for interface discovery failed for VM '{}'",
+                vm_name
             );
         }
 
-        // Fallback to configured default interface
         let fallback = &self.capabilities.network.default_interface;
         warn!(
-            "⚠️  Could not discover interface for VM '{}', using fallback: {}",
+            "Could not discover interface for VM '{}', using fallback: {}",
             vm_name, fallback
         );
         Ok(fallback.clone())
@@ -533,7 +566,10 @@ impl LibvirtBackend {
                 let from_dom = || -> Option<String> {
                     let domain = Domain::lookup_by_name(&*conn, vm_name).ok()?;
                     let ifaces = domain
-                        .interface_addresses(virt::sys::VIR_DOMAIN_INTERFACE_ADDRESSES_SRC_LEASE, 0)
+                        .interface_addresses(
+                            virt::sys::VIR_DOMAIN_INTERFACE_ADDRESSES_SRC_LEASE,
+                            0,
+                        )
                         .ok()?;
                     Self::first_ipv4_from_lease_interfaces(&ifaces)
                 };
@@ -621,10 +657,12 @@ impl LibvirtBackend {
     /// # }
     /// ```
     pub fn new() -> Result<Self> {
-        let mut backend = Self::with_config(crate::config_legacy::LibvirtConfig::default())?;
+        #[allow(deprecated)]
+        let default_legacy = crate::config_legacy::LibvirtConfig::default();
+        let mut backend = Self::with_config(default_legacy)?;
 
-        // Auto-discover templates if template_dir is configured
-        if backend.config.template_dir.is_some() {
+        // Auto-discover templates when intermediate (template) directory is configured
+        if backend.bench_config.storage.intermediate_dir.is_some() {
             match backend.discover_templates() {
                 Ok(count) => info!("Auto-discovered {} templates", count),
                 Err(e) => info!("Template discovery failed (non-fatal): {}", e),
@@ -650,11 +688,11 @@ impl LibvirtBackend {
     /// # }
     /// ```
     pub async fn new_with_discovery() -> Result<Self> {
-        let mut backend =
-            Self::with_config_and_discovery(crate::config_legacy::LibvirtConfig::default()).await?;
+        #[allow(deprecated)]
+        let default_legacy = crate::config_legacy::LibvirtConfig::default();
+        let mut backend = Self::with_config_and_discovery(default_legacy).await?;
 
-        // Auto-discover templates if template_dir is configured
-        if backend.config.template_dir.is_some() {
+        if backend.bench_config.storage.intermediate_dir.is_some() {
             match backend.discover_templates() {
                 Ok(count) => info!("Auto-discovered {} templates", count),
                 Err(e) => info!("Template discovery failed (non-fatal): {}", e),
@@ -683,42 +721,30 @@ impl LibvirtBackend {
     /// # Ok(())
     /// # }
     /// ```
+    #[allow(deprecated)]
     pub fn with_config(config: crate::config_legacy::LibvirtConfig) -> Result<Self> {
-        let conn = Connect::open(Some(&config.uri))
+        let bench_config = Self::bench_scale_config_from_libvirt_legacy(&config);
+
+        let conn = Connect::open(Some(&super::libvirt_uri()))
             .map_err(|e| crate::Error::Backend(format!("Failed to connect to libvirt: {}", e)))?;
 
-        // Use default capabilities (standard libvirt)
-        let capabilities = crate::capabilities::NetworkCapabilities::default_libvirt();
+        let capabilities_network = crate::capabilities::NetworkCapabilities::default_libvirt();
         let full_capabilities = crate::capabilities::SystemCapabilities {
-            network: capabilities,
+            network: capabilities_network,
             storage: crate::capabilities::StorageCapabilities {
                 images_dir: crate::constants::paths::default_system_vm_images_dir(),
                 temp_dir: std::env::temp_dir(),
                 cloud_init_dir: std::env::temp_dir().join("benchscale-cloud-init"),
             },
             virtualization: crate::capabilities::VirtCapabilities {
-                uri: config.uri.clone(),
+                uri: super::libvirt_uri(),
                 default_os_variant: "ubuntu22.04".to_string(),
-                ssh_port: 22,
+                ssh_port: bench_config.network.ssh_port,
                 vnc_base_port: 5900,
             },
         };
 
-        // Initialize IP pool from capabilities
-        let ip_pool = crate::backend::IpPool::from_range(
-            &full_capabilities.network.ip_pool_start,
-            &full_capabilities.network.ip_pool_end,
-        )?;
-
-        #[allow(deprecated)]
-        Ok(Self {
-            conn: Arc::new(Mutex::new(conn)),
-            bench_config: crate::config::BenchScaleConfig::default(),
-            config,
-            capabilities: full_capabilities,
-            ip_pool,
-            templates: HashMap::new(),
-        })
+        Self::new_connected(conn, bench_config, full_capabilities)
     }
 
     /// Create a new LibvirtBackend with custom configuration and runtime discovery
@@ -739,64 +765,18 @@ impl LibvirtBackend {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn with_config_and_discovery(
-        config: crate::config_legacy::LibvirtConfig,
-    ) -> Result<Self> {
-        let conn = Connect::open(Some(&config.uri))
+    #[allow(deprecated)]
+    pub async fn with_config_and_discovery(config: crate::config_legacy::LibvirtConfig) -> Result<Self> {
+        let mut bench_config = Self::bench_scale_config_from_libvirt_legacy(&config);
+
+        let conn = Connect::open(Some(&super::libvirt_uri()))
             .map_err(|e| crate::Error::Backend(format!("Failed to connect to libvirt: {}", e)))?;
 
-        // Discover system capabilities at runtime
         info!("Discovering system capabilities for portable configuration...");
         let capabilities = crate::capabilities::SystemCapabilities::discover().await?;
+        bench_config.merge_with_capabilities(&capabilities);
 
-        // Initialize IP pool from discovered network configuration
-        let ip_pool = crate::backend::IpPool::from_range(
-            &capabilities.network.ip_pool_start,
-            &capabilities.network.ip_pool_end,
-        )?;
-
-        #[allow(deprecated)]
-        Ok(Self {
-            conn: Arc::new(Mutex::new(conn)),
-            bench_config: crate::config::BenchScaleConfig::default(),
-            config,
-            capabilities,
-            ip_pool,
-            templates: HashMap::new(),
-        })
-    }
-}
-
-#[cfg(all(test, feature = "libvirt"))]
-mod dhcp_lease_match_tests {
-    use crate::backend::libvirt::dhcp_discovery::DhcpLease;
-
-    #[test]
-    fn ip_from_leases_matching_vm_matches_hostname_substring() {
-        let leases = vec![DhcpLease {
-            mac_address: "52:54:00:01:02:03".into(),
-            ip_address: "192.168.122.88".into(),
-            hostname: "benchscale-my-vm-123".into(),
-            network: "default".into(),
-        }];
-        assert_eq!(
-            super::LibvirtBackend::ip_from_leases_matching_vm(&leases, "my-vm"),
-            Some("192.168.122.88".into())
-        );
-    }
-
-    #[test]
-    fn ip_from_leases_matching_vm_returns_none_when_no_match() {
-        let leases = vec![DhcpLease {
-            mac_address: "52:54:00:01:02:03".into(),
-            ip_address: "192.168.122.1".into(),
-            hostname: "other".into(),
-            network: "default".into(),
-        }];
-        assert_eq!(
-            super::LibvirtBackend::ip_from_leases_matching_vm(&leases, "missing"),
-            None
-        );
+        Self::new_connected(conn, bench_config, capabilities)
     }
 }
 
@@ -811,8 +791,6 @@ pub struct LibvirtBackend;
 
 #[cfg(not(feature = "libvirt"))]
 impl LibvirtBackend {
-    /// Feature-gated fallback: returns an error when the `libvirt` feature is not enabled.
-    /// This is intentional compile-time feature gating, not a test mock.
     pub fn new() -> Result<Self> {
         Err(crate::Error::Backend(
             "LibvirtBackend requires 'libvirt' feature to be enabled".to_string(),

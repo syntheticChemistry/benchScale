@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Deep boot diagnostics for failed VM boots
 //!
 //! This module provides comprehensive diagnostics when a VM fails to boot:
@@ -9,7 +9,6 @@
 
 use anyhow::{Context, Result};
 use std::path::Path;
-use std::process::Command;
 use tracing::{debug, info, warn};
 use virt::connect::Connect;
 use virt::domain::Domain;
@@ -63,7 +62,7 @@ pub fn capture_serial_console(vm_name: &str) -> Result<String> {
 
     if let Ok(conn) = Connect::open(Some(&libvirt_uri())) {
         if let Ok(domain) = Domain::lookup_by_name(&conn, vm_name) {
-            if let Ok(stream) = Stream::new(&conn, VIR_STREAM_NONBLOCK) {
+            if let Ok(mut stream) = Stream::new(&conn, VIR_STREAM_NONBLOCK) {
                 if domain.open_console(None, &stream, 0).is_ok() {
                     let mut buf = vec![0u8; 8192];
                     let mut out = Vec::new();
@@ -89,23 +88,7 @@ pub fn capture_serial_console(vm_name: &str) -> Result<String> {
         }
     }
 
-    // Tracked improvement: prefer libvirt Stream; `virsh console` fallback when unavailable.
-    match Command::new("virsh")
-        .args(["console", vm_name, "--force"])
-        .output()
-    {
-        Ok(output) if output.status.success() => {
-            let console_log = String::from_utf8_lossy(&output.stdout).to_string();
-            info!(
-                "   ✅ Captured {} bytes of console output (virsh fallback)",
-                console_log.len()
-            );
-            return Ok(console_log);
-        }
-        Ok(_) | Err(_) => {},
-    }
-
-    warn!("   ⚠️  Could not capture console output via libvirt or virsh");
+    warn!("Could not capture console output via libvirt Stream — VM may not have a serial console configured");
     Ok(String::from("Console output not available"))
 }
 
@@ -114,7 +97,10 @@ pub fn capture_serial_console(vm_name: &str) -> Result<String> {
 /// Falls back to reading `/var/log/cloud-init-output.log` when journalctl
 /// is unavailable. If SSH is unreachable (VM crashed hard), returns a
 /// descriptive message instead of failing.
-pub fn extract_journal_via_ssh(vm_name: &str) -> Result<String> {
+///
+/// `ssh_users` overrides the list of usernames to attempt.
+/// When empty, defaults to the configured SSH user from `BenchScaleConfig`.
+pub async fn extract_journal_via_ssh(vm_name: &str, ssh_users: &[&str]) -> Result<String> {
     info!("Extracting journal from VM '{}' via SSH", vm_name);
 
     let ip = get_vm_ip_from_virsh(vm_name);
@@ -122,26 +108,43 @@ pub fn extract_journal_via_ssh(vm_name: &str) -> Result<String> {
         return Ok("Journal unavailable: could not determine VM IP".to_string());
     };
 
-    let users = ["ubuntu", "reagent", "builder", "cosmic"];
-    for user in users {
-        let addr = format!("{}@{}", user, ip);
-        let output = Command::new("ssh")
-            .args([
-                "-o", "StrictHostKeyChecking=no",
-                "-o", "UserKnownHostsFile=/dev/null",
-                "-o", "ConnectTimeout=5",
-                "-o", "BatchMode=yes",
-                &addr,
-                "journalctl --no-pager --boot -0 --priority warning --lines 200 2>/dev/null || cat /var/log/cloud-init-output.log 2>/dev/null || echo 'no journal available'",
-            ])
-            .output();
+    let default_config = crate::config::BenchScaleConfig::default();
+    let default_user_owned = default_config.network.ssh_default_user.clone();
+    let default_users: Vec<&str> = vec![default_user_owned.as_str()];
+    let users = if ssh_users.is_empty() {
+        &default_users
+    } else {
+        ssh_users
+    };
 
-        if let Ok(out) = output {
-            if out.status.success() {
-                let text = String::from_utf8_lossy(&out.stdout).to_string();
-                if !text.trim().is_empty() {
-                    info!("Extracted {} bytes of journal via SSH (user={})", text.len(), user);
+    let journal_cmd = "journalctl --no-pager --boot -0 --priority warning --lines 200 2>/dev/null || cat /var/log/cloud-init-output.log 2>/dev/null || echo 'no journal available'";
+
+    for user in users {
+        let port = default_config.network.ssh_port;
+        let client = match crate::backend::ssh::SshClient::connect_with_key(
+            &ip, port, user, None,
+        )
+        .await
+        {
+            Ok(c) => Ok(c),
+            Err(_) => {
+                crate::backend::ssh::SshClient::connect(&ip, port, user, "").await
+            }
+        };
+
+        if let Ok(mut client) = client {
+            match client.exec_stdout(journal_cmd).await {
+                Ok(text) if !text.trim().is_empty() => {
+                    info!(
+                        "Extracted {} bytes of journal via SSH (user={})",
+                        text.len(),
+                        user
+                    );
+                    let _ = client.disconnect().await;
                     return Ok(text);
+                }
+                _ => {
+                    let _ = client.disconnect().await;
                 }
             }
         }
@@ -217,17 +220,11 @@ pub fn analyze_vm_state(vm_name: &str) -> Result<String> {
 }
 
 /// Comprehensive boot failure diagnostics
-
 pub struct BootDiagnosticsReport {
-    /// Target VM name
     pub vm_name: String,
-    /// Serial console capture text
     pub serial_console: String,
-    /// Journal excerpts from the guest
     pub journal_logs: String,
-    /// Kernel / boot loader parameters (if collected)
     pub boot_parameters: String,
-    /// Libvirt-reported VM state string
     pub vm_state: String,
 }
 
@@ -243,7 +240,7 @@ impl BootDiagnosticsReport {
         let serial_console = capture_serial_console(vm_name)
             .unwrap_or_else(|e| format!("Failed to capture console: {}", e));
         
-        let journal_logs = extract_journal_via_ssh(vm_name)
+        let journal_logs = extract_journal_via_ssh(vm_name, &[]).await
             .unwrap_or_else(|e| format!("Failed to extract journal: {}", e));
         
         let boot_parameters = get_boot_parameters(vm_name)
