@@ -14,10 +14,12 @@ use tracing::{debug, info, warn};
 use virt::connect::Connect;
 use virt::domain::Domain;
 use virt::stream::Stream;
+
+use super::libvirt_uri;
 use virt::sys::{
-    VIR_DOMAIN_BLOCKED, VIR_DOMAIN_CRASHED, VIR_DOMAIN_INTERFACE_ADDRESSES_SRC_LEASE,
-    VIR_DOMAIN_NOSTATE, VIR_DOMAIN_PAUSED, VIR_DOMAIN_PMSUSPENDED, VIR_DOMAIN_RUNNING,
-    VIR_DOMAIN_SHUTDOWN, VIR_DOMAIN_SHUTOFF, VIR_IP_ADDR_TYPE_IPV4, VIR_STREAM_NONBLOCK,
+    VIR_DOMAIN_BLOCKED, VIR_DOMAIN_CRASHED, VIR_DOMAIN_NOSTATE, VIR_DOMAIN_PAUSED,
+    VIR_DOMAIN_PMSUSPENDED, VIR_DOMAIN_RUNNING, VIR_DOMAIN_SHUTDOWN, VIR_DOMAIN_SHUTOFF,
+    VIR_DOMAIN_INTERFACE_ADDRESSES_SRC_LEASE, VIR_IP_ADDR_TYPE_IPV4, VIR_STREAM_NONBLOCK,
 };
 
 fn domain_state_str(state: virt::sys::virDomainState) -> &'static str {
@@ -59,7 +61,7 @@ fn format_dominfo_like(vm_name: &str, domain: &Domain) -> Result<String, virt::e
 pub fn capture_serial_console(vm_name: &str) -> Result<String> {
     info!("📼 Capturing serial console output for VM '{}'", vm_name);
 
-    if let Ok(conn) = Connect::open(Some("qemu:///system")) {
+    if let Ok(conn) = Connect::open(Some(&libvirt_uri())) {
         if let Ok(domain) = Domain::lookup_by_name(&conn, vm_name) {
             if let Ok(stream) = Stream::new(&conn, VIR_STREAM_NONBLOCK) {
                 if domain.open_console(None, &stream, 0).is_ok() {
@@ -79,10 +81,7 @@ pub fn capture_serial_console(vm_name: &str) -> Result<String> {
                     }
                     if !out.is_empty() {
                         let console_log = String::from_utf8_lossy(&out).to_string();
-                        info!(
-                            "   ✅ Captured {} bytes of console output",
-                            console_log.len()
-                        );
+                        info!("   ✅ Captured {} bytes of console output", console_log.len());
                         return Ok(console_log);
                     }
                 }
@@ -90,23 +89,23 @@ pub fn capture_serial_console(vm_name: &str) -> Result<String> {
         }
     }
 
-    // Tracked improvement: prefer libvirt API for console capture here; `virsh` remains the
-    // reliable fallback until that path is solid for all hypervisor/console combinations.
-    let output = Command::new("virsh")
+    // Tracked improvement: prefer libvirt Stream; `virsh console` fallback when unavailable.
+    match Command::new("virsh")
         .args(["console", vm_name, "--force"])
         .output()
-        .context("Failed to execute virsh console")?;
-
-    if output.status.success() {
-        let console_log = String::from_utf8_lossy(&output.stdout).to_string();
-        info!(
-            "   ✅ Captured {} bytes of console output",
-            console_log.len()
-        );
-        return Ok(console_log);
+    {
+        Ok(output) if output.status.success() => {
+            let console_log = String::from_utf8_lossy(&output.stdout).to_string();
+            info!(
+                "   ✅ Captured {} bytes of console output (virsh fallback)",
+                console_log.len()
+            );
+            return Ok(console_log);
+        }
+        Ok(_) | Err(_) => {},
     }
 
-    warn!("   ⚠️  Could not capture console output directly");
+    warn!("   ⚠️  Could not capture console output via libvirt or virsh");
     Ok(String::from("Console output not available"))
 }
 
@@ -141,11 +140,7 @@ pub fn extract_journal_via_ssh(vm_name: &str) -> Result<String> {
             if out.status.success() {
                 let text = String::from_utf8_lossy(&out.stdout).to_string();
                 if !text.trim().is_empty() {
-                    info!(
-                        "Extracted {} bytes of journal via SSH (user={})",
-                        text.len(),
-                        user
-                    );
+                    info!("Extracted {} bytes of journal via SSH (user={})", text.len(), user);
                     return Ok(text);
                 }
             }
@@ -157,7 +152,7 @@ pub fn extract_journal_via_ssh(vm_name: &str) -> Result<String> {
 
 /// Helper: resolve a VM's IP from virsh DHCP leases (no sudo needed).
 fn get_vm_ip_from_virsh(vm_name: &str) -> Option<String> {
-    let conn = Connect::open(Some("qemu:///system")).ok()?;
+    let conn = Connect::open(Some(&libvirt_uri())).ok()?;
     let domain = Domain::lookup_by_name(&conn, vm_name).ok()?;
     let interfaces = domain
         .interface_addresses(VIR_DOMAIN_INTERFACE_ADDRESSES_SRC_LEASE, 0)
@@ -176,8 +171,9 @@ fn get_vm_ip_from_virsh(vm_name: &str) -> Option<String> {
 pub fn get_boot_parameters(vm_name: &str) -> Result<String> {
     info!("⚙️  Getting boot parameters for VM '{}'", vm_name);
 
-    let conn = Connect::open(Some("qemu:///system"))
-        .map_err(|e| anyhow::Error::new(e).context("Failed to get VM XML"))?;
+    let conn = Connect::open(Some(&libvirt_uri())).map_err(|e| {
+        anyhow::Error::new(e).context("Failed to get VM XML")
+    })?;
     let domain = match Domain::lookup_by_name(&conn, vm_name) {
         Ok(d) => d,
         Err(_) => return Ok(String::from("No kernel command line found")),
@@ -203,8 +199,9 @@ pub fn get_boot_parameters(vm_name: &str) -> Result<String> {
 pub fn analyze_vm_state(vm_name: &str) -> Result<String> {
     info!("🔬 Analyzing VM state for '{}'", vm_name);
 
-    let conn = Connect::open(Some("qemu:///system"))
-        .map_err(|e| anyhow::Error::new(e).context("Failed to get VM info"))?;
+    let conn = Connect::open(Some(&libvirt_uri())).map_err(|e| {
+        anyhow::Error::new(e).context("Failed to get VM info")
+    })?;
     let domain = match Domain::lookup_by_name(&conn, vm_name) {
         Ok(d) => d,
         Err(_) => return Ok(String::from("Could not get VM state")),
@@ -220,6 +217,7 @@ pub fn analyze_vm_state(vm_name: &str) -> Result<String> {
 }
 
 /// Comprehensive boot failure diagnostics
+
 pub struct BootDiagnosticsReport {
     /// Target VM name
     pub vm_name: String,
@@ -240,23 +238,20 @@ impl BootDiagnosticsReport {
     /// The `_disk_path` parameter is kept for API compatibility but is no
     /// longer used — journal logs are pulled via SSH before the VM is torn down.
     pub async fn generate(vm_name: &str, _disk_path: &Path) -> Result<Self> {
-        info!(
-            "Generating comprehensive boot diagnostics for '{}'",
-            vm_name
-        );
-
+        info!("Generating comprehensive boot diagnostics for '{}'", vm_name);
+        
         let serial_console = capture_serial_console(vm_name)
             .unwrap_or_else(|e| format!("Failed to capture console: {}", e));
-
+        
         let journal_logs = extract_journal_via_ssh(vm_name)
             .unwrap_or_else(|e| format!("Failed to extract journal: {}", e));
-
+        
         let boot_parameters = get_boot_parameters(vm_name)
             .unwrap_or_else(|e| format!("Failed to get boot params: {}", e));
-
-        let vm_state =
-            analyze_vm_state(vm_name).unwrap_or_else(|e| format!("Failed to analyze state: {}", e));
-
+        
+        let vm_state = analyze_vm_state(vm_name)
+            .unwrap_or_else(|e| format!("Failed to analyze state: {}", e));
+        
         Ok(Self {
             vm_name: vm_name.to_string(),
             serial_console,
@@ -265,7 +260,7 @@ impl BootDiagnosticsReport {
             vm_state,
         })
     }
-
+    
     /// Format the report as a readable string
     pub fn format(&self) -> String {
         format!(
@@ -312,10 +307,11 @@ SYSTEMD JOURNAL (Priority: Warning+, Last 200 lines)
             self.journal_logs,
         )
     }
-
+    
     /// Save the report to a file
     pub fn save_to_file(&self, path: &Path) -> Result<()> {
-        std::fs::write(path, self.format()).context("Failed to write diagnostics report")?;
+        std::fs::write(path, self.format())
+            .context("Failed to write diagnostics report")?;
         info!("📝 Diagnostics report saved to: {:?}", path);
         Ok(())
     }

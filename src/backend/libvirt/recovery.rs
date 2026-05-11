@@ -44,7 +44,7 @@ use virt::connect::Connect;
 use virt::network::Network;
 
 fn system_connection() -> anyhow::Result<Connect> {
-    Connect::open(Some("qemu:///system")).map_err(|e| anyhow::anyhow!(e))
+    Connect::open(Some(&super::libvirt_uri())).map_err(|e| anyhow::anyhow!(e))
 }
 
 /// Auto-recovery for libvirt system state

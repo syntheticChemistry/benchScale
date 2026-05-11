@@ -91,6 +91,22 @@ pub struct StorageConfig {
     /// Use qcow2 CoW for faster VM creation and space savings.
     #[serde(default = "default_enable_cow")]
     pub enable_cow: bool,
+
+    /// Overlay directory for copy-on-write disk images.
+    ///
+    /// **Default**: None (falls back to `$TMPDIR/benchscale/overlays`)
+    ///
+    /// Replaces `LibvirtConfig.overlay_dir`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub overlay_dir: Option<PathBuf>,
+
+    /// Template directory for VM base images (agentReagents templates).
+    ///
+    /// **Default**: None (auto-discovered from sibling `agentReagents/` dir)
+    ///
+    /// Replaces `LibvirtConfig.template_dir`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub template_dir: Option<PathBuf>,
 }
 
 // Default value functions
@@ -114,6 +130,8 @@ impl Default for StorageConfig {
             max_disk_size_gb: default_max_disk_size(),
             min_free_space_gb: default_min_free_space(),
             enable_cow: default_enable_cow(),
+            overlay_dir: None,
+            template_dir: None,
         }
     }
 }

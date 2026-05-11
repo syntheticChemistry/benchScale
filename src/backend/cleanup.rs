@@ -21,7 +21,8 @@ use virt::error::ErrorNumber;
 
 #[cfg(feature = "libvirt")]
 fn libvirt_connect() -> anyhow::Result<virt::connect::Connect> {
-    Ok(virt::connect::Connect::open(Some("qemu:///system"))?)
+    let uri = super::libvirt_uri();
+    Ok(virt::connect::Connect::open(Some(&uri))?)
 }
 
 /// VM cleanup manager

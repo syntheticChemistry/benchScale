@@ -17,6 +17,16 @@ pub use docker::DockerBackend;
 // - Environment variables: Explicit configuration
 // This follows primal philosophy: use existing capabilities, don't reinvent
 
+/// Resolve the libvirt connection URI from environment or default.
+///
+/// Checks `BENCHSCALE_LIBVIRT_URI` first, then `LIBVIRT_URI`, falling
+/// back to `qemu:///system`.
+pub(crate) fn libvirt_uri() -> String {
+    std::env::var("BENCHSCALE_LIBVIRT_URI")
+        .or_else(|_| std::env::var("LIBVIRT_URI"))
+        .unwrap_or_else(|_| "qemu:///system".to_string())
+}
+
 #[cfg(feature = "libvirt")]
 pub mod libvirt;
 #[cfg(feature = "libvirt")]
@@ -35,6 +45,12 @@ pub mod cleanup;
 #[cfg(feature = "libvirt")]
 pub mod health;
 pub mod senescence;
+
+/// GPU device lifecycle management (VFIO bind/unbind, IOMMU groups)
+pub mod gpu_lifecycle;
+
+/// Pure-Rust NoCloud cidata ISO generation (replaces genisoimage)
+pub mod cidata_iso;
 
 #[cfg(feature = "libvirt")]
 pub use health::{HealthCheck, HealthMonitor, HealthStatus};

@@ -122,11 +122,11 @@ pub fn generate_domain_xml_with_pci(
     vcpus: u32,
     network: &str,
     serial_log: &Path,
-    pci_devices: &[crate::config_legacy::PciPassthroughDevice],
+    pci_devices: &[crate::backend::gpu_lifecycle::VfioPassthrough],
 ) -> String {
     let hostdev_xml: String = pci_devices
         .iter()
-        .filter_map(super::super::config_legacy::PciPassthroughDevice::to_libvirt_xml)
+        .filter_map(|d| d.to_libvirt_xml())
         .collect::<Vec<_>>()
         .join("\n");
 
@@ -184,6 +184,120 @@ pub fn generate_domain_xml_with_pci(
     )
 }
 
+/// Configuration for desktop/GUI domain XML generation.
+///
+/// Used by [`generate_desktop_domain_xml`] to produce a libvirt domain XML
+/// that includes VNC graphics, optional cloud-init CD-ROM, MAC address,
+/// and PCI passthrough devices. Replaces the `virt-install` shell-out.
+pub struct DesktopDomainConfig<'a> {
+    /// VM name
+    pub name: &'a str,
+    /// Path to the primary qcow2 disk image
+    pub disk_path: &'a Path,
+    /// Optional cloud-init ISO to attach as CD-ROM
+    pub cdrom_path: Option<&'a Path>,
+    /// Memory in MiB
+    pub memory_mb: u32,
+    /// Number of virtual CPUs
+    pub vcpus: u32,
+    /// Libvirt network name (e.g. "default")
+    pub network: &'a str,
+    /// Deterministic MAC address for DHCP discovery
+    pub mac_address: Option<&'a str>,
+    /// PCI devices for VFIO passthrough. Only `Cold` attach-mode devices are
+    /// included in the domain XML; `Hot*` devices must be attached after boot
+    /// via `Domain::attach_device_flags`.
+    pub pci_devices: &'a [crate::backend::gpu_lifecycle::VfioPassthrough],
+}
+
+/// Generate a libvirt domain XML for a desktop VM with VNC graphics.
+///
+/// This replaces the `virt-install` shell-out, giving us full control
+/// over the domain definition without Python/virt-install version fragility
+/// or hardcoded `--os-variant`.
+pub fn generate_desktop_domain_xml(config: &DesktopDomainConfig<'_>) -> String {
+    let cdrom_xml = config
+        .cdrom_path
+        .map(|p| {
+            format!(
+                r#"
+    <disk type='file' device='cdrom'>
+      <driver name='qemu' type='raw'/>
+      <source file='{}'/>
+      <target dev='sda' bus='sata'/>
+      <readonly/>
+    </disk>"#,
+                p.display()
+            )
+        })
+        .unwrap_or_default();
+
+    let mac_xml = config
+        .mac_address
+        .map(|mac| format!("\n      <mac address='{}'/>", mac))
+        .unwrap_or_default();
+
+    // Only include Cold-attach devices in domain XML;
+    // Hot-attach devices are attached post-boot via Domain::attach_device_flags
+    let hostdev_xml: String = config
+        .pci_devices
+        .iter()
+        .filter(|d| d.attach_mode == crate::backend::gpu_lifecycle::AttachMode::Cold)
+        .filter_map(|d| d.to_libvirt_xml())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let hostdev_section = if hostdev_xml.is_empty() {
+        String::new()
+    } else {
+        format!("\n{hostdev_xml}")
+    };
+
+    format!(
+        r#"<domain type='kvm'>
+  <name>{name}</name>
+  <memory unit='MiB'>{memory}</memory>
+  <vcpu>{vcpus}</vcpu>
+  <os>
+    <type arch='x86_64'>hvm</type>
+    <boot dev='hd'/>
+  </os>
+  <features>
+    <acpi/>
+    <apic/>
+  </features>
+  <clock offset='utc'/>
+  <on_poweroff>destroy</on_poweroff>
+  <on_reboot>restart</on_reboot>
+  <on_crash>destroy</on_crash>
+  <devices>
+    <emulator>/usr/bin/qemu-system-x86_64</emulator>
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='qcow2'/>
+      <source file='{disk}'/>
+      <target dev='vda' bus='virtio'/>
+    </disk>{cdrom}
+    <interface type='network'>
+      <source network='{network}'/>{mac}
+      <model type='virtio'/>
+    </interface>
+    <graphics type='vnc' port='-1' autoport='yes' listen='0.0.0.0'/>
+    <video>
+      <model type='virtio'/>
+    </video>{hostdev}
+  </devices>
+</domain>"#,
+        name = config.name,
+        memory = config.memory_mb,
+        vcpus = config.vcpus,
+        disk = config.disk_path.display(),
+        cdrom = cdrom_xml,
+        network = config.network,
+        mac = mac_xml,
+        hostdev = hostdev_section,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -215,5 +329,97 @@ mod tests {
         assert!(xml.contains("source file='/tmp/disk.qcow2'"));
         assert!(xml.contains("source network='test-net'"));
         assert!(xml.contains("source path='/tmp/serial.log'"));
+    }
+
+    #[test]
+    fn test_generate_desktop_domain_xml_basic() {
+        let config = DesktopDomainConfig {
+            name: "desktop-vm",
+            disk_path: Path::new("/tmp/disk.qcow2"),
+            cdrom_path: None,
+            memory_mb: 4096,
+            vcpus: 4,
+            network: "default",
+            mac_address: None,
+            pci_devices: &[],
+        };
+
+        let xml = generate_desktop_domain_xml(&config);
+        assert!(xml.contains("<name>desktop-vm</name>"));
+        assert!(xml.contains("<memory unit='MiB'>4096</memory>"));
+        assert!(xml.contains("<vcpu>4</vcpu>"));
+        assert!(xml.contains("type='vnc'"));
+        assert!(!xml.contains("device='cdrom'"));
+        assert!(!xml.contains("<mac"));
+    }
+
+    #[test]
+    fn test_generate_desktop_domain_xml_with_cdrom_and_mac() {
+        let config = DesktopDomainConfig {
+            name: "test-vm",
+            disk_path: Path::new("/tmp/disk.qcow2"),
+            cdrom_path: Some(Path::new("/tmp/cidata.iso")),
+            memory_mb: 2048,
+            vcpus: 2,
+            network: "default",
+            mac_address: Some("52:54:00:ab:cd:ef"),
+            pci_devices: &[],
+        };
+
+        let xml = generate_desktop_domain_xml(&config);
+        assert!(xml.contains("device='cdrom'"));
+        assert!(xml.contains("/tmp/cidata.iso"));
+        assert!(xml.contains("52:54:00:ab:cd:ef"));
+    }
+
+    #[test]
+    fn test_generate_desktop_domain_xml_filters_by_attach_mode() {
+        use crate::backend::gpu_lifecycle::{AttachMode, PciDevice, VfioPassthrough};
+
+        let devices = vec![
+            VfioPassthrough {
+                device: PciDevice {
+                    bdf: "0000:02:00.0".to_string(),
+                    iommu_group: None,
+                    vendor_id: 0x10de,
+                    device_id: 0x1db1,
+                    driver: None,
+                    reset_methods: vec![],
+                },
+                managed: true,
+                rom_bar: true,
+                attach_mode: AttachMode::Cold,
+                qemu_properties: Default::default(),
+            },
+            VfioPassthrough {
+                device: PciDevice {
+                    bdf: "0000:4d:00.0".to_string(),
+                    iommu_group: None,
+                    vendor_id: 0x10de,
+                    device_id: 0x1db1,
+                    driver: None,
+                    reset_methods: vec![],
+                },
+                managed: false,
+                rom_bar: false,
+                attach_mode: AttachMode::HotUnmanaged,
+                qemu_properties: Default::default(),
+            },
+        ];
+
+        let config = DesktopDomainConfig {
+            name: "gpu-vm",
+            disk_path: Path::new("/tmp/disk.qcow2"),
+            cdrom_path: None,
+            memory_mb: 8192,
+            vcpus: 8,
+            network: "default",
+            mac_address: None,
+            pci_devices: &devices,
+        };
+
+        let xml = generate_desktop_domain_xml(&config);
+        assert!(xml.contains("0x02"), "cold-attach device should be in XML");
+        assert!(!xml.contains("0x4d"), "hot-attach device should NOT be in XML");
     }
 }

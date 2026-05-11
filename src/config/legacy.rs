@@ -120,6 +120,11 @@ pub struct LabConfig {
 pub struct PciPassthroughDevice {
     /// PCI bus/device/function in domain:bus:slot.function format (e.g., "0000:4d:00.0")
     pub bdf: String,
+
+    /// When true, prevent Function Level Reset on VM shutdown so that GPU hardware state
+    /// survives the VM→host transition. Uses `managed='no'` in libvirt XML for hot-attached devices.
+    #[serde(default)]
+    pub no_flr: bool,
 }
 
 impl PciPassthroughDevice {
@@ -141,11 +146,14 @@ impl PciPassthroughDevice {
         Some((domain, bus, slot, function))
     }
 
-    /// Generate libvirt `<hostdev>` XML element for this device
+    /// Generate libvirt `<hostdev>` XML element for this device.
+    ///
+    /// When `no_flr` is true, emits `managed='no'` so libvirt does not perform FLR on release.
     pub fn to_libvirt_xml(&self) -> Option<String> {
         let (domain, bus, slot, function) = self.parse_bdf()?;
+        let managed = if self.no_flr { "no" } else { "yes" };
         Some(format!(
-            r"    <hostdev mode='subsystem' type='pci' managed='yes'>
+            r"    <hostdev mode='subsystem' type='pci' managed='{managed}'>
       <source>
         <address domain='0x{domain:04x}' bus='0x{bus:02x}' slot='0x{slot:02x}' function='0x{function:x}'/>
       </source>

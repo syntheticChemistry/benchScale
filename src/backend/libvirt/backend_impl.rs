@@ -1,23 +1,23 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Backend trait implementation for LibvirtBackend
 //!
 //! This module implements the Backend trait for LibvirtBackend, providing
 //! the standard benchScale interface for VM management operations.
 
-use crate::Result;
 use crate::backend::{Backend, ExecResult, NetworkInfo, NodeInfo, NodeStatus};
+use crate::Result;
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::time::Duration;
-use tracing::{debug, info, warn};
+use tracing::{info, warn, debug};
 
 use virt::connect::Connect;
 use virt::domain::Domain;
 use virt::network::Network;
 
-use super::LibvirtBackend;
 use super::ssh::SshClient;
 use super::vm_utils;
+use super::LibvirtBackend;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // DEEP DEBT FIX: Domain Lookup Helper (Evolution #16)
@@ -43,11 +43,7 @@ use super::vm_utils;
 /// * `Err` with descriptive message if not found
 ///
 /// # Example
-///
-/// `lookup_domain` is internal to this module; callers inside benchscale obtain a
-/// [`Connect`](virt::connect::Connect) and pass it with a VM name or UUID string.
-///
-/// ```ignore
+/// ```rust
 /// let domain = lookup_domain(&conn, "my-vm-name")?;
 /// let domain = lookup_domain(&conn, "550e8400-e29b-41d4-a716-446655440000")?;
 /// ```
@@ -177,7 +173,7 @@ impl Backend for LibvirtBackend {
         network: &str,
         env: HashMap<String, String>,
     ) -> Result<NodeInfo> {
-        use vm_utils::{DiskManager, generate_domain_xml, parse_memory};
+        use vm_utils::{generate_domain_xml, parse_memory, DiskManager};
 
         info!("Creating libvirt VM: {} from image {}", name, image);
 
@@ -308,31 +304,29 @@ impl Backend for LibvirtBackend {
         };
 
         // Try to get node info for IP release (best-effort)
-        if let Some(ref uuid) = vm_uuid
-            && let Ok(info) = self.get_node(uuid).await
-            && let Ok(ip) = Ipv4Addr::from_str(&info.ip_address)
-        {
-            self.ip_pool.release(ip).await;
-            info!("  Released IP {} back to pool", ip);
+        if let Some(ref uuid) = vm_uuid {
+            if let Ok(info) = self.get_node(uuid).await {
+                if let Ok(ip) = Ipv4Addr::from_str(&info.ip_address) {
+                    self.ip_pool.release(ip).await;
+                    info!("  Released IP {} back to pool", ip);
+                }
+            }
         }
 
         // Destroy VM if running
         match domain.is_active() {
             Ok(true) => {
                 info!("  VM is active, destroying...");
-                domain.destroy().map_err(|e| {
-                    crate::Error::Backend(format!("Failed to destroy domain: {}", e))
-                })?;
+                domain
+                    .destroy()
+                    .map_err(|e| crate::Error::Backend(format!("Failed to destroy domain: {}", e)))?;
                 info!("  ✅ VM destroyed");
             }
             Ok(false) => {
                 debug!("  VM is not active, skipping destroy");
             }
             Err(e) => {
-                warn!(
-                    "  Failed to check VM state: {}, attempting destroy anyway",
-                    e
-                );
+                warn!("  Failed to check VM state: {}, attempting destroy anyway", e);
                 // Try to destroy anyway
                 if let Err(e) = domain.destroy() {
                     debug!("  Destroy failed (VM may already be stopped): {}", e);
@@ -525,6 +519,10 @@ impl Backend for LibvirtBackend {
         Ok(conn.is_alive().unwrap_or(false))
     }
 
+    /// Trait override: delegates to the inherent `create_desktop_vm` with `static_ip: None`.
+    ///
+    /// This fixes the trait/inherent method split where `ImageBuilder` calling
+    /// `create_desktop_vm` through `dyn Backend` would hit the default stub.
     async fn create_desktop_vm(
         &self,
         name: &str,
@@ -534,16 +532,7 @@ impl Backend for LibvirtBackend {
         vcpus: u32,
         disk_size_gb: u32,
     ) -> Result<NodeInfo> {
-        LibvirtBackend::create_desktop_vm(
-            self,
-            name,
-            image,
-            cloud_init,
-            memory_mb,
-            vcpus,
-            disk_size_gb,
-            None,
-        )
-        .await
+        // Delegate to the inherent method (vm_lifecycle.rs) with no static IP
+        LibvirtBackend::create_desktop_vm(self, name, image, cloud_init, memory_mb, vcpus, disk_size_gb, None).await
     }
 }

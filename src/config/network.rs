@@ -94,6 +94,14 @@ pub struct NetworkConfig {
     /// How long to wait for DHCP to assign an IP address.
     #[serde(default = "default_dhcp_timeout")]
     pub dhcp_discovery_timeout_secs: u64,
+
+    /// Default SSH username for VM access.
+    ///
+    /// **Default**: "benchscale"
+    ///
+    /// Replaces `LibvirtConfig.ssh.default_user`.
+    #[serde(default = "default_ssh_user")]
+    pub ssh_default_user: String,
 }
 
 /// DHCP range configuration
@@ -120,6 +128,9 @@ fn default_enable_dhcp_discovery() -> bool {
 fn default_dhcp_timeout() -> u64 {
     60
 }
+fn default_ssh_user() -> String {
+    std::env::var("BENCHSCALE_SSH_USER").unwrap_or_else(|_| "benchscale".to_string())
+}
 
 impl Default for NetworkConfig {
     fn default() -> Self {
@@ -131,6 +142,7 @@ impl Default for NetworkConfig {
             interface: None, // Discovered at runtime
             enable_dhcp_discovery: default_enable_dhcp_discovery(),
             dhcp_discovery_timeout_secs: default_dhcp_timeout(),
+            ssh_default_user: default_ssh_user(),
         }
     }
 }

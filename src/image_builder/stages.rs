@@ -121,7 +121,7 @@ pub(super) async fn detect_ssh_user(ip: &str) -> Result<String> {
 pub(super) async fn get_actual_vm_ip(vm_name: &str) -> Result<String> {
     let vm = vm_name.to_string();
     let ip = tokio::task::spawn_blocking(move || {
-        let conn = Connect::open(Some("qemu:///system"))
+        let conn = Connect::open(Some(&crate::backend::libvirt_uri()))
             .map_err(|e| Error::Backend(format!("Failed to get VM IP: {}", e)))?;
         let domain = Domain::lookup_by_name(&conn, &vm)
             .map_err(|_| Error::Backend("Failed to get VM IP".to_string()))?;
@@ -555,7 +555,7 @@ impl ImageBuilder {
 
         let vm_shutdown = vm_name.to_string();
         let _ = tokio::task::spawn_blocking(move || {
-            if let Ok(conn) = Connect::open(Some("qemu:///system"))
+            if let Ok(conn) = Connect::open(Some(&crate::backend::libvirt_uri()))
                 && let Ok(domain) = Domain::lookup_by_name(&conn, &vm_shutdown)
             {
                 let _ = domain.shutdown();
@@ -586,7 +586,7 @@ impl ImageBuilder {
 
         let vm_start = vm_name.to_string();
         tokio::task::spawn_blocking(move || {
-            let conn = Connect::open(Some("qemu:///system"))
+            let conn = Connect::open(Some(&crate::backend::libvirt_uri()))
                 .map_err(|e| Error::Backend(format!("Failed to restart VM: {}", e)))?;
             let domain = Domain::lookup_by_name(&conn, &vm_start)
                 .map_err(|e| Error::Backend(format!("Failed to restart VM: {}", e)))?;
@@ -605,7 +605,7 @@ impl ImageBuilder {
 
     pub(super) fn get_vnc_display(vm_name: &str) -> Result<String> {
         let xml_opt = (|| {
-            let conn = Connect::open(Some("qemu:///system")).ok()?;
+            let conn = Connect::open(Some(&crate::backend::libvirt_uri())).ok()?;
             let domain = Domain::lookup_by_name(&conn, vm_name).ok()?;
             domain.get_xml_desc(0).ok()
         })();
@@ -626,7 +626,7 @@ impl ImageBuilder {
 
         let vm_shutdown = vm_name.to_string();
         let _ = tokio::task::spawn_blocking(move || {
-            if let Ok(conn) = Connect::open(Some("qemu:///system"))
+            if let Ok(conn) = Connect::open(Some(&crate::backend::libvirt_uri()))
                 && let Ok(domain) = Domain::lookup_by_name(&conn, &vm_shutdown)
             {
                 let _ = domain.shutdown();

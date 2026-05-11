@@ -71,6 +71,139 @@ impl SshClient {
         })
     }
 
+    /// Connect to a VM via SSH using key-based authentication.
+    ///
+    /// If `key_path` is `None`, tries the default `~/.ssh/id_rsa` and
+    /// `~/.ssh/id_ed25519` paths in order.
+    pub async fn connect_with_key(
+        ip: &str,
+        port: u16,
+        user: &str,
+        key_path: Option<&std::path::Path>,
+    ) -> Result<Self> {
+        info!("Connecting to SSH (key auth): {}@{}:{}", user, ip, port);
+
+        let config = client::Config {
+            inactivity_timeout: Some(std::time::Duration::from_secs(30)),
+            ..<client::Config as Default>::default()
+        };
+
+        let mut session = client::connect(Arc::new(config), (ip, port), ClientHandler)
+            .await
+            .map_err(|e| Error::Backend(format!("SSH connection failed: {}", e)))?;
+
+        let key = Self::load_private_key(key_path)?;
+        let key_with_alg = russh::keys::PrivateKeyWithHashAlg::new(
+            Arc::new(key),
+            None,
+        );
+
+        let auth_res = session
+            .authenticate_publickey(user, key_with_alg)
+            .await
+            .map_err(|e| Error::Backend(format!("SSH key authentication failed: {}", e)))?;
+
+        match auth_res {
+            AuthResult::Success => {
+                info!("SSH key authentication successful");
+            }
+            _ => {
+                return Err(Error::Backend(format!(
+                    "SSH key authentication failed: {:?}",
+                    auth_res
+                )));
+            }
+        }
+
+        Ok(Self {
+            session,
+            ip: ip.to_string(),
+        })
+    }
+
+    /// Load a private key from file, trying common locations if path is None.
+    fn load_private_key(
+        key_path: Option<&std::path::Path>,
+    ) -> Result<russh::keys::PrivateKey> {
+        if let Some(path) = key_path {
+            let key = russh::keys::load_secret_key(path, None)
+                .map_err(|e| Error::Backend(format!(
+                    "Failed to load SSH key {}: {}", path.display(), e
+                )))?;
+            return Ok(key);
+        }
+
+        let home = dirs::home_dir()
+            .ok_or_else(|| Error::Backend("Cannot determine home directory".to_string()))?;
+
+        for name in ["id_ed25519", "id_rsa"] {
+            let candidate = home.join(".ssh").join(name);
+            if candidate.exists() {
+                match russh::keys::load_secret_key(&candidate, None) {
+                    Ok(key) => {
+                        debug!("Loaded SSH key from {}", candidate.display());
+                        return Ok(key);
+                    }
+                    Err(e) => {
+                        debug!("Skipping {}: {}", candidate.display(), e);
+                    }
+                }
+            }
+        }
+
+        Err(Error::Backend(
+            "No usable SSH private key found (tried ~/.ssh/id_ed25519, ~/.ssh/id_rsa)".to_string()
+        ))
+    }
+
+    /// Execute a command and return the combined stdout (convenience wrapper).
+    pub async fn exec_stdout(&mut self, command: &str) -> Result<String> {
+        let (exit_code, stdout, stderr) = self.execute(&[command.to_string()]).await?;
+        if exit_code != 0 {
+            return Err(Error::Backend(format!(
+                "Command failed (exit {}): {}", exit_code,
+                if stderr.is_empty() { &stdout } else { &stderr }
+            )));
+        }
+        Ok(stdout)
+    }
+
+    /// Push file data to the remote host by writing through a shell channel.
+    ///
+    /// Uses base64 encoding to safely transfer binary data over the SSH
+    /// channel. For files under ~1 MiB this is simpler and more portable
+    /// than SFTP.
+    pub async fn push_data(
+        &mut self,
+        data: &[u8],
+        remote_path: &str,
+    ) -> Result<()> {
+        let b64 = base64::encode(data);
+        let cmd = format!("echo '{}' | base64 -d > {}", b64, remote_path);
+        let (exit_code, _, stderr) = self.execute(&[cmd]).await?;
+        if exit_code != 0 {
+            return Err(Error::Backend(format!(
+                "push_data to {} failed: {}", remote_path, stderr
+            )));
+        }
+        Ok(())
+    }
+
+    /// Fetch file data from the remote host.
+    pub async fn fetch_data(&mut self, remote_path: &str) -> Result<Vec<u8>> {
+        let cmd = format!("base64 {}", remote_path);
+        let (exit_code, stdout, stderr) = self.execute(&[cmd]).await?;
+        if exit_code != 0 {
+            return Err(Error::Backend(format!(
+                "fetch_data from {} failed: {}", remote_path, stderr
+            )));
+        }
+        let decoded = data_encoding::BASE64
+            .decode(stdout.trim().as_bytes())
+            .map_err(|e| Error::Backend(format!("base64 decode failed: {}", e)))?;
+        Ok(decoded)
+    }
+
     /// Execute a command on the remote VM
     pub async fn execute(&mut self, command: &[String]) -> Result<(i32, String, String)> {
         let cmd = command.join(" ");

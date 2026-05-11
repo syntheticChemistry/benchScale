@@ -206,6 +206,8 @@ pub use vm_guard::VmGuard;
 #[cfg(feature = "libvirt")]
 pub use vm_registry::{VmRegistry, VmRegistryEntry, VmStatus};
 
+pub(crate) use super::libvirt_uri;
+
 /// LibvirtBackend for KVM/QEMU VMs
 ///
 /// Provides a complete backend for benchScale that uses libvirt to manage VMs.
@@ -236,11 +238,16 @@ pub use vm_registry::{VmRegistry, VmRegistryEntry, VmStatus};
 /// # }
 /// ```
 #[cfg(feature = "libvirt")]
+#[allow(deprecated)]
 pub struct LibvirtBackend {
     /// Libvirt connection (wrapped in Arc<Mutex> for async safety)
     pub(crate) conn: Arc<Mutex<Connect>>,
 
-    /// Configuration for the backend
+    /// Unified configuration (replaces deprecated LibvirtConfig)
+    pub(crate) bench_config: crate::config::BenchScaleConfig,
+
+    /// Legacy config (kept for backward-compatible overlay_dir/ssh access during migration)
+    #[deprecated(note = "Use bench_config instead — will be removed once all call-sites migrate")]
     pub(crate) config: crate::config_legacy::LibvirtConfig,
 
     /// Runtime-discovered system capabilities
@@ -703,8 +710,10 @@ impl LibvirtBackend {
             &full_capabilities.network.ip_pool_end,
         )?;
 
+        #[allow(deprecated)]
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
+            bench_config: crate::config::BenchScaleConfig::default(),
             config,
             capabilities: full_capabilities,
             ip_pool,
@@ -746,8 +755,10 @@ impl LibvirtBackend {
             &capabilities.network.ip_pool_end,
         )?;
 
+        #[allow(deprecated)]
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
+            bench_config: crate::config::BenchScaleConfig::default(),
             config,
             capabilities,
             ip_pool,

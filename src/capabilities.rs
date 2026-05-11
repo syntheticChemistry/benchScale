@@ -152,7 +152,7 @@ impl NetworkCapabilities {
     /// Discover from libvirt's default network
     async fn discover_from_libvirt() -> Result<Self> {
         let xml = tokio::task::spawn_blocking(|| {
-            let conn = Connect::open(Some("qemu:///system")).map_err(|e| {
+            let conn = Connect::open(Some(&crate::backend::libvirt_uri())).map_err(|e| {
                 crate::Error::Backend(format!("Failed to query libvirt network: {}", e))
             })?;
             let network = Network::lookup_by_name(&conn, "default").map_err(|_| {
@@ -354,7 +354,7 @@ impl StorageCapabilities {
     /// Query libvirt for default storage pool path
     async fn query_libvirt_pool() -> Result<PathBuf> {
         let xml = tokio::task::spawn_blocking(|| {
-            let conn = Connect::open(Some("qemu:///system"))
+            let conn = Connect::open(Some(&crate::backend::libvirt_uri()))
                 .map_err(|e| crate::Error::Backend(format!("Failed to query pool: {}", e)))?;
             let pool = StoragePool::lookup_by_name(&conn, "default")
                 .map_err(|_| crate::Error::Backend("Failed to get pool config".to_string()))?;
@@ -414,9 +414,7 @@ impl VirtCapabilities {
     pub async fn discover() -> Result<Self> {
         debug!("Discovering virtualization capabilities...");
 
-        let uri = std::env::var("LIBVIRT_URI")
-            .or_else(|_| std::env::var("BENCHSCALE_LIBVIRT_URI"))
-            .unwrap_or_else(|_| "qemu:///system".to_string());
+        let uri = crate::backend::libvirt_uri();
 
         let default_os_variant =
             std::env::var("BENCHSCALE_OS_VARIANT").unwrap_or_else(|_| "ubuntu22.04".to_string());

@@ -99,6 +99,11 @@ pub use config::{BenchScaleConfig, MonitoringConfig, TimeoutConfig};
 )]
 pub use config_legacy::Config;
 pub use config_legacy::PciPassthroughDevice;
+pub use backend::gpu_lifecycle::{
+    AttachMode, GpuLifecycle, PciDevice, SysfsGpuLifecycle, VfioPassthrough,
+};
+#[cfg(feature = "libvirt")]
+pub use backend::ssh::SshClient;
 pub use error::{Error, Result};
 pub use image_builder::{BuildResult, BuildStep, ImageBuilder};
 pub use lab::{Lab, LabHandle, LabMetadata, LabRegistry, LabStatus};

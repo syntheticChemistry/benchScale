@@ -204,7 +204,7 @@ impl LibvirtHealthCheck {
     fn check_network_active(&self, issues: &mut Vec<String>) -> bool {
         debug!("Checking default network status...");
 
-        match Connect::open(Some("qemu:///system")) {
+        match Connect::open(Some(&super::libvirt_uri())) {
             Ok(conn) => match Network::lookup_by_name(&conn, "default") {
                 Ok(network) => match network.is_active() {
                     Ok(is_active) => {
@@ -234,7 +234,7 @@ impl LibvirtHealthCheck {
     fn check_dhcp_functional(&self, issues: &mut Vec<String>) -> bool {
         debug!("Checking DHCP functionality...");
 
-        match Connect::open(Some("qemu:///system")) {
+        match Connect::open(Some(&super::libvirt_uri())) {
             Ok(conn) => match Network::lookup_by_name(&conn, "default") {
                 Ok(network) => {
                     match LeaseList::fetch(&network, ptr::null(), 0) {
