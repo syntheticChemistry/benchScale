@@ -3,6 +3,8 @@
 #![allow(deprecated)] // CLI still uses legacy `Config` until migrated to BenchScaleConfig
 
 use benchscale::{Backend, Config, DockerBackend, Lab, LabRegistry, Topology, init};
+#[cfg(feature = "libvirt")]
+use benchscale::LibvirtBackend;
 use clap::{Parser, Subcommand};
 use tracing::{error, info};
 
@@ -84,8 +86,8 @@ async fn main() {
         Command::Create {
             name,
             topology,
-            backend: _,
-        } => create_lab(&name, &topology).await,
+            backend,
+        } => create_lab(&name, &topology, &backend).await,
         Command::Destroy { name, force: _ } => destroy_lab(&name).await,
         Command::List => list_labs().await,
         Command::Status { name } => show_status(&name).await,
@@ -114,27 +116,53 @@ async fn main() {
     }
 }
 
-async fn create_lab(lab_name: &str, topology_file: &str) -> anyhow::Result<()> {
-    info!("Creating lab '{lab_name}' from topology '{topology_file}'");
+async fn create_lab(lab_name: &str, topology_file: &str, backend_name: &str) -> anyhow::Result<()> {
+    info!("Creating lab '{lab_name}' from topology '{topology_file}' (backend: {backend_name})");
 
     let config = Config::from_env();
     let topology = Topology::from_file(topology_file).await?;
     info!("Loaded topology: {}", topology.metadata.name);
 
-    let backend = DockerBackend::new()?;
-    if !backend.is_available().await? {
-        anyhow::bail!("Docker is not available. Ensure Docker is installed and running.");
+    match backend_name {
+        #[cfg(feature = "libvirt")]
+        "libvirt" | "kvm" => {
+            let backend = LibvirtBackend::new()?;
+            if !backend.is_available().await? {
+                anyhow::bail!("Libvirt is not available. Ensure libvirtd is running.");
+            }
+            let lab = Lab::create(lab_name, topology.clone(), backend).await?;
+            register_and_report(lab_name, &lab, &config, topology, "libvirt").await
+        }
+        #[cfg(not(feature = "libvirt"))]
+        "libvirt" | "kvm" => {
+            anyhow::bail!("Libvirt support not compiled in. Rebuild with --features libvirt");
+        }
+        "docker" => {
+            let backend = DockerBackend::new()?;
+            if !backend.is_available().await? {
+                anyhow::bail!("Docker is not available. Ensure Docker is installed and running.");
+            }
+            let lab = Lab::create(lab_name, topology.clone(), backend).await?;
+            register_and_report(lab_name, &lab, &config, topology, "docker").await
+        }
+        other => anyhow::bail!("Unknown backend '{other}'. Available: docker, libvirt"),
     }
+}
 
-    let lab = Lab::create(lab_name, topology.clone(), backend).await?;
-
-    let registry = LabRegistry::from_config(&config);
+async fn register_and_report(
+    lab_name: &str,
+    lab: &Lab,
+    config: &Config,
+    topology: Topology,
+    backend_type: &str,
+) -> anyhow::Result<()> {
+    let registry = LabRegistry::from_config(config);
     registry
         .register_lab(
             lab.id().to_string(),
             lab_name.to_string(),
             topology,
-            "docker".to_string(),
+            backend_type.to_string(),
         )
         .await?;
 
@@ -142,7 +170,6 @@ async fn create_lab(lab_name: &str, topology_file: &str) -> anyhow::Result<()> {
     for node in lab.nodes().await {
         info!("  {} ({}): {:?}", node.name, node.ip_address, node.status);
     }
-
     Ok(())
 }
 
@@ -153,24 +180,36 @@ async fn destroy_lab(lab_name: &str) -> anyhow::Result<()> {
     let registry = LabRegistry::from_config(&config);
     let metadata = registry.load_lab_by_name(lab_name).await?;
 
-    info!("Found lab: {} (ID: {})", metadata.name, metadata.id);
+    info!("Found lab: {} (ID: {}, backend: {})", metadata.name, metadata.id, metadata.backend_type);
 
-    let backend = DockerBackend::new()?;
-
-    for node_id in &metadata.node_ids {
-        info!("Deleting node: {node_id}");
-        if let Err(e) = backend.delete_node(node_id).await {
-            error!("Failed to delete node {node_id}: {e}");
+    async fn teardown_nodes(
+        backend: &dyn Backend,
+        metadata: &benchscale::LabMetadata,
+    ) -> anyhow::Result<()> {
+        for node_id in &metadata.node_ids {
+            info!("Deleting node: {node_id}");
+            if let Err(e) = backend.delete_node(node_id).await {
+                error!("Failed to delete node {node_id}: {e}");
+            }
         }
+        if metadata.network_id.is_some() {
+            info!("Deleting network: {}", metadata.topology.network.name);
+            if let Err(e) = backend.delete_network(&metadata.topology.network.name).await {
+                error!("Failed to delete network: {e}");
+            }
+        }
+        Ok(())
     }
 
-    if let Some(network_id) = &metadata.network_id {
-        info!("Deleting network: {network_id}");
-        if let Err(e) = backend
-            .delete_network(&metadata.topology.network.name)
-            .await
-        {
-            error!("Failed to delete network: {e}");
+    match metadata.backend_type.as_str() {
+        #[cfg(feature = "libvirt")]
+        "libvirt" | "kvm" => {
+            let backend = LibvirtBackend::new()?;
+            teardown_nodes(&backend, &metadata).await?;
+        }
+        _ => {
+            let backend = DockerBackend::new()?;
+            teardown_nodes(&backend, &metadata).await?;
         }
     }
 

@@ -2,11 +2,10 @@
 
 **Pure Rust laboratory substrate for distributed system testing**
 
-🟢 **Status**: Production Ready — v3.1.0, Rust 2024 edition  
-📅 **Last Updated**: April 5, 2026  
-🧪 **Tests**: 343 passing (7 ignored)  
-🔒 **Safety**: `deny(unsafe_code)`, `deny(clippy::unwrap_used)`, `clippy::pedantic` + `clippy::nursery`  
-📜 **License**: AGPL-3.0-or-later (scyBorg Provenance Trio)
+**Status**: Production Ready — v3.0.0, Rust 2024 edition
+**Last Updated**: May 14, 2026
+**Safety**: `deny(unsafe_code)`, `deny(clippy::unwrap_used)`, `clippy::pedantic` + `clippy::nursery`
+**License**: AGPL-3.0-or-later (scyBorg Provenance Trio)
 
 ---
 
@@ -33,11 +32,14 @@ benchScale is a pure Rust framework for creating reproducible, isolated test env
 ## Quick Start
 
 ```bash
-cargo build --release
+cargo build --release --features libvirt
 cargo test
 
-# Create a lab from a topology
+# Create a lab from a topology (Docker)
 cargo run -- create my-lab topologies/simple-lan.yaml
+
+# Create a lab with libvirt/KVM backend
+cargo run -- create my-lab topologies/simple-lan.yaml --backend libvirt
 
 # Start JSON-RPC server
 cargo run -- server --port 9200
