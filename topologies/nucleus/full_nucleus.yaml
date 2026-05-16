@@ -1,0 +1,238 @@
+metadata:
+  name: nucleus-full-validation
+  description: >-
+    Full NUCLEUS composition: all 13 primals deployed in a single Docker lab.
+    Validates composition health, method registration (427+ methods), signal
+    graph execution, and cross-domain artifact creation. This is the heaviest
+    topology — use provenance_trio or tower_membrane for focused testing.
+  version: "1.0"
+  tags: ["nucleus", "full", "composition", "13-primals", "validation", "heavy"]
+
+network:
+  name: full-nucleus-net
+  subnet: "10.65.0.0/24"
+
+nodes:
+  # Tower layer (identity + security + relay)
+  - name: beardog
+    image: ubuntu
+    env:
+      ROLE: tower-authority
+      PRIMALS: "beardog"
+      BEARDOG_PORT: "9100"
+      FAMILY_ID: "benchscale-full-nucleus"
+      PLASMID_BIN: "/opt/plasmidBin"
+      BTSP_ENABLED: "true"
+      GENETICS_ENABLED: "true"
+    network_conditions:
+      preset: basement_lan
+      latency_ms: 0.5
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 10000000
+      jitter_ms: 0.1
+
+  - name: songbird
+    image: ubuntu
+    env:
+      ROLE: relay
+      PRIMALS: "songbird"
+      SONGBIRD_PORT: "9200"
+      TURN_PORT: "3478"
+      FAMILY_ID: "benchscale-full-nucleus"
+      PLASMID_BIN: "/opt/plasmidBin"
+      BEARDOG_HOST: "beardog"
+    network_conditions:
+      preset: basement_lan
+      latency_ms: 0.5
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 10000000
+      jitter_ms: 0.1
+
+  - name: skunkbat
+    image: ubuntu
+    env:
+      ROLE: threat-detection
+      PRIMALS: "skunkbat"
+      SKUNKBAT_PORT: "9140"
+      FAMILY_ID: "benchscale-full-nucleus"
+      PLASMID_BIN: "/opt/plasmidBin"
+      BEARDOG_HOST: "beardog"
+      MODE: "standalone"
+    network_conditions:
+      preset: basement_lan
+      latency_ms: 0.5
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 10000000
+      jitter_ms: 0.1
+
+  # Storage + content layer
+  - name: nestgate
+    image: ubuntu
+    env:
+      ROLE: storage
+      PRIMALS: "nestgate"
+      NESTGATE_PORT: "9500"
+      FAMILY_ID: "benchscale-full-nucleus"
+      PLASMID_BIN: "/opt/plasmidBin"
+    network_conditions:
+      preset: basement_lan
+      latency_ms: 0.5
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 10000000
+      jitter_ms: 0.1
+
+  - name: squirrel
+    image: ubuntu
+    env:
+      ROLE: cache
+      PRIMALS: "squirrel"
+      SQUIRREL_PORT: "9300"
+      FAMILY_ID: "benchscale-full-nucleus"
+      PLASMID_BIN: "/opt/plasmidBin"
+    network_conditions:
+      preset: basement_lan
+      latency_ms: 0.5
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 10000000
+      jitter_ms: 0.1
+
+  - name: petaltongue
+    image: ubuntu
+    env:
+      ROLE: presentation
+      PRIMALS: "petaltongue"
+      PETALTONGUE_PORT: "9600"
+      FAMILY_ID: "benchscale-full-nucleus"
+      PLASMID_BIN: "/opt/plasmidBin"
+    network_conditions:
+      preset: basement_lan
+      latency_ms: 0.5
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 10000000
+      jitter_ms: 0.1
+
+  # Provenance layer (DAG + ledger + attribution)
+  - name: rhizocrypt
+    image: ubuntu
+    env:
+      ROLE: dag
+      PRIMALS: "rhizocrypt"
+      RHIZOCRYPT_PORT: "9700"
+      FAMILY_ID: "benchscale-full-nucleus"
+      PLASMID_BIN: "/opt/plasmidBin"
+    network_conditions:
+      preset: basement_lan
+      latency_ms: 0.5
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 10000000
+      jitter_ms: 0.1
+
+  - name: loamspine
+    image: ubuntu
+    env:
+      ROLE: ledger
+      PRIMALS: "loamspine"
+      LOAMSPINE_PORT: "9710"
+      FAMILY_ID: "benchscale-full-nucleus"
+      PLASMID_BIN: "/opt/plasmidBin"
+    network_conditions:
+      preset: basement_lan
+      latency_ms: 0.5
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 10000000
+      jitter_ms: 0.1
+
+  - name: sweetgrass
+    image: ubuntu
+    env:
+      ROLE: attribution
+      PRIMALS: "sweetgrass"
+      SWEETGRASS_PORT: "9720"
+      FAMILY_ID: "benchscale-full-nucleus"
+      PLASMID_BIN: "/opt/plasmidBin"
+    network_conditions:
+      preset: basement_lan
+      latency_ms: 0.5
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 10000000
+      jitter_ms: 0.1
+
+  # Compute layer (dispatch + compilation + math)
+  - name: toadstool
+    image: ubuntu
+    env:
+      ROLE: compute-dispatch
+      PRIMALS: "toadstool"
+      TOADSTOOL_PORT: "9400"
+      FAMILY_ID: "benchscale-full-nucleus"
+      PLASMID_BIN: "/opt/plasmidBin"
+    network_conditions:
+      preset: basement_lan
+      latency_ms: 0.5
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 10000000
+      jitter_ms: 0.1
+
+  - name: coralreef
+    image: ubuntu
+    env:
+      ROLE: shader-compilation
+      PRIMALS: "coralreef"
+      CORALREEF_PORT: "9730"
+      FAMILY_ID: "benchscale-full-nucleus"
+      PLASMID_BIN: "/opt/plasmidBin"
+    network_conditions:
+      preset: basement_lan
+      latency_ms: 0.5
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 10000000
+      jitter_ms: 0.1
+
+  - name: barracuda
+    image: ubuntu
+    env:
+      ROLE: mathematics
+      PRIMALS: "barracuda"
+      BARRACUDA_PORT: "9740"
+      FAMILY_ID: "benchscale-full-nucleus"
+      PLASMID_BIN: "/opt/plasmidBin"
+    network_conditions:
+      preset: basement_lan
+      latency_ms: 0.5
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 10000000
+      jitter_ms: 0.1
+
+  # Orchestration layer
+  - name: biomeos
+    image: ubuntu
+    env:
+      ROLE: orchestration
+      PRIMALS: "biomeos"
+      BIOMEOS_PORT: "9800"
+      FAMILY_ID: "benchscale-full-nucleus"
+      PLASMID_BIN: "/opt/plasmidBin"
+      BEARDOG_HOST: "beardog"
+    network_conditions:
+      preset: basement_lan
+      latency_ms: 0.5
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 10000000
+      jitter_ms: 0.1
+
+validation:
+  composition_health:
+    - method: health.liveness
+      targets: all
+      expect: "alive"
+    - method: capabilities.list
+      targets: all
+      expect: "non_empty"
+  method_count:
+    minimum: 427
+  signal_graphs:
+    - nest_store
+  artifact_smoke:
+    - provenance_trio: true
+    - ferment_lifecycle: true
+    - tower_auth: true

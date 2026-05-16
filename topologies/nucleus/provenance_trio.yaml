@@ -1,0 +1,90 @@
+metadata:
+  name: nucleus-provenance-trio
+  description: >-
+    Minimal provenance pipeline: NestGate (content) → rhizoCrypt (DAG) →
+    loamSpine (cert) → sweetGrass (braid). Exercises the nest_store signal
+    graph end-to-end. Validates that content ingestion produces a complete
+    provenance chain with attribution.
+  version: "1.0"
+  tags: ["nucleus", "provenance", "trio", "nest-store", "signal", "validation"]
+
+network:
+  name: provenance-trio-net
+  subnet: "10.62.0.0/24"
+
+nodes:
+  - name: nestgate
+    image: ubuntu
+    env:
+      ROLE: storage
+      PRIMALS: "nestgate"
+      NESTGATE_PORT: "9500"
+      FAMILY_ID: "benchscale-provenance-trio"
+      PLASMID_BIN: "/opt/plasmidBin"
+    network_conditions:
+      preset: basement_lan
+      latency_ms: 0.5
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 10000000
+      jitter_ms: 0.1
+
+  - name: rhizocrypt
+    image: ubuntu
+    env:
+      ROLE: dag
+      PRIMALS: "rhizocrypt"
+      RHIZOCRYPT_PORT: "9700"
+      FAMILY_ID: "benchscale-provenance-trio"
+      PLASMID_BIN: "/opt/plasmidBin"
+    network_conditions:
+      preset: basement_lan
+      latency_ms: 0.5
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 10000000
+      jitter_ms: 0.1
+
+  - name: loamspine
+    image: ubuntu
+    env:
+      ROLE: ledger
+      PRIMALS: "loamspine"
+      LOAMSPINE_PORT: "9710"
+      FAMILY_ID: "benchscale-provenance-trio"
+      PLASMID_BIN: "/opt/plasmidBin"
+    network_conditions:
+      preset: basement_lan
+      latency_ms: 0.5
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 10000000
+      jitter_ms: 0.1
+
+  - name: sweetgrass
+    image: ubuntu
+    env:
+      ROLE: attribution
+      PRIMALS: "sweetgrass"
+      SWEETGRASS_PORT: "9720"
+      FAMILY_ID: "benchscale-provenance-trio"
+      PLASMID_BIN: "/opt/plasmidBin"
+    network_conditions:
+      preset: basement_lan
+      latency_ms: 0.5
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 10000000
+      jitter_ms: 0.1
+
+validation:
+  signal: nest_store
+  sequence:
+    - target: nestgate
+      method: content.put
+      expect: "content_hash"
+    - target: rhizocrypt
+      method: dag.event.append
+      expect: "vertex_id"
+    - target: loamspine
+      method: spine.seal
+      expect: "spine_id"
+    - target: sweetgrass
+      method: braid.create
+      expect: "braid_id"

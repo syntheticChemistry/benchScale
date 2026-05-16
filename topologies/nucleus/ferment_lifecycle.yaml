@@ -1,0 +1,109 @@
+metadata:
+  name: nucleus-ferment-lifecycle
+  description: >-
+    Novel Ferment Transcript pipeline: create a DAG session (vessel), accumulate
+    events over simulated time (fermentation), dehydrate, mint certificate
+    (bottling), and create attribution braid. Validates that time-accumulated
+    history produces a sealed, provable transcript.
+  version: "1.0"
+  tags: ["nucleus", "ferment", "nft", "lifecycle", "provenance", "time-series"]
+
+network:
+  name: ferment-lifecycle-net
+  subnet: "10.64.0.0/24"
+
+nodes:
+  # rhizoCrypt holds the fermentation vessel (DAG with accumulating vertices)
+  - name: rhizocrypt
+    image: ubuntu
+    env:
+      ROLE: fermentation-vessel
+      PRIMALS: "rhizocrypt"
+      RHIZOCRYPT_PORT: "9700"
+      FAMILY_ID: "benchscale-ferment-lifecycle"
+      PLASMID_BIN: "/opt/plasmidBin"
+    network_conditions:
+      preset: basement_lan
+      latency_ms: 0.5
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 10000000
+      jitter_ms: 0.1
+
+  # loamSpine seals the dehydrated DAG into a permanent certificate
+  - name: loamspine
+    image: ubuntu
+    env:
+      ROLE: bottling
+      PRIMALS: "loamspine"
+      LOAMSPINE_PORT: "9710"
+      FAMILY_ID: "benchscale-ferment-lifecycle"
+      PLASMID_BIN: "/opt/plasmidBin"
+    network_conditions:
+      preset: basement_lan
+      latency_ms: 0.5
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 10000000
+      jitter_ms: 0.1
+
+  # sweetGrass creates the attribution braid for all contributors
+  - name: sweetgrass
+    image: ubuntu
+    env:
+      ROLE: attribution
+      PRIMALS: "sweetgrass"
+      SWEETGRASS_PORT: "9720"
+      FAMILY_ID: "benchscale-ferment-lifecycle"
+      PLASMID_BIN: "/opt/plasmidBin"
+    network_conditions:
+      preset: basement_lan
+      latency_ms: 0.5
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 10000000
+      jitter_ms: 0.1
+
+  # NestGate stores the raw content blobs referenced by DAG vertices
+  - name: nestgate
+    image: ubuntu
+    env:
+      ROLE: blob-storage
+      PRIMALS: "nestgate"
+      NESTGATE_PORT: "9500"
+      FAMILY_ID: "benchscale-ferment-lifecycle"
+      PLASMID_BIN: "/opt/plasmidBin"
+    network_conditions:
+      preset: basement_lan
+      latency_ms: 0.5
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 10000000
+      jitter_ms: 0.1
+
+validation:
+  ferment_sequence:
+    - target: rhizocrypt
+      method: dag.session.create
+      expect: "session_id"
+    - target: nestgate
+      method: content.put
+      params: { dataset: "ferment-test", key: "event-001" }
+      expect: "content_hash"
+    - target: rhizocrypt
+      method: dag.event.append
+      repeat: 10
+      params: { event_type: "data", delay_ms: 100 }
+      expect: "vertex_id"
+    - target: rhizocrypt
+      method: dag.dehydration.trigger
+      expect: "dehydrated_hash"
+    - target: loamspine
+      method: certificate.mint
+      params: { cert_type: "ferment_transcript" }
+      expect: "cert_id"
+    - target: sweetgrass
+      method: braid.create
+      params: { context: "ferment-lifecycle-test" }
+      expect: "braid_id"
+  assertions:
+    - vertex_count: 10
+    - dehydration_includes_all_vertices: true
+    - cert_references_dehydrated_hash: true
+    - braid_references_cert: true

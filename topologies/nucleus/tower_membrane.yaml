@@ -1,0 +1,105 @@
+metadata:
+  name: nucleus-tower-membrane
+  description: >-
+    Security and identity layer: BearDog (genetic authority + BTSP) + skunkBat
+    (threat detection + thymic selection) + Songbird (NAT traversal + relay).
+    Validates tower composition, BTSP auth flow, ionic token lifecycle,
+    and membrane permeability under normal and adversarial conditions.
+  version: "1.0"
+  tags: ["nucleus", "tower", "membrane", "security", "btsp", "ionic", "validation"]
+
+network:
+  name: tower-membrane-net
+  subnet: "10.63.0.0/24"
+
+nodes:
+  # BearDog is the root of trust — all identity and auth flows through it
+  - name: beardog
+    image: ubuntu
+    env:
+      ROLE: tower-authority
+      PRIMALS: "beardog"
+      BEARDOG_PORT: "9100"
+      FAMILY_ID: "benchscale-tower-membrane"
+      PLASMID_BIN: "/opt/plasmidBin"
+      BTSP_ENABLED: "true"
+      GENETICS_ENABLED: "true"
+    network_conditions:
+      preset: basement_lan
+      latency_ms: 0.5
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 10000000
+      jitter_ms: 0.1
+
+  # skunkBat learns "self" from BearDog identity and detects anomalies
+  - name: skunkbat
+    image: ubuntu
+    env:
+      ROLE: threat-detection
+      PRIMALS: "skunkbat"
+      SKUNKBAT_PORT: "9140"
+      FAMILY_ID: "benchscale-tower-membrane"
+      PLASMID_BIN: "/opt/plasmidBin"
+      BEARDOG_HOST: "beardog"
+      BEARDOG_PORT: "9100"
+      MODE: "standalone"
+    network_conditions:
+      preset: basement_lan
+      latency_ms: 0.5
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 10000000
+      jitter_ms: 0.1
+
+  # Songbird provides NAT traversal and relay for cross-gate communication
+  - name: songbird
+    image: ubuntu
+    env:
+      ROLE: relay
+      PRIMALS: "songbird"
+      SONGBIRD_PORT: "9200"
+      TURN_PORT: "3478"
+      FAMILY_ID: "benchscale-tower-membrane"
+      PLASMID_BIN: "/opt/plasmidBin"
+      BEARDOG_HOST: "beardog"
+    network_conditions:
+      preset: basement_lan
+      latency_ms: 0.5
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 10000000
+      jitter_ms: 0.1
+
+  # External probe node simulates an untrusted entity attempting access
+  - name: external-probe
+    image: ubuntu
+    env:
+      ROLE: adversary
+      TARGET_HOST: "beardog"
+      TARGET_PORT: "9100"
+      FAMILY_ID: "unknown-family"
+    network_conditions:
+      preset: broadband
+      latency_ms: 25
+      packet_loss_percent: 0.5
+      bandwidth_kbps: 100000
+      jitter_ms: 10
+
+validation:
+  auth_flow:
+    - target: beardog
+      method: btsp.session.create
+      from: skunkbat
+      expect: "session_token"
+    - target: beardog
+      method: btsp.session.verify
+      from: skunkbat
+      expect: "verified"
+  ionic_lifecycle:
+    - target: beardog
+      method: genetic.derive_key
+      params: { purpose: "ionic-token", trust_ceiling: "SystemRng" }
+      expect: "key_id"
+  adversary_rejection:
+    - target: beardog
+      method: btsp.session.create
+      from: external-probe
+      expect: "rejection"
