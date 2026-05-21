@@ -1,0 +1,44 @@
+metadata:
+  name: ecoprimals-nucleus-full
+  description: "Full NUCLEUS: all 3 atomics + biomeOS on one node for composition parity validation"
+  version: "1.0"
+  tags: ["ecoprimals", "nucleus", "composition", "parity", "tower", "node", "nest"]
+
+network:
+  name: ecoprimals-nucleus-lan
+  subnet: "10.64.0.0/24"
+  preset: home_lan
+  conditions:
+    latency_ms: 1
+    packet_loss_percent: 0
+    bandwidth_kbps: 1000000
+    jitter_ms: 0
+
+nodes:
+  # Full NUCLEUS: Tower + Node + Nest + biomeOS on single node
+  # Socket alignment: BIOMEOS_SOCKET_DIR=/tmp so biomeOS finds primal sockets
+  - name: node-nucleus
+    image: ubuntu
+    env:
+      ROLE: full-nucleus
+      NODE_ID: "1"
+      PRIMALS: "beardog songbird toadstool barracuda coralreef nestgate rhizocrypt loamspine sweetgrass biomeos squirrel"
+      # Tower Atomic
+      BEARDOG_PORT: "9100"
+      SONGBIRD_PORT: "9200"
+      # Node Atomic
+      TOADSTOOL_PORT: "9400"
+      BARRACUDA_PORT: "9401"
+      CORALREEF_PORT: "9402"
+      # Nest Atomic
+      NESTGATE_PORT: "9300"
+      RHIZOCRYPT_PORT: "9301"
+      LOAMSPINE_PORT: "9302"
+      SWEETGRASS_PORT: "9303"
+      # Meta-tier
+      BIOMEOS_PORT: "9800"
+      SQUIRREL_PORT: "9500"
+      # Identity
+      FAMILY_ID: "benchscale-nucleus-full"
+      # Socket alignment: biomeOS looks in same dir as primals
+      BIOMEOS_SOCKET_DIR: "/tmp"

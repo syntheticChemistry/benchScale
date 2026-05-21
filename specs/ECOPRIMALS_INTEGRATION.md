@@ -1,7 +1,7 @@
 # benchScale — ecoPrimals Integration Specification
 
-**Date**: March 28, 2026
-**Status**: Phase 2 — Live-tested, end-to-end pipeline functional (2 experiments pass)
+**Date**: April 13, 2026
+**Status**: Phase 3 — All 5 integration gaps resolved, musl binaries harvested, Docker lab pipeline end-to-end
 
 ---
 
@@ -15,11 +15,15 @@ validation works.
 
 ## Topology Inventory
 
+21 ecoPrimals topologies available, from minimal 2-node to 10-node federation:
+
 | Topology | Nodes | Presets | Purpose |
 |----------|-------|---------|---------|
 | `ecoprimals-tower-2node` | 2 (tower + springs) | `home_lan` | Minimal cross-gate validation |
+| `ecoprimals-tower-2node-tcp` | 2 (tower + springs) | `home_lan` | TCP-only variant |
 | `ecoprimals-nucleus-3node` | 3 (nucleus + springs + mobile) | `basement_lan`, `home_lan`, `mobile_cell` | Full NUCLEUS + NAT traversal |
 | `ecoprimals-wan-federation` | 3 (nucleus + springs + mobile) | `friend_wan`, `mobile_cell`, `satellite` | WAN degradation + BirdSong resilience |
+| `ecoprimals-albatross-multiplex` | 3+ (multi-Songbird mesh) | `home_lan` | BirdSong mesh + peer discovery |
 
 ## Binary Flow
 
@@ -60,59 +64,58 @@ the correct path for ecoPrimals topologies.
 
 ### Shell scripts (`create-lab.sh`)
 
-The shell script path has **hardcoded case branches** for only 3 legacy
-topologies (`simple-lan`, `p2p-3-tower`, `nat-traversal`). Custom topologies
-fall through to a no-op warning. This must be updated with a generic Docker
-path that parses YAML and creates containers dynamically.
+`create-lab.sh` now has **generic YAML-driven Docker creation** with minimal
+YAML parsing helpers that extract node names, images, env vars, and network
+conditions from any benchScale topology YAML. Both legacy topologies and
+ecoPrimals topologies are handled by the same generic path.
 
-**Decision**: `create-lab.sh` must gain a generic Docker path OR
-`validate_local_lab.sh` must call the `benchscale` Rust CLI directly.
+## Integration Gaps (all resolved — Phase 41)
 
-## Known Integration Gaps
+### 1. ~~Shell create-lab.sh does not handle ecoPrimals topologies~~ RESOLVED
 
-### 1. Shell create-lab.sh does not handle ecoPrimals topologies
+`create-lab.sh` now has generic YAML-driven Docker creation that parses any
+topology YAML and creates containers dynamically. No special-casing needed.
 
-**Impact**: `validate_local_lab.sh` calls shell scripts, which create no containers.
-**Fix**: Add generic Docker/YAML parsing to `create-lab.sh`.
+### 2. ~~Deploy script does not wire launch profile environment~~ RESOLVED
 
-### 2. Deploy script does not wire launch profile environment
+`deploy-ecoprimals.sh` now has `build_primal_env()` for per-primal TCP env
+wiring and `apply_launch_profile()` which reads `primal_launch_profiles.toml`
+and merges `extra_env` entries (e.g., `SWEETGRASS_MODE`, `LOAMSPINE_MODE`).
 
-**Impact**: `deploy-ecoprimals.sh` starts primals with bare `server --listen`
-but does not set `BEARDOG_SOCKET`, `SONGBIRD_SECURITY_PROVIDER`, or other
-env vars from `primal_launch_profiles.toml`. BirdSong beacon generation
-requires BearDog connectivity.
-**Fix**: Parse launch profiles and set env vars per primal on startup.
+### 3. ~~FAMILY_ID mismatch~~ RESOLVED
 
-### 3. FAMILY_ID mismatch
+`deploy_node()` now reads per-node `FAMILY_ID` from the topology YAML and
+writes it to `.family.seed`. `start_node_primals()` reads per-node
+`FAMILY_ID` and propagates to all primal-specific env vars. Consistent end-to-end.
 
-**Impact**: Topology YAMLs set `FAMILY_ID: "benchscale-tower-2node"`, but
-`validate_local_lab.sh` exports `FAMILY_ID="$LAB_NAME"`. BirdSong beacon
-family check fails.
-**Fix**: Use topology's FAMILY_ID consistently, or pass `--seed` matching the YAML.
+### 4. ~~mesh.peers requires multiple Songbird instances~~ RESOLVED
 
-### 4. mesh.peers requires multiple Songbird instances
+`ecoprimals-albatross-multiplex.yaml` provides 3 Songbird instances for
+mesh/peer discovery validation. 21 topologies available covering all scenarios.
 
-**Impact**: exp073 validates `mesh.peers >= 1`. `ecoprimals-tower-2node`
-only runs Songbird on `node-tower`. No peer discovery possible.
-**Fix**: Add Songbird to `node-spring` topology, or create a dedicated mesh topology.
+### 5. ~~No harvested binaries in plasmidBin~~ RESOLVED
 
-### 5. No harvested binaries in plasmidBin
-
-**Impact**: `deploy-ecoprimals.sh` logs "binary not found" for all primals.
-**Fix**: Run `harvest.sh` or manually populate `plasmidBin/primals/`.
+`plasmidBin/primals/` now contains all 13 NUCLEUS primal binaries (plus
+skunkBat). `build_ecosystem_genomeBin.sh --harvest` builds musl-static and
+populates via `harvest.sh`. Dynamic-linked release binaries also available
+as fallback for local Docker testing.
 
 ## Validation Matrix
 
-| Experiment | What it validates | Works in benchScale lab? | Blocking gap |
-|------------|-------------------|--------------------------|--------------|
-| exp074 | Cross-gate NUCLEUS health | Yes (once binaries harvested) | Gap 5 |
-| exp073 | BirdSong beacon + mesh | Partial (beacon yes, mesh no) | Gaps 2, 3, 4 |
-| exp076 | Neural routing cross-gate | No (hardcoded localhost) | Code change needed |
+| Experiment | What it validates | Works in benchScale lab? | Notes |
+|------------|-------------------|--------------------------|-------|
+| exp074 | Cross-gate NUCLEUS health | Yes | All gaps resolved |
+| exp073 | BirdSong beacon + mesh | Yes (full mesh with albatross topology) | Gaps 2-4 resolved |
+| exp030 | Covalent bond | Partial (Tower probes pass, multi-node needs 2 labs) | |
+| exp031 | Ionic bond | Yes (with `ecoprimals-ionic-2family` topology) | |
+| exp034 | Capability aggregation | Yes (2+ live primals per node) | |
+| exp076 | Neural routing cross-gate | Partial (needs REMOTE_GATE_HOST env) | |
 | exp063 | Pixel Tower rendezvous | No (ADB-specific) | Out of scope |
 
 ## Phased Roadmap
 
-**Phase 1** (current): Topology YAMLs + deploy script + validate_local_lab.sh
-**Phase 2**: Fix gaps 1-4, achieve exp073 + exp074 passing in Docker lab
-**Phase 3**: libvirt VM path with agentReagents cloud-init, full OS fidelity
-**Phase 4**: Network preset sweep — run validation across all 5 presets
+**Phase 1** (complete): Topology YAMLs + deploy script + validate_local_lab.sh
+**Phase 2** (complete): All 5 gaps resolved, end-to-end Docker pipeline functional
+**Phase 3** (current): Live validation — run bonding experiments against Docker labs
+**Phase 4**: libvirt VM path with agentReagents cloud-init, full OS fidelity
+**Phase 5**: Network preset sweep — run validation across all 5 presets
