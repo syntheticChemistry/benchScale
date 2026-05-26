@@ -232,8 +232,9 @@ impl Lab {
             .get(node_name)
             .ok_or_else(|| Error::Lab(format!("Node not found: {}", node_name)))?;
 
+        let deploy_dir = crate::constants::deploy::deploy_dir();
         self.backend
-            .copy_to_node(&node_info.container_id, binary_path, "/opt/biomeos/bin/")
+            .copy_to_node(&node_info.container_id, binary_path, &deploy_dir)
             .await?;
 
         Ok(())

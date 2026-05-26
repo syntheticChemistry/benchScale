@@ -576,7 +576,7 @@ impl LibvirtBackend {
                 if let Some(ip) = from_dom() {
                     Some(ip)
                 } else {
-                    dhcp_discovery::query_dhcp_leases_with_connect(&*conn, "default")
+                    dhcp_discovery::query_dhcp_leases_with_connect(&*conn, crate::constants::libvirt_defaults::DEFAULT_NETWORK_NAME)
                         .ok()
                         .and_then(|leases| Self::ip_from_leases_matching_vm(&leases, vm_name))
                 }

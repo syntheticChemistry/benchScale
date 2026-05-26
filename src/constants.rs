@@ -52,6 +52,31 @@ pub mod network {
     }
 }
 
+/// Primal deployment constants.
+pub mod deploy {
+    /// Canonical binary install directory inside lab nodes / VMs.
+    /// Override with `BENCHSCALE_DEPLOY_DIR`.
+    pub fn deploy_dir() -> String {
+        std::env::var("BENCHSCALE_DEPLOY_DIR")
+            .unwrap_or_else(|_| DEFAULT_DEPLOY_DIR.to_string())
+    }
+
+    /// Compile-time default for [`deploy_dir`].
+    pub const DEFAULT_DEPLOY_DIR: &str = "/opt/biomeos/bin";
+}
+
+/// Default libvirt network name used across backends.
+pub mod libvirt_defaults {
+    /// Default network name (`BENCHSCALE_LIBVIRT_NETWORK`, else `"default"`).
+    pub fn default_network() -> String {
+        std::env::var("BENCHSCALE_LIBVIRT_NETWORK")
+            .unwrap_or_else(|_| DEFAULT_NETWORK_NAME.to_string())
+    }
+
+    /// Compile-time default for [`default_network`].
+    pub const DEFAULT_NETWORK_NAME: &str = "default";
+}
+
 /// Storage and path constants
 pub mod paths {
     use super::PathBuf;

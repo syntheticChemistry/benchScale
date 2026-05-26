@@ -558,15 +558,8 @@ impl ImageBuilder {
             { let _ = vm_name; "(VNC requires libvirt feature)".to_string() }
         };
 
-        println!("\n╔══════════════════════════════════════════════════════════════════════════╗");
-        println!("║  USER VERIFICATION REQUIRED                                              ║");
-        println!("╚══════════════════════════════════════════════════════════════════════════╝");
-        println!();
-        println!("{}", message);
-        println!();
-        println!("VNC: vncviewer {}", vnc_display);
-        println!();
-        println!("Press ENTER when ready to continue...");
+        info!(vnc = %vnc_display, "USER VERIFICATION REQUIRED: {message}");
+        eprintln!("\n  VNC: vncviewer {vnc_display}\n  Press ENTER when ready to continue...");
 
         let mut input = String::new();
         std::io::stdin()

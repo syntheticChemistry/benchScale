@@ -22,20 +22,21 @@ pub async fn deploy_primals_to_node(
     arch: Arch,
     primal_names: &[&str],
 ) -> Result<Vec<DeployedBinary>> {
+    let deploy_dir = crate::constants::deploy::deploy_dir();
     let resolver = BinaryResolver::new(plasmid_bin_path, arch);
     let mut deployed = Vec::new();
 
     backend
         .exec_command(
             node_id,
-            vec!["mkdir".into(), "-p".into(), "/opt/biomeos/bin".into()],
+            vec!["mkdir".into(), "-p".into(), deploy_dir.clone()],
         )
         .await?;
 
     for name in primal_names {
         match resolver.resolve(name) {
             Ok(local_path) => {
-                let dest = format!("/opt/biomeos/bin/{name}");
+                let dest = format!("{deploy_dir}/{name}");
                 info!("deploying {name} ({arch}) to {node_id}:{dest}");
 
                 backend

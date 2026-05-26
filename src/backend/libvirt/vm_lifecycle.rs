@@ -183,7 +183,7 @@ impl LibvirtBackend {
             cdrom_path: Some(iso_path.as_path()),
             memory_mb,
             vcpus,
-            network: "default",
+            network: crate::constants::libvirt_defaults::DEFAULT_NETWORK_NAME,
             mac_address: Some(&mac_address),
             pci_devices,
             emulator: None,
@@ -230,7 +230,7 @@ impl LibvirtBackend {
         let dhcp_config = DiscoveryConfig {
             max_wait_secs: 60,
             retry_interval_secs: 2,
-            network_name: "default",
+            network_name: crate::constants::libvirt_defaults::DEFAULT_NETWORK_NAME,
         };
 
         let actual_ip = discover_dhcp_ip(&mac_address, dhcp_config)
@@ -260,7 +260,7 @@ impl LibvirtBackend {
             name: name.to_string(),
             container_id: name.to_string(),
             ip_address: actual_ip,
-            network: "default".to_string(),
+            network: crate::constants::libvirt_defaults::DEFAULT_NETWORK_NAME.to_string(),
             status: NodeStatus::Running,
             metadata,
         })
@@ -323,7 +323,7 @@ impl LibvirtBackend {
             cdrom_path: iso_path.as_deref(),
             memory_mb,
             vcpus,
-            network: "default",
+            network: crate::constants::libvirt_defaults::DEFAULT_NETWORK_NAME,
             mac_address: None,
             pci_devices: &[],
             emulator: None,
@@ -380,7 +380,7 @@ impl LibvirtBackend {
             name: name.to_string(),
             container_id: name.to_string(),
             ip_address,
-            network: "default".to_string(),
+            network: crate::constants::libvirt_defaults::DEFAULT_NETWORK_NAME.to_string(),
             status: NodeStatus::Running,
             metadata: HashMap::new(),
         })

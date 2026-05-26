@@ -388,7 +388,7 @@ impl Backend for LibvirtBackend {
             name,
             container_id: uuid,
             ip_address: "unknown".to_string(),
-            network: "default".to_string(),
+            network: crate::constants::libvirt_defaults::DEFAULT_NETWORK_NAME.to_string(),
             status,
             metadata: HashMap::new(),
         })
@@ -415,7 +415,7 @@ impl Backend for LibvirtBackend {
                         name,
                         container_id: uuid,
                         ip_address: "unknown".to_string(),
-                        network: "default".to_string(),
+                        network: crate::constants::libvirt_defaults::DEFAULT_NETWORK_NAME.to_string(),
                         status,
                         metadata: HashMap::new(),
                     });

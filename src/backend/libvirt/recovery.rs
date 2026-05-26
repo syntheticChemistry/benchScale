@@ -238,7 +238,7 @@ impl LibvirtRecovery {
     /// This automatically cleans up orphaned dnsmasq processes.
     fn reinitialize_network(&self) -> anyhow::Result<bool> {
         let conn = system_connection()?;
-        let network = match Network::lookup_by_name(&conn, "default") {
+        let network = match Network::lookup_by_name(&conn, crate::constants::libvirt_defaults::DEFAULT_NETWORK_NAME) {
             Ok(n) => n,
             Err(_) => return Ok(false),
         };

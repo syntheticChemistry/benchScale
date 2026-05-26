@@ -215,7 +215,7 @@ impl LibvirtHealthCheck {
         debug!("Checking default network status...");
 
         match Connect::open(Some(&super::libvirt_uri())) {
-            Ok(conn) => match Network::lookup_by_name(&conn, "default") {
+            Ok(conn) => match Network::lookup_by_name(&conn, crate::constants::libvirt_defaults::DEFAULT_NETWORK_NAME) {
                 Ok(network) => match network.is_active() {
                     Ok(is_active) => {
                         if !is_active {
@@ -245,7 +245,7 @@ impl LibvirtHealthCheck {
         debug!("Checking DHCP functionality...");
 
         match Connect::open(Some(&super::libvirt_uri())) {
-            Ok(conn) => match Network::lookup_by_name(&conn, "default") {
+            Ok(conn) => match Network::lookup_by_name(&conn, crate::constants::libvirt_defaults::DEFAULT_NETWORK_NAME) {
                 Ok(network) => {
                     match LeaseList::fetch(&network, ptr::null(), 0) {
                         Err(_) => {

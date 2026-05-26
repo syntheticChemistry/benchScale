@@ -57,7 +57,7 @@ impl Default for DiscoveryConfig {
         Self {
             max_wait_secs: 60,
             retry_interval_secs: 2,
-            network_name: "default",
+            network_name: crate::constants::libvirt_defaults::DEFAULT_NETWORK_NAME,
         }
     }
 }

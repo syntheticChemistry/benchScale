@@ -329,7 +329,7 @@ impl SenescenceMonitor {
                     let config = DiscoveryConfig {
                         max_wait_secs: 10,
                         retry_interval_secs: 2,
-                        network_name: "default",
+                        network_name: crate::constants::libvirt_defaults::DEFAULT_NETWORK_NAME,
                     };
 
                     // Drop the write lock before async operation
