@@ -32,7 +32,6 @@
 //! ```
 
 use super::dhcp_leases::LeaseList;
-use std::process::Command;
 use std::ptr;
 use std::time::SystemTime;
 use tracing::{debug, info, warn};
@@ -145,32 +144,43 @@ impl LibvirtHealthCheck {
         Ok(status)
     }
 
-    /// Check if libvirtd service is active
+    /// Check if libvirtd service is active.
+    ///
+    /// Uses a direct socket probe on `/var/run/libvirt/libvirt-sock` instead of
+    /// shelling out to `systemctl`. Falls back to pid-file check.
     fn check_libvirtd_active(&self, issues: &mut Vec<String>) -> bool {
         debug!("Checking libvirtd service status...");
 
-        match Command::new("systemctl")
-            .args(["is-active", "libvirtd"])
-            .output()
-        {
-            Ok(output) => {
-                let status = String::from_utf8_lossy(&output.stdout);
-                let is_active = status.trim() == "active";
+        let socket_paths = [
+            std::path::Path::new("/var/run/libvirt/libvirt-sock"),
+            std::path::Path::new("/run/libvirt/libvirt-sock"),
+        ];
 
-                if !is_active {
-                    issues.push(format!(
-                        "libvirtd service is not active (status: {})",
-                        status.trim()
-                    ));
+        for sock in &socket_paths {
+            if sock.exists() {
+                if let Ok(_stream) = std::os::unix::net::UnixStream::connect(sock) {
+                    return true;
                 }
-
-                is_active
-            }
-            Err(e) => {
-                issues.push(format!("Failed to check libvirtd status: {}", e));
-                false
             }
         }
+
+        let pid_paths = [
+            std::path::Path::new("/var/run/libvirtd.pid"),
+            std::path::Path::new("/run/libvirtd.pid"),
+        ];
+
+        for pid_file in &pid_paths {
+            if let Ok(pid_str) = std::fs::read_to_string(pid_file) {
+                if let Ok(pid) = pid_str.trim().parse::<u32>() {
+                    if std::path::Path::new(&format!("/proc/{pid}")).exists() {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        issues.push("libvirtd service is not active (socket and pid checks failed)".into());
+        false
     }
 
     /// Find orphaned dnsmasq processes from previous libvirtd sessions

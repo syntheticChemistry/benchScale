@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Safe RAII wrapper for `virNetworkGetDHCPLeases` output.
 //!
-//! `libc` remains here for libvirt FFI only: `c_char` / `c_void` match the C ABI, and
-//! `libc::free` releases the array allocated by libvirt. Neither `rustix` nor `nix` provides
-//! a replacement for deallocating C-heap memory from libvirt.
+//! All `unsafe` is confined to this module. Callers only ever interact with
+//! safe Rust types ([`Ipv4Lease`], iterators). The `libc` import is required
+//! because `libc::free` must release the C-heap array allocated by libvirt;
+//! neither `rustix` nor `nix` provides a substitute for that.
 
 use libc;
 use std::ffi::CStr;
@@ -12,6 +13,9 @@ use virt::network::Network;
 use virt::sys;
 
 /// Owns the lease pointer array returned by `virNetworkGetDHCPLeases` and frees it on drop.
+///
+/// This is an opaque, non-`Send`/`Sync` handle — callers consume it via
+/// [`ipv4_leases()`](Self::ipv4_leases) which copies data into safe Rust structs.
 pub(crate) struct LeaseList {
     leases: *mut sys::virNetworkDHCPLeasePtr,
     count: i32,
@@ -39,11 +43,12 @@ impl LeaseList {
         Ok(Self { leases, count: n })
     }
 
+    #[allow(dead_code)]
     pub(crate) fn is_empty(&self) -> bool {
         self.count <= 0 || self.leases.is_null()
     }
 
-    pub(crate) fn len(&self) -> usize {
+    fn len(&self) -> usize {
         if self.count <= 0 {
             0
         } else {
@@ -51,27 +56,26 @@ impl LeaseList {
         }
     }
 
-    /// Raw pointer at `index`, or null if out of range.
-    pub(crate) fn lease_ptr_at(&self, index: usize) -> sys::virNetworkDHCPLeasePtr {
-        if index >= self.len() {
-            return ptr::null_mut();
-        }
-        // SAFETY: `leases` was returned by libvirt with `count` elements; `index` is in bounds.
-        unsafe { *self.leases.add(index) }
-    }
-
-    /// Parse all IPv4 leases into high-level structs.
+    /// Parse all IPv4 leases into safe high-level structs.
     ///
-    /// Consolidates the FFI field extraction so callers never touch raw pointers.
+    /// This is the only way to access lease data — callers never touch raw pointers.
     pub(crate) fn ipv4_leases(&self, network_name: &str) -> Vec<Ipv4Lease> {
-        let mut out = Vec::new();
-        for i in 0..self.len() {
-            let p = self.lease_ptr_at(i);
-            if p.is_null() {
+        let n = self.len();
+        if n == 0 || self.leases.is_null() {
+            return Vec::new();
+        }
+
+        // SAFETY: `self.leases` points to `self.count` valid pointers allocated by libvirt.
+        // Each non-null pointer is a valid `virNetworkDHCPLease` owned by `self` until `Drop`.
+        // All `c_char*` fields within each lease are NUL-terminated C strings.
+        let lease_slice = unsafe { std::slice::from_raw_parts(self.leases, n) };
+
+        let mut out = Vec::with_capacity(n);
+        for &lease_ptr in lease_slice {
+            if lease_ptr.is_null() {
                 continue;
             }
-            // SAFETY: pointer is valid (owned by `self` until `Drop`).
-            let raw = unsafe { &*p };
+            let raw = unsafe { &*lease_ptr };
             if raw.type_ != sys::VIR_IP_ADDR_TYPE_IPV4 as i32 {
                 continue;
             }
@@ -92,7 +96,7 @@ impl LeaseList {
     }
 }
 
-/// A parsed IPv4 DHCP lease.
+/// A parsed IPv4 DHCP lease (fully safe, no raw pointers).
 #[derive(Debug, Clone)]
 pub(crate) struct Ipv4Lease {
     pub mac_address: String,
@@ -101,6 +105,10 @@ pub(crate) struct Ipv4Lease {
     pub network: String,
 }
 
+/// Convert a potentially-null C string pointer to an owned `String`.
+///
+/// # Safety contract (internal)
+/// Callers must ensure `p` is either null or a valid NUL-terminated C string.
 fn c_str_or_empty(p: *mut libc::c_char) -> String {
     if p.is_null() {
         return String::new();
@@ -118,13 +126,13 @@ impl Drop for LeaseList {
         // SAFETY: `leases` points to `count` pointers allocated by libvirt; each non-null entry
         // must be freed with `virNetworkDHCPLeaseFree`, then the array is freed with `libc::free`.
         unsafe {
-            for i in 0..n {
-                let lease = *self.leases.add(i);
+            let slice = std::slice::from_raw_parts(self.leases, n);
+            for &lease in slice {
                 if !lease.is_null() {
                     sys::virNetworkDHCPLeaseFree(lease);
                 }
             }
-            libc::free(self.leases as *mut libc::c_void);
+            libc::free(self.leases.cast::<libc::c_void>());
         }
         self.leases = ptr::null_mut();
         self.count = 0;

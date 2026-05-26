@@ -40,8 +40,11 @@
 use crate::Result;
 use std::path::PathBuf;
 use tracing::{debug, info, warn};
+#[cfg(feature = "libvirt")]
 use virt::connect::Connect;
+#[cfg(feature = "libvirt")]
 use virt::network::Network;
+#[cfg(feature = "libvirt")]
 use virt::storage_pool::StoragePool;
 
 /// Complete system capabilities discovered at runtime
@@ -132,24 +135,22 @@ impl NetworkCapabilities {
     pub async fn discover() -> Result<Self> {
         debug!("Discovering network capabilities...");
 
-        // Try to discover from libvirt's default network
+        #[cfg(feature = "libvirt")]
         if let Ok(caps) = Self::discover_from_libvirt().await {
             info!("Network capabilities discovered from libvirt");
             return Ok(caps);
         }
 
-        // Try environment variables
         if let Ok(caps) = Self::discover_from_env() {
             info!("Network capabilities from environment variables");
             return Ok(caps);
         }
 
-        // Fall back to sensible defaults (standard libvirt)
         warn!("Using default network capabilities (standard libvirt config)");
         Ok(Self::default_libvirt())
     }
 
-    /// Discover from libvirt's default network
+    #[cfg(feature = "libvirt")]
     async fn discover_from_libvirt() -> Result<Self> {
         let xml = tokio::task::spawn_blocking(|| {
             let conn = Connect::open(Some(&crate::backend::libvirt_uri())).map_err(|e| {
@@ -165,18 +166,14 @@ impl NetworkCapabilities {
         .await
         .map_err(|e| crate::Error::Backend(format!("Failed to query libvirt network: {}", e)))??;
 
-        // Parse XML for network configuration
-        // Look for <ip address="192.168.122.1" netmask="255.255.255.0">
         let gateway = Self::extract_xml_attr(&xml, "ip", "address")
             .unwrap_or_else(|| "192.168.122.1".to_string());
 
         let netmask = Self::extract_xml_attr(&xml, "ip", "netmask")
             .unwrap_or_else(|| "255.255.255.0".to_string());
 
-        // Convert netmask to CIDR bits
         let netmask_bits = Self::netmask_to_cidr(&netmask);
 
-        // Extract prefix from gateway (e.g., "192.168.122" from "192.168.122.1")
         let prefix = gateway
             .rsplit_once('.')
             .map(|x| x.0)
@@ -185,15 +182,6 @@ impl NetworkCapabilities {
 
         let subnet = format!("{}.0/{}", prefix, netmask_bits);
 
-        // DHCP range from XML (for reference, not currently used)
-        let _dhcp_start = Self::extract_xml_attr(&xml, "range", "start")
-            .unwrap_or_else(|| format!("{}.2", prefix));
-
-        let _dhcp_end = Self::extract_xml_attr(&xml, "range", "end")
-            .unwrap_or_else(|| format!("{}.254", prefix));
-
-        // Use a range that doesn't conflict with DHCP
-        // Standard libvirt DHCP: .2-.254, we'll use .10-.250 (avoiding .2-.9 and .251-.254)
         let ip_pool_start = format!("{}.10", prefix);
         let ip_pool_end = format!("{}.250", prefix);
 
@@ -205,7 +193,7 @@ impl NetworkCapabilities {
             netmask_bits,
             ip_pool_start,
             ip_pool_end,
-            default_interface: "enp1s0".to_string(), // Virtio standard
+            default_interface: "enp1s0".to_string(),
         })
     }
 
@@ -330,7 +318,7 @@ impl StorageCapabilities {
             }
         }
 
-        // Try querying libvirt for default pool
+        #[cfg(feature = "libvirt")]
         if let Ok(path) = Self::query_libvirt_pool().await {
             debug!("Discovered from libvirt: {}", path.display());
             return path;
@@ -351,7 +339,7 @@ impl StorageCapabilities {
         fallback
     }
 
-    /// Query libvirt for default storage pool path
+    #[cfg(feature = "libvirt")]
     async fn query_libvirt_pool() -> Result<PathBuf> {
         let xml = tokio::task::spawn_blocking(|| {
             let conn = Connect::open(Some(&crate::backend::libvirt_uri()))

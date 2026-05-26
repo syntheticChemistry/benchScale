@@ -78,7 +78,7 @@ pub struct VmConfig {
 /// ```
 pub struct LifecycleManager<B: Backend> {
     registry: VmRegistry,
-    _backend: Arc<B>,
+    backend: Arc<B>,
 }
 
 impl<B: Backend> LifecycleManager<B> {
@@ -90,7 +90,7 @@ impl<B: Backend> LifecycleManager<B> {
     pub fn new(registry: VmRegistry, backend: Arc<B>) -> Self {
         Self {
             registry,
-            _backend: backend,
+            backend,
         }
     }
 
@@ -167,30 +167,31 @@ impl<B: Backend> LifecycleManager<B> {
     pub async fn start_vm(&self, vm_id: &str) -> Result<()> {
         info!("Starting VM: {}", vm_id);
 
-        // Transition to Starting
         self.registry
             .update_state(vm_id, VmState::Starting)
             .await
             .context("Failed to transition to Starting")?;
 
-        let _record = self.registry.get(vm_id).await?;
+        let record = self.registry.get(vm_id).await?;
 
-        // Start VM via backend
-        // Note: This is a simplified version. In production, you'd call
-        // backend-specific methods based on _record.config
-        // For now, we just transition to Running
-
-        // Simulate startup
-        tokio::time::sleep(Duration::from_millis(100)).await;
-
-        // Transition to Running
-        self.registry
-            .update_state(vm_id, VmState::Running)
-            .await
-            .context("Failed to transition to Running")?;
-
-        info!("VM {} is now running", vm_id);
-        Ok(())
+        match self.backend.start_node(&record.name).await {
+            Ok(()) => {
+                self.registry
+                    .update_state(vm_id, VmState::Running)
+                    .await
+                    .context("Failed to transition to Running")?;
+                info!("VM {} is now running", vm_id);
+                Ok(())
+            }
+            Err(e) => {
+                error!("Failed to start VM {}: {}", vm_id, e);
+                self.registry
+                    .update_state(vm_id, VmState::Failed)
+                    .await
+                    .context("Failed to transition to Failed")?;
+                Err(e.into())
+            }
+        }
     }
 
     /// Stop VM gracefully
@@ -204,16 +205,26 @@ impl<B: Backend> LifecycleManager<B> {
             .await
             .context("Failed to transition to Stopping")?;
 
-        // Stop VM via backend
-        // self.backend.stop_node(vm_id).await?;
+        let record = self.registry.get(vm_id).await?;
 
-        self.registry
-            .update_state(vm_id, VmState::Stopped)
-            .await
-            .context("Failed to transition to Stopped")?;
-
-        info!("VM {} stopped", vm_id);
-        Ok(())
+        match self.backend.stop_node(&record.name).await {
+            Ok(()) => {
+                self.registry
+                    .update_state(vm_id, VmState::Stopped)
+                    .await
+                    .context("Failed to transition to Stopped")?;
+                info!("VM {} stopped", vm_id);
+                Ok(())
+            }
+            Err(e) => {
+                error!("Failed to stop VM {}: {}", vm_id, e);
+                self.registry
+                    .update_state(vm_id, VmState::Failed)
+                    .await
+                    .context("Failed to transition to Failed after stop failure")?;
+                Err(e.into())
+            }
+        }
     }
 
     /// Restart VM (from Stopped or Failed state)
@@ -364,10 +375,41 @@ impl<B: Backend> LifecycleManager<B> {
         for vm in vms {
             info!("Checking VM: {} ({})", vm.name, vm.id);
 
-            // In production, check if VM is actually running via backend
-            // For now, assume VMs are still running
-            recovered.push(vm.id.clone());
-            info!("✅ Recovered VM: {}", vm.id);
+            match self.backend.get_node_status(&vm.name).await {
+                Ok(status) => {
+                    use crate::backend::NodeStatus;
+                    match status {
+                        NodeStatus::Running => {
+                            recovered.push(vm.id.clone());
+                            info!("✅ VM {} still running", vm.id);
+                        }
+                        NodeStatus::Stopped | NodeStatus::Failed => {
+                            info!("VM {} is {:?}, marking as stopped", vm.id, status);
+                            if let Err(e) = self
+                                .registry
+                                .update_state(&vm.id, VmState::Stopped)
+                                .await
+                            {
+                                error!("Failed to mark VM {} as stopped: {}", vm.id, e);
+                            }
+                        }
+                        _ => {
+                            info!("VM {} status unknown ({:?}), keeping current state", vm.id, status);
+                            recovered.push(vm.id.clone());
+                        }
+                    }
+                }
+                Err(e) => {
+                    info!("Cannot check VM {} status: {}, marking as stopped", vm.id, e);
+                    if let Err(e2) = self
+                        .registry
+                        .update_state(&vm.id, VmState::Stopped)
+                        .await
+                    {
+                        error!("Failed to mark VM {} as stopped: {}", vm.id, e2);
+                    }
+                }
+            }
         }
 
         info!("Recovery complete: {} VMs recovered", recovered.len());

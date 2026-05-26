@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+#![cfg(feature = "libvirt")]
 //! End-to-End tests for LibvirtBackend with IP Pool
 //!
 //! These tests validate the IP pool integration with actual VM creation.
@@ -10,7 +11,6 @@
 //! Run with: cargo test --features libvirt --test libvirt_e2e_tests -- --ignored
 
 use benchscale::CloudInit;
-#[cfg(feature = "libvirt")]
 use benchscale::backend::{Backend, LibvirtBackend};
 use benchscale::config::BenchScaleConfig;
 

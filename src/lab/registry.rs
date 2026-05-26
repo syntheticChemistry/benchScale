@@ -163,7 +163,7 @@ impl LabRegistry {
         }
 
         // Sort by creation time (newest first)
-        labs.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        labs.sort_by_key(|lab| std::cmp::Reverse(lab.created_at));
 
         Ok(labs)
     }

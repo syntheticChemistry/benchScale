@@ -133,6 +133,7 @@ fn test_new_libvirt_convenience() {
 }
 
 #[tokio::test]
+#[cfg(feature = "libvirt")]
 async fn test_build_errors_without_base_image() {
     let backend = Arc::new(MockBackend);
     let builder = ImageBuilder::new("nobase", backend).unwrap();
@@ -145,6 +146,7 @@ async fn test_build_errors_without_base_image() {
 }
 
 #[tokio::test]
+#[cfg(feature = "libvirt")]
 async fn test_build_errors_when_base_image_missing() {
     let backend = Arc::new(MockBackend);
     let builder = ImageBuilder::new("missing", backend)

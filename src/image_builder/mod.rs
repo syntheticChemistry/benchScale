@@ -6,31 +6,24 @@
 //!
 //! # Example
 //!
-//! ```no_run
+//! ```rust,ignore
 //! use benchscale::image_builder::{ImageBuilder, BuildStep};
 //! use std::path::Path;
 //!
-//! # async fn example() -> anyhow::Result<()> {
 //! let builder = ImageBuilder::new_libvirt("popos-cosmic")?;
 //!
-//! // Build with user interaction
 //! let template = builder
 //!     .from_cloud_image(Path::new("ubuntu-24.04.img"))
 //!     .with_memory(4096)
 //!     .with_vcpus(2)
 //!     .add_step(BuildStep::InstallPackages(vec!["cosmic-desktop".to_string()]))
-//!     .add_step(BuildStep::UserVerification {
-//!         message: "Check VNC - is COSMIC running?".to_string(),
-//!         vnc_port: None, // Auto-detect
-//!     })
 //!     .build()
 //!     .await?;
 //!
 //! println!("Template saved to: {}", template.template_path.display());
-//! # Ok(())
-//! # }
 //! ```
 
+#[cfg(feature = "libvirt")]
 mod pipeline;
 mod stages;
 
@@ -64,16 +57,13 @@ use crate::backend::LibvirtBackend;
 ///
 /// # Example with Explicit Backend
 ///
-/// ```no_run
+/// ```rust,ignore
 /// use benchscale::image_builder::ImageBuilder;
 /// use benchscale::LibvirtBackend;
 /// use std::sync::Arc;
 ///
-/// # fn example() -> anyhow::Result<()> {
 /// let backend = Arc::new(LibvirtBackend::new()?);
 /// let builder = ImageBuilder::new("my-image", backend)?;
-/// # Ok(())
-/// # }
 /// ```
 pub struct ImageBuilder {
     pub(crate) name: String,
@@ -105,16 +95,13 @@ impl ImageBuilder {
     ///
     /// # Example
     ///
-    /// ```no_run
+    /// ```rust,ignore
     /// use benchscale::image_builder::ImageBuilder;
     /// use benchscale::LibvirtBackend;
     /// use std::sync::Arc;
     ///
-    /// # fn example() -> anyhow::Result<()> {
     /// let backend = Arc::new(LibvirtBackend::new()?);
     /// let builder = ImageBuilder::new("ubuntu-desktop", backend)?;
-    /// # Ok(())
-    /// # }
     /// ```
     pub fn new(name: impl Into<String>, backend: Arc<dyn Backend>) -> Result<Self> {
         Ok(Self {

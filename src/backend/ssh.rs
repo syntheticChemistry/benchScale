@@ -271,51 +271,60 @@ impl SshClient {
         Ok((exit_code as i32, stdout_str, stderr_str))
     }
 
-    /// Copy a file to the remote VM using SFTP
+    /// Copy a file to the remote VM using SCP-over-SSH (pure russh, no subprocess).
+    ///
+    /// Opens a new channel and runs `scp -t <remote_path>` on the remote side,
+    /// then streams the file data over the SSH channel using the SCP wire protocol.
+    /// This avoids shelling out to `scp` and works under sudo without key issues.
     pub async fn copy_file(&mut self, local_path: &str, remote_path: &str) -> Result<()> {
         info!("Copying {} to {}:{}", local_path, self.ip, remote_path);
 
-        // Open SFTP channel
-        let channel = self
-            .session
-            .channel_open_session()
-            .await
-            .map_err(|e| Error::Backend(format!("Failed to open SFTP channel: {}", e)))?;
-
-        channel
-            .request_subsystem(true, "sftp")
-            .await
-            .map_err(|e| Error::Backend(format!("Failed to request SFTP subsystem: {}", e)))?;
-
-        // Read local file
         let data = tokio::fs::read(local_path)
             .await
             .map_err(|e| Error::Backend(format!("Failed to read local file: {}", e)))?;
 
-        // For now, fall back to scp-like approach via shell
-        // Full SFTP implementation would require russh-sftp crate
-        drop(channel);
+        let filename = std::path::Path::new(remote_path)
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("file");
 
-        // Use scp via ssh command as workaround
-        let temp_path = format!(
-            "/tmp/{}",
-            std::path::Path::new(local_path)
-                .file_name()
-                .and_then(|s| s.to_str())
-                .unwrap_or("file")
-        );
+        let channel = self
+            .session
+            .channel_open_session()
+            .await
+            .map_err(|e| Error::Backend(format!("Failed to open SCP channel: {}", e)))?;
 
-        // Create file with content via shell
-        let base64_data = base64::encode(&data);
-        let create_cmd = format!("echo '{}' | base64 -d > {}", base64_data, temp_path);
+        // Start the SCP sink process on the remote
+        channel
+            .exec(true, format!("scp -t {remote_path}"))
+            .await
+            .map_err(|e| Error::Backend(format!("Failed to exec scp -t: {}", e)))?;
 
-        self.execute(&[create_cmd]).await?;
+        // SCP wire protocol: send file header "C<mode> <size> <filename>\n"
+        let header = format!("C0644 {} {}\n", data.len(), filename);
+        channel
+            .data(header.as_bytes() as &[u8])
+            .await
+            .map_err(|e| Error::Backend(format!("SCP header write failed: {}", e)))?;
 
-        // Move to final location (might need sudo)
-        let move_cmd = format!("mv {} {}", temp_path, remote_path);
-        self.execute(&[move_cmd]).await?;
+        // Stream file data in chunks to avoid overwhelming the channel
+        const CHUNK_SIZE: usize = 32768;
+        for chunk in data.chunks(CHUNK_SIZE) {
+            channel
+                .data(chunk)
+                .await
+                .map_err(|e| Error::Backend(format!("SCP data write failed: {}", e)))?;
+        }
 
-        info!("File copied successfully");
+        // SCP requires a NUL byte to signal end of file data
+        channel
+            .data(&[0u8][..])
+            .await
+            .map_err(|e| Error::Backend(format!("SCP EOF marker failed: {}", e)))?;
+
+        channel.eof().await.ok();
+
+        info!("File copied successfully via SCP-over-SSH");
         Ok(())
     }
 

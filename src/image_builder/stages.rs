@@ -1,14 +1,23 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Build step definitions and stage execution for the image builder.
+//!
+//! Step enum and VNC XML parsing are always available; the `ImageBuilder`
+//! impl that drives VM creation, SSH, and snapshotting is behind
+//! the `libvirt` feature.
 
-use super::ImageBuilder;
-use crate::backend::NodeInfo;
-use crate::{CloudInit, Error, Result};
-use std::path::{Path, PathBuf};
-use std::time::Duration;
-use tracing::{debug, info, warn};
-use virt::connect::Connect;
-use virt::domain::Domain;
+use std::path::PathBuf;
+
+#[cfg(feature = "libvirt")]
+use {
+    super::ImageBuilder,
+    crate::backend::NodeInfo,
+    crate::{CloudInit, Error, Result},
+    std::path::Path,
+    std::time::Duration,
+    tracing::{debug, info, warn},
+    virt::connect::Connect,
+    virt::domain::Domain,
+};
 
 /// Build step for template creation
 #[derive(Debug, Clone)]
@@ -42,6 +51,7 @@ pub enum BuildStep {
     Reboot,
 }
 
+#[cfg_attr(not(feature = "libvirt"), allow(dead_code))]
 pub(super) fn parse_vnc_from_domain_xml(xml: &str) -> Option<String> {
     if let Some(idx) = xml.find("type='vnc'").or_else(|| xml.find("type=\"vnc\"")) {
         let slice = xml[idx..].chars().take(512).collect::<String>();
@@ -83,6 +93,7 @@ pub(super) fn parse_vnc_from_domain_xml(xml: &str) -> Option<String> {
 }
 
 /// Detect SSH user for a VM (tries common usernames)
+#[cfg(feature = "libvirt")]
 pub(super) async fn detect_ssh_user(ip: &str) -> Result<String> {
     let common_users = vec!["ubuntu", "desktop", "builder", "admin"];
 
@@ -118,6 +129,7 @@ pub(super) async fn detect_ssh_user(ip: &str) -> Result<String> {
 }
 
 /// Get actual IP address from virsh (not the allocated one)
+#[cfg(feature = "libvirt")]
 pub(super) async fn get_actual_vm_ip(vm_name: &str) -> Result<String> {
     let vm = vm_name.to_string();
     let ip = tokio::task::spawn_blocking(move || {
@@ -145,6 +157,7 @@ pub(super) async fn get_actual_vm_ip(vm_name: &str) -> Result<String> {
 }
 
 /// Wait for SSH with retries
+#[cfg(feature = "libvirt")]
 pub(super) async fn wait_for_ssh(ip: &str, user: &str, max_attempts: u32) -> Result<()> {
     info!(
         "Waiting for SSH ({}@{}, max {} attempts)...",
@@ -191,6 +204,7 @@ pub(super) async fn wait_for_ssh(ip: &str, user: &str, max_attempts: u32) -> Res
     )))
 }
 
+#[cfg(feature = "libvirt")]
 impl ImageBuilder {
     /// Create builder VM
     pub(super) async fn create_builder_vm(
@@ -237,9 +251,14 @@ impl ImageBuilder {
                 self.pause_for_verification(&node.name, message, *vnc_port)
                     .await?;
             }
+            #[cfg(feature = "libvirt")]
             BuildStep::SaveIntermediate { name, path } => {
                 info!("Saving intermediate state: {}", name);
                 self.save_intermediate(&node.name, path).await?;
+            }
+            #[cfg(not(feature = "libvirt"))]
+            BuildStep::SaveIntermediate { .. } => {
+                warn!("SaveIntermediate requires the libvirt feature");
             }
             BuildStep::Reboot => {
                 info!("Rebooting VM...");
@@ -274,8 +293,13 @@ impl ImageBuilder {
                 self.pause_for_verification(&node.name, message, *vnc_port)
                     .await?;
             }
+            #[cfg(feature = "libvirt")]
             BuildStep::SaveIntermediate { name: _, path } => {
                 self.save_intermediate(&node.name, path).await?;
+            }
+            #[cfg(not(feature = "libvirt"))]
+            BuildStep::SaveIntermediate { .. } => {
+                warn!("SaveIntermediate requires the libvirt feature");
             }
             BuildStep::Reboot => {
                 self.reboot_vm_with_user(node, user).await?;
@@ -528,7 +552,10 @@ impl ImageBuilder {
         let vnc_display = if let Some(port) = vnc_port {
             format!("localhost:{}", port)
         } else {
-            Self::get_vnc_display(vm_name)?
+            #[cfg(feature = "libvirt")]
+            { Self::get_vnc_display(vm_name)? }
+            #[cfg(not(feature = "libvirt"))]
+            { let _ = vm_name; "(VNC requires libvirt feature)".to_string() }
         };
 
         println!("\n╔══════════════════════════════════════════════════════════════════════════╗");
@@ -550,6 +577,7 @@ impl ImageBuilder {
         Ok(())
     }
 
+    #[cfg(feature = "libvirt")]
     async fn save_intermediate(&self, vm_name: &str, path: &Path) -> Result<()> {
         info!("Shutting down VM for intermediate save...");
 
@@ -603,6 +631,7 @@ impl ImageBuilder {
         Ok(())
     }
 
+    #[cfg(feature = "libvirt")]
     pub(super) fn get_vnc_display(vm_name: &str) -> Result<String> {
         let xml_opt = (|| {
             let conn = Connect::open(Some(&crate::backend::libvirt_uri())).ok()?;
@@ -621,6 +650,7 @@ impl ImageBuilder {
         Ok("(VNC not available)".to_string())
     }
 
+    #[cfg(feature = "libvirt")]
     pub(super) async fn save_as_template(&self, vm_name: &str) -> Result<PathBuf> {
         info!("Shutting down VM to save as template...");
 
@@ -642,28 +672,21 @@ impl ImageBuilder {
 
         info!("Optimizing template...");
 
-        let sparsify_result = tokio::process::Command::new("which")
-            .arg("virt-sparsify")
-            .output()
-            .await;
-
-        match sparsify_result {
-            Ok(output) if output.status.success() => {
-                info!("Running virt-sparsify to optimize disk...");
-                tokio::process::Command::new("virt-sparsify")
-                    .args([
-                        "--in-place",
-                        disk_path.to_str().ok_or_else(|| {
-                            Error::Backend("VM disk path is not valid UTF-8".to_string())
-                        })?,
-                    ])
-                    .output()
-                    .await
-                    .map_err(|e| Error::Backend(format!("Failed to sparsify: {}", e)))?;
-            }
-            _ => {
-                info!("virt-sparsify not available, skipping optimization");
-            }
+        let sparsify_bin = crate::constants::vm::which_binary("virt-sparsify");
+        if let Ok(sparsify_path) = sparsify_bin {
+            info!("Running virt-sparsify to optimize disk...");
+            tokio::process::Command::new(sparsify_path)
+                .args([
+                    "--in-place",
+                    disk_path.to_str().ok_or_else(|| {
+                        Error::Backend("VM disk path is not valid UTF-8".to_string())
+                    })?,
+                ])
+                .output()
+                .await
+                .map_err(|e| Error::Backend(format!("Failed to sparsify: {}", e)))?;
+        } else {
+            info!("virt-sparsify not available, skipping optimization");
         }
 
         info!("Copying to template location...");

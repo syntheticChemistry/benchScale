@@ -210,6 +210,11 @@ pub struct DesktopDomainConfig<'a> {
     pub pci_devices: &'a [crate::backend::gpu_lifecycle::VfioPassthrough],
     /// QEMU emulator binary path. Defaults to `/usr/bin/qemu-system-x86_64`.
     pub emulator: Option<&'a str>,
+    /// Enable a QEMU Guest Agent virtio-serial channel.
+    /// When true, a `<channel>` element is added to the domain XML so that
+    /// the guest agent (if installed) can communicate with the host via
+    /// `/var/lib/libvirt/qemu/channel/target/<name>.org.qemu.guest_agent.0`.
+    pub enable_qga: bool,
 }
 
 /// Generate a libvirt domain XML for a desktop VM with VNC graphics.
@@ -255,9 +260,21 @@ pub fn generate_desktop_domain_xml(config: &DesktopDomainConfig<'_>) -> String {
         format!("\n{hostdev_xml}")
     };
 
-    let emulator = config
-        .emulator
-        .unwrap_or("/usr/bin/qemu-system-x86_64");
+    let qga_channel = if config.enable_qga {
+        format!(
+            r#"
+    <channel type='unix'>
+      <source mode='bind' path='/var/lib/libvirt/qemu/channel/target/{name}.org.qemu.guest_agent.0'/>
+      <target type='virtio' name='org.qemu.guest_agent.0'/>
+    </channel>"#,
+            name = config.name,
+        )
+    } else {
+        String::new()
+    };
+
+    let discovered = crate::constants::vm::qemu_emulator();
+    let emulator = config.emulator.unwrap_or(&discovered);
 
     // Collect QEMU device properties from all PCI devices into
     // <qemu:commandline> arguments. Properties become -set device.hostN.key=val.
@@ -319,7 +336,7 @@ pub fn generate_desktop_domain_xml(config: &DesktopDomainConfig<'_>) -> String {
     <graphics type='vnc' port='-1' autoport='yes' listen='0.0.0.0'/>
     <video>
       <model type='virtio'/>
-    </video>{hostdev}
+    </video>{hostdev}{qga}
   </devices>{qemu_cmd}
 </domain>"#,
         qemu_xmlns = qemu_ns.0,
@@ -331,6 +348,7 @@ pub fn generate_desktop_domain_xml(config: &DesktopDomainConfig<'_>) -> String {
         network = config.network,
         mac = mac_xml,
         hostdev = hostdev_section,
+        qga = qga_channel,
         emulator = emulator,
         qemu_cmd = qemu_ns.1,
     )
@@ -381,6 +399,7 @@ mod tests {
             mac_address: None,
             pci_devices: &[],
             emulator: None,
+            enable_qga: false,
         };
 
         let xml = generate_desktop_domain_xml(&config);
@@ -404,6 +423,7 @@ mod tests {
             mac_address: Some("52:54:00:ab:cd:ef"),
             pci_devices: &[],
             emulator: None,
+            enable_qga: false,
         };
 
         let xml = generate_desktop_domain_xml(&config);
@@ -457,6 +477,7 @@ mod tests {
             mac_address: None,
             pci_devices: &devices,
             emulator: None,
+            enable_qga: false,
         };
 
         let xml = generate_desktop_domain_xml(&config);
@@ -496,6 +517,7 @@ mod tests {
             mac_address: None,
             pci_devices: &devices,
             emulator: None,
+            enable_qga: false,
         };
 
         let xml = generate_desktop_domain_xml(&config);
@@ -516,6 +538,7 @@ mod tests {
             mac_address: None,
             pci_devices: &[],
             emulator: None,
+            enable_qga: false,
         };
 
         let xml = generate_desktop_domain_xml(&config);
@@ -535,9 +558,62 @@ mod tests {
             mac_address: None,
             pci_devices: &[],
             emulator: Some("/usr/local/bin/qemu-system-x86_64"),
+            enable_qga: false,
         };
 
         let xml = generate_desktop_domain_xml(&config);
         assert!(xml.contains("/usr/local/bin/qemu-system-x86_64"), "should use custom emulator");
+    }
+
+    #[test]
+    fn test_qga_channel_enabled() {
+        let config = DesktopDomainConfig {
+            name: "qga-vm",
+            disk_path: Path::new("/tmp/disk.qcow2"),
+            cdrom_path: None,
+            memory_mb: 2048,
+            vcpus: 2,
+            network: "default",
+            mac_address: None,
+            pci_devices: &[],
+            emulator: None,
+            enable_qga: true,
+        };
+
+        let xml = generate_desktop_domain_xml(&config);
+        assert!(
+            xml.contains("org.qemu.guest_agent.0"),
+            "should contain QGA channel target"
+        );
+        assert!(
+            xml.contains("<channel type='unix'>"),
+            "should have channel element"
+        );
+        assert!(
+            xml.contains("qga-vm.org.qemu.guest_agent.0"),
+            "channel path should include VM name"
+        );
+    }
+
+    #[test]
+    fn test_qga_channel_disabled() {
+        let config = DesktopDomainConfig {
+            name: "no-qga",
+            disk_path: Path::new("/tmp/disk.qcow2"),
+            cdrom_path: None,
+            memory_mb: 2048,
+            vcpus: 2,
+            network: "default",
+            mac_address: None,
+            pci_devices: &[],
+            emulator: None,
+            enable_qga: false,
+        };
+
+        let xml = generate_desktop_domain_xml(&config);
+        assert!(
+            !xml.contains("guest_agent"),
+            "should NOT contain QGA channel"
+        );
     }
 }

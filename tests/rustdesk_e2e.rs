@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+#![cfg(feature = "libvirt")]
 //! End-to-End RustDesk VM Creation and Validation Tests
 //!
 //! These tests validate the complete workflow of creating a VM with RustDesk
@@ -7,7 +8,6 @@
 //! Run with: cargo test --features libvirt --test rustdesk_e2e -- --ignored
 
 use benchscale::CloudInit;
-#[cfg(feature = "libvirt")]
 use benchscale::backend::{Backend, LibvirtBackend};
 use benchscale::config::BenchScaleConfig;
 use std::path::PathBuf;

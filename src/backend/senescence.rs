@@ -113,6 +113,14 @@ pub struct SenescenceMonitor {
     /// Only read when the `libvirt` feature is enabled.
     #[cfg_attr(not(feature = "libvirt"), allow(dead_code))]
     ip_rediscovery_interval: u32,
+    /// Explicit SSH private key path for identity-based auth.
+    /// Required when the builder runs under sudo (root's ~/.ssh differs from the
+    /// invoking user's key store).
+    ssh_identity: Option<std::path::PathBuf>,
+    /// Optional QGA client for guest-agent health checks.
+    /// When set, the monitor uses `guest-ping` for liveness instead of
+    /// (or in addition to) SSH probes.
+    qga: Option<crate::backend::qga::QgaClient>,
 }
 
 impl SenescenceMonitor {
@@ -174,6 +182,8 @@ impl SenescenceMonitor {
             stall_threshold: config.stall_threshold(),
             max_failures: config.max_failures,
             ip_rediscovery_interval: config.ip_rediscovery_interval,
+            ssh_identity: None,
+            qga: None,
         }
     }
 
@@ -225,6 +235,8 @@ impl SenescenceMonitor {
             stall_threshold: Duration::from_secs(120), // 2 minutes without progress
             max_failures: 10,                          // Default: quick VMs (100s tolerance)
             ip_rediscovery_interval: 10,               // Re-discover IP every 10 checks = 100s
+            ssh_identity: None,
+            qga: None,
         }
     }
 
@@ -238,6 +250,26 @@ impl SenescenceMonitor {
     /// - Cloud-init with packages: `with_max_failures(180)` → 30min tolerance
     pub fn with_max_failures(mut self, max_failures: u32) -> Self {
         self.max_failures = max_failures;
+        self
+    }
+
+    /// Set an explicit SSH private key for identity-based auth.
+    ///
+    /// When the builder runs under `sudo`, the `ssh` CLI looks in `/root/.ssh/`
+    /// instead of the invoking user's key store. This passes `-i <path>` to
+    /// every SSH probe so the correct key is used regardless of effective UID.
+    pub fn with_ssh_identity(mut self, path: std::path::PathBuf) -> Self {
+        self.ssh_identity = Some(path);
+        self
+    }
+
+    /// Enable QGA (QEMU Guest Agent) health checks via virtio-serial.
+    ///
+    /// When set, `guest-ping` is used for liveness in addition to SSH.
+    /// QGA works the instant the guest kernel loads the virtio module —
+    /// well before SSH is available — giving earlier health visibility.
+    pub fn with_qga(mut self, client: crate::backend::qga::QgaClient) -> Self {
+        self.qga = Some(client);
         self
     }
 
@@ -278,10 +310,6 @@ impl SenescenceMonitor {
     }
 
     /// Perform a single health check
-    #[expect(
-        clippy::too_many_lines,
-        reason = "Single coherent poll: DHCP re-discovery plus ping, SSH, and cloud-init checks"
-    )]
     async fn perform_health_check(&self, username: &str) -> Result<()> {
         // Evolution #22: Periodic IP re-discovery for DHCP lease tracking
         // Do this BEFORE acquiring the write lock for health checks
@@ -344,6 +372,13 @@ impl SenescenceMonitor {
         // Check 1: Ping
         let ping_ok = self.check_ping(&metrics.ip_address).await;
         metrics.ping_ok = ping_ok;
+
+        // Check 1b: QGA liveness — available before SSH when virtio loads
+        if let Some(ref qga) = self.qga {
+            if qga.ping().await {
+                debug!("QGA guest-ping OK for {}", metrics.vm_name);
+            }
+        }
 
         // Check 2: SSH connectivity
         let ssh_ok = if ping_ok {
@@ -411,32 +446,53 @@ impl SenescenceMonitor {
         Ok(())
     }
 
-    /// Check if VM responds to ping
+    /// Check VM reachability via TCP connect to SSH port.
+    ///
+    /// Replaced the `ping` shell-out with a pure-Rust TCP probe. This is
+    /// more useful than ICMP ping because it confirms the VM's network
+    /// stack and SSH listener are both up, and doesn't require raw socket
+    /// privileges that ICMP ping needs under some environments.
     async fn check_ping(&self, ip: &str) -> bool {
-        let output = tokio::process::Command::new("ping")
-            .args(["-c", "1", "-W", "2", ip])
-            .output()
-            .await;
+        use std::net::SocketAddr;
+        let addr: SocketAddr = match format!("{ip}:22").parse() {
+            Ok(a) => a,
+            Err(_) => return false,
+        };
+        tokio::time::timeout(
+            Duration::from_secs(2),
+            tokio::net::TcpStream::connect(addr),
+        )
+        .await
+        .map_or(false, |r| r.is_ok())
+    }
 
-        match output {
-            Ok(output) => output.status.success(),
-            Err(_) => false,
+    /// Build the common SSH argument list, inserting `-i <identity>` when configured.
+    fn ssh_args(&self, ip: &str, username: &str) -> Vec<String> {
+        let mut args = vec![
+            "-o".to_string(),
+            "StrictHostKeyChecking=no".to_string(),
+            "-o".to_string(),
+            "UserKnownHostsFile=/dev/null".to_string(),
+            "-o".to_string(),
+            "ConnectTimeout=3".to_string(),
+            "-o".to_string(),
+            "BatchMode=yes".to_string(),
+        ];
+        if let Some(ref id) = self.ssh_identity {
+            args.push("-i".to_string());
+            args.push(id.display().to_string());
         }
+        args.push(format!("{}@{}", username, ip));
+        args
     }
 
     /// Check SSH connectivity
     async fn check_ssh(&self, ip: &str, username: &str) -> bool {
+        let mut args = self.ssh_args(ip, username);
+        args.push("echo ok".to_string());
+
         let output = tokio::process::Command::new("ssh")
-            .args([
-                "-o",
-                "StrictHostKeyChecking=no",
-                "-o",
-                "UserKnownHostsFile=/dev/null",
-                "-o",
-                "ConnectTimeout=3",
-                &format!("{}@{}", username, ip),
-                "echo ok",
-            ])
+            .args(&args)
             .output()
             .await;
 
@@ -448,17 +504,11 @@ impl SenescenceMonitor {
 
     /// Check cloud-init status
     async fn check_cloud_init(&self, ip: &str, username: &str) -> Result<CloudInitProgress> {
+        let mut args = self.ssh_args(ip, username);
+        args.push("cloud-init status --format=json".to_string());
+
         let output = tokio::process::Command::new("ssh")
-            .args([
-                "-o",
-                "StrictHostKeyChecking=no",
-                "-o",
-                "UserKnownHostsFile=/dev/null",
-                "-o",
-                "ConnectTimeout=3",
-                &format!("{}@{}", username, ip),
-                "cloud-init status --format=json",
-            ])
+            .args(&args)
             .output()
             .await
             .map_err(|e| {

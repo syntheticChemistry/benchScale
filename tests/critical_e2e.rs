@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+#![cfg(feature = "libvirt")]
 //! Critical E2E tests for benchScale automation
 //!
 //! These tests validate end-to-end flows that are critical for production use.
@@ -10,7 +11,6 @@
 //! Run with: cargo test --features libvirt --test critical_e2e -- --ignored
 
 use benchscale::CloudInit;
-#[cfg(feature = "libvirt")]
 use benchscale::backend::{Backend, LibvirtBackend};
 use benchscale::config::BenchScaleConfig;
 use std::path::PathBuf;

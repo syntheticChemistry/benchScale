@@ -503,6 +503,16 @@ impl Backend for LibvirtBackend {
         }
     }
 
+    /// Network shaping via `tc` (traffic control) is not yet implemented for
+    /// the libvirt backend. The Docker backend implements this via container
+    /// exec of `tc qdisc` commands. For libvirt, the equivalent would be:
+    ///
+    /// 1. Identify the VM's tap interface (e.g. `vnet0`) from `virsh domiflist`
+    /// 2. Apply `tc qdisc add dev <tap> root netem delay <ms>ms loss <pct>%`
+    /// 3. For bandwidth: `tc qdisc add dev <tap> root tbf rate <kbps>kbit`
+    ///
+    /// This requires the host to have `tc` (iproute2) installed and the calling
+    /// user to have permission to modify network qdiscs on the tap interface.
     async fn apply_network_conditions(
         &self,
         _node_id: &str,
@@ -511,7 +521,10 @@ impl Backend for LibvirtBackend {
         bandwidth_kbps: Option<u32>,
     ) -> Result<()> {
         if latency_ms.is_some() || packet_loss_percent.is_some() || bandwidth_kbps.is_some() {
-            warn!("Network conditions not yet implemented for LibvirtBackend");
+            warn!(
+                "Network conditions not yet implemented for LibvirtBackend — \
+                 requires tc (iproute2) integration with VM tap interfaces"
+            );
         }
         Ok(())
     }

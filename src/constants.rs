@@ -123,6 +123,36 @@ pub mod vm {
     pub fn default_arch() -> String {
         std::env::var("BENCHSCALE_DEFAULT_VM_ARCH").unwrap_or_else(|_| "x86_64".to_string())
     }
+
+    /// QEMU emulator binary path.
+    ///
+    /// Discovery order: `BENCHSCALE_QEMU_EMULATOR` env var, then `which qemu-system-{arch}`,
+    /// falling back to the standard `/usr/bin/qemu-system-{arch}`.
+    pub fn qemu_emulator() -> String {
+        if let Ok(path) = std::env::var("BENCHSCALE_QEMU_EMULATOR") {
+            return path;
+        }
+        let arch = default_arch();
+        let binary = format!("qemu-system-{arch}");
+        if let Ok(found) = which_binary(&binary) {
+            return found;
+        }
+        format!("/usr/bin/{binary}")
+    }
+
+    /// Look up a binary by name using `PATH`.
+    ///
+    /// Pure Rust replacement for shelling out to `which(1)`.
+    pub fn which_binary(name: &str) -> Result<String, ()> {
+        let path = std::env::var("PATH").map_err(|_| ())?;
+        for dir in path.split(':') {
+            let candidate = std::path::PathBuf::from(dir).join(name);
+            if candidate.exists() {
+                return Ok(candidate.to_string_lossy().into_owned());
+            }
+        }
+        Err(())
+    }
 }
 
 /// Timeout constants

@@ -21,7 +21,7 @@ pub use docker::DockerBackend;
 ///
 /// Checks `BENCHSCALE_LIBVIRT_URI` first, then `LIBVIRT_URI`, falling
 /// back to `qemu:///system`.
-pub(crate) fn libvirt_uri() -> String {
+pub fn libvirt_uri() -> String {
     std::env::var("BENCHSCALE_LIBVIRT_URI")
         .or_else(|_| std::env::var("LIBVIRT_URI"))
         .unwrap_or_else(|_| "qemu:///system".to_string())
@@ -43,6 +43,7 @@ pub mod serial_console;
 
 #[cfg(feature = "libvirt")]
 pub mod health;
+pub mod qga;
 pub mod senescence;
 #[cfg(feature = "libvirt")]
 pub mod cleanup;
@@ -218,6 +219,10 @@ pub trait Backend: Send + Sync {
     /// # Ok(())
     /// # }
     /// ```
+    /// Create a desktop VM from a cloud image. Only the libvirt backend
+    /// supports this; the Docker backend returns an error (containers are
+    /// not VMs). Override in backend implementations that support full VM
+    /// lifecycle management.
     async fn create_desktop_vm(
         &self,
         _name: &str,
@@ -227,9 +232,8 @@ pub trait Backend: Send + Sync {
         _vcpus: u32,
         _disk_size_gb: u32,
     ) -> Result<NodeInfo> {
-        // Default implementation: not supported
         Err(crate::Error::Backend(
-            "Desktop VM creation not supported by this backend".to_string(),
+            "Desktop VM creation not supported by this backend (use libvirt)".to_string(),
         ))
     }
 }

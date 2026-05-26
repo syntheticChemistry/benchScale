@@ -39,7 +39,7 @@ ipnetwork = "0.20"
 # Utilities
 libc = "0.2"
 nix = { version = "0.29", features = ["signal"] }
-virt = "0.3"
+virt = { version = "0.3", optional = true }
 uuid = { version = "1.6", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 futures-util = "0.3"
@@ -58,6 +58,7 @@ sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite"], optiona
 # CLI
 clap = { version = "4.5", features = ["derive"] }
 hadris-iso = { version = "1.1.2", features = ["joliet", "write"] }
+base64 = "0.22.1"
 
 # Discovery: Use standard solutions (mDNS, DNS-SD, Consul)
 # NOT creating custom substrate - primal philosophy is to use existing capabilities
@@ -86,6 +87,30 @@ docker = []
 # Built-in docker.io/dockerhardened/* short-name mappings; disable to require full refs or env overrides only
 docker-hardened-catalog = []
 hardened = []  # Use Docker hardened images
-libvirt = ["dep:russh", "dep:russh-keys", "dep:data-encoding"]  # Libvirt/KVM backend for VM testing
+libvirt = ["dep:russh", "dep:russh-keys", "dep:data-encoding", "dep:virt"]  # Libvirt/KVM backend for VM testing
 persistence = ["dep:sqlx"]  # VM lifecycle persistence and state management
+
+[[example]]
+name = "build_cosmic_image"
+required-features = ["libvirt"]
+
+[[example]]
+name = "build_from_existing_improved"
+required-features = ["libvirt"]
+
+[[example]]
+name = "build_working_desktop"
+required-features = ["libvirt"]
+
+[[example]]
+name = "cloud_init_integration_test"
+required-features = ["libvirt"]
+
+[[example]]
+name = "production_vm_ready"
+required-features = ["libvirt"]
+
+[[example]]
+name = "vm_cleanup"
+required-features = ["libvirt"]
 
