@@ -533,3 +533,26 @@ fn test_get_node_conditions_not_exists() {
     let conditions = topology.get_node_conditions("nonexistent");
     assert!(conditions.is_none());
 }
+
+#[tokio::test]
+async fn test_kderm_diderm_topology_parses() {
+    let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("topologies/nucleus/kderm_diderm_membrane.yaml");
+    if !manifest.exists() {
+        return;
+    }
+    let topo = Topology::from_file(&manifest).await.expect("kderm topology should parse");
+    assert_eq!(topo.metadata.name, "kderm-diderm-membrane");
+    assert_eq!(topo.nodes.len(), 5);
+
+    let layer_names: Vec<&str> = topo
+        .nodes
+        .iter()
+        .filter_map(|n| n.env.get("ENVELOPE_LAYER").map(String::as_str))
+        .collect();
+    assert!(layer_names.contains(&"cytoplasm"));
+    assert!(layer_names.contains(&"plasma_membrane"));
+    assert!(layer_names.contains(&"periplasm"));
+    assert!(layer_names.contains(&"outer_membrane"));
+    assert!(layer_names.contains(&"extracellular"));
+}

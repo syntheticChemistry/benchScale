@@ -1,0 +1,178 @@
+# K-Derm Diderm Membrane Topology
+#
+# Models the cellMembrane K-Derm diderm envelope as a benchScale topology.
+# Each node occupies an absolute envelope layer; env vars encode bond type
+# and channel protein for boundary crossing validation.
+#
+# Layers (inside-out): cytoplasm → plasma_membrane → periplasm → outer_membrane → extracellular
+# Bond types: covalent > metallic > ionic > ceremony > weak
+# Channel proteins: aquaporin (covalent/metallic), gated_ion (ionic), voltage_gated (ceremony), passive_diffusion (weak)
+#
+# See: gardens/cellMembrane/specs/K_DERM_TOPOLOGY.md
+
+metadata:
+  name: kderm-diderm-membrane
+  description: >-
+    Diderm envelope topology — tests K-Derm boundary crossing rules.
+    Five nodes represent the five absolute envelope layers. Validation
+    blocks assert bond-type/channel-protein rules: covalent passes
+    plasma membrane (aquaporin), weak is blocked at plasma membrane,
+    ionic passes outer membrane (gated ion channel), weak passes outer
+    membrane (passive diffusion only).
+  version: "1.0"
+  tags: ["nucleus", "kderm", "diderm", "membrane", "boundary", "bonding", "validation"]
+
+network:
+  name: kderm-diderm-net
+  subnet: "10.70.0.0/24"
+
+nodes:
+  # --- Cytoplasm: NUCLEUS primals, UDS IPC, shared family seed ---
+  - name: cytoplasm
+    image: ubuntu
+    env:
+      ROLE: nucleus
+      PRIMALS: "nestgate rhizocrypt"
+      NESTGATE_PORT: "9500"
+      RHIZOCRYPT_PORT: "9700"
+      FAMILY_ID: "benchscale-kderm-diderm"
+      PLASMID_BIN: "/opt/plasmidBin"
+      ENVELOPE_LAYER: "cytoplasm"
+      BOND_TYPE: "covalent"
+      CHANNEL_PROTEIN: "aquaporin"
+      PERMITTED_INBOUND: "covalent"
+    network_conditions:
+      latency_ms: 1
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 10000000
+
+  # --- Plasma Membrane: gate firewall boundary (always present) ---
+  - name: plasma-membrane
+    image: ubuntu
+    env:
+      ROLE: gate_firewall
+      PRIMALS: "beardog"
+      BEARDOG_PORT: "9100"
+      FAMILY_ID: "benchscale-kderm-diderm"
+      PLASMID_BIN: "/opt/plasmidBin"
+      ENVELOPE_LAYER: "plasma_membrane"
+      BOND_TYPE: "covalent"
+      CHANNEL_PROTEIN: "aquaporin"
+      PERMITTED_INBOUND: "covalent,metallic"
+      BTSP_ENABLED: "true"
+    network_conditions:
+      latency_ms: 1
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 10000000
+
+  # --- Periplasm: VPS relay/routing/telemetry compartment ---
+  - name: periplasm
+    image: ubuntu
+    env:
+      ROLE: vps_relay
+      PRIMALS: "songbird skunkbat"
+      SONGBIRD_PORT: "9200"
+      SKUNKBAT_PORT: "9140"
+      FAMILY_ID: "benchscale-kderm-diderm"
+      PLASMID_BIN: "/opt/plasmidBin"
+      ENVELOPE_LAYER: "periplasm"
+      BOND_TYPE: "ionic"
+      CHANNEL_PROTEIN: "gated_ion"
+      PERMITTED_INBOUND: "ionic,metallic"
+    network_conditions:
+      latency_ms: 5
+      packet_loss_percent: 0.01
+      bandwidth_kbps: 1000000
+
+  # --- Outer Membrane: internet-facing boundary ---
+  - name: outer-membrane
+    image: ubuntu
+    env:
+      ROLE: internet_boundary
+      FAMILY_ID: "benchscale-kderm-diderm"
+      ENVELOPE_LAYER: "outer_membrane"
+      BOND_TYPE: "ionic"
+      CHANNEL_PROTEIN: "gated_ion"
+      PERMITTED_INBOUND: "weak,ionic"
+    network_conditions:
+      latency_ms: 10
+      packet_loss_percent: 0.1
+      bandwidth_kbps: 500000
+
+  # --- Extracellular: adversary probe / external client ---
+  - name: extracellular
+    image: ubuntu
+    env:
+      ROLE: adversary_probe
+      FAMILY_ID: "benchscale-kderm-diderm"
+      ENVELOPE_LAYER: "extracellular"
+      BOND_TYPE: "weak"
+      CHANNEL_PROTEIN: "passive_diffusion"
+      PERMITTED_INBOUND: "weak"
+    network_conditions:
+      latency_ms: 50
+      packet_loss_percent: 1.0
+      bandwidth_kbps: 100000
+
+# --- Boundary Crossing Validation ---
+# Tests that K-Derm bond-type rules are enforced at each membrane boundary.
+# These are declarative assertions; the benchScale test harness reads them
+# and validates boundary crossing behavior at runtime.
+validation:
+  signal: kderm_boundary_crossing
+  sequence:
+    # 1. Covalent bond crosses plasma membrane (aquaporin: always open for family)
+    - target: plasma-membrane
+      method: health.check
+      from: cytoplasm
+      bond_type: covalent
+      expect: "alive"
+      description: "covalent passes plasma membrane via aquaporin"
+
+    # 2. Weak bond is BLOCKED at plasma membrane (no passive diffusion channel)
+    - target: plasma-membrane
+      method: health.check
+      from: extracellular
+      bond_type: weak
+      expect: "blocked"
+      description: "weak blocked at plasma membrane — no passive diffusion inward"
+
+    # 3. Ionic bond crosses outer membrane (gated ion channel with BTSP token)
+    - target: outer-membrane
+      method: health.check
+      from: periplasm
+      bond_type: ionic
+      expect: "alive"
+      description: "ionic passes outer membrane via gated ion channel"
+
+    # 4. Weak bond crosses outer membrane (passive diffusion: read-only API)
+    - target: outer-membrane
+      method: health.check
+      from: extracellular
+      bond_type: weak
+      expect: "alive"
+      description: "weak passes outer membrane via passive diffusion"
+
+    # 5. Covalent bond does NOT cross outer membrane (aquaporin not on outer boundary)
+    - target: outer-membrane
+      method: health.check
+      from: cytoplasm
+      bond_type: covalent
+      expect: "blocked"
+      description: "covalent blocked at outer membrane — aquaporin is inner-only"
+
+    # 6. Metallic bond crosses plasma membrane (aquaporin: fleet compute)
+    - target: plasma-membrane
+      method: health.check
+      from: cytoplasm
+      bond_type: metallic
+      expect: "alive"
+      description: "metallic passes plasma membrane via aquaporin"
+
+    # 7. End-to-end: cytoplasm primal reaches periplasm relay via ionic handoff
+    - target: periplasm
+      method: health.check
+      from: cytoplasm
+      bond_type: ionic
+      expect: "alive"
+      description: "cytoplasm-to-periplasm transit via ionic bond in periplasm compartment"
