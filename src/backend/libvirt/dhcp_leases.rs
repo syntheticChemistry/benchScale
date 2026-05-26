@@ -22,20 +22,25 @@ pub(crate) struct LeaseList {
 }
 
 impl LeaseList {
-    /// Query DHCP leases for `network`. `mac` is the optional MAC filter (null for all).
+    /// Query DHCP leases for `network`.
+    ///
+    /// `mac_filter` restricts results to a single MAC address. Pass `None` to
+    /// retrieve all leases.
     ///
     /// # Errors
     /// Returns the negative libvirt error code when `virNetworkGetDHCPLeases` fails.
     pub(crate) fn fetch(
         network: &Network,
-        mac: *const libc::c_char,
+        mac_filter: Option<&CStr>,
         flags: u32,
     ) -> Result<Self, i32> {
+        let mac_ptr = mac_filter.map_or(ptr::null(), CStr::as_ptr);
         let mut leases: *mut sys::virNetworkDHCPLeasePtr = ptr::null_mut();
         // SAFETY: `network.as_ptr()` is a valid `virNetwork*` for the duration of this call.
+        // `mac_ptr` is either null (all leases) or a valid NUL-terminated C string from CStr.
         // `leases` is a valid out-parameter; libvirt writes the array pointer and returns the count.
         let n = unsafe {
-            sys::virNetworkGetDHCPLeases(network.as_ptr(), mac, ptr::addr_of_mut!(leases), flags)
+            sys::virNetworkGetDHCPLeases(network.as_ptr(), mac_ptr, ptr::addr_of_mut!(leases), flags)
         };
         if n < 0 {
             return Err(n);
@@ -67,7 +72,6 @@ impl LeaseList {
 
         // SAFETY: `self.leases` points to `self.count` valid pointers allocated by libvirt.
         // Each non-null pointer is a valid `virNetworkDHCPLease` owned by `self` until `Drop`.
-        // All `c_char*` fields within each lease are NUL-terminated C strings.
         let lease_slice = unsafe { std::slice::from_raw_parts(self.leases, n) };
 
         let mut out = Vec::with_capacity(n);
@@ -75,20 +79,24 @@ impl LeaseList {
             if lease_ptr.is_null() {
                 continue;
             }
+            // SAFETY: non-null pointer confirmed above; libvirt guarantees struct validity
+            // until `virNetworkDHCPLeaseFree` is called (which happens in our Drop).
             let raw = unsafe { &*lease_ptr };
             if raw.type_ != sys::VIR_IP_ADDR_TYPE_IPV4 as i32 {
                 continue;
             }
-            let ip_raw = c_str_or_empty(raw.ipaddr);
+            // SAFETY: `ipaddr`, `mac`, `hostname` are NUL-terminated C strings from libvirt,
+            // or null (handled by `c_str_or_empty`).
+            let ip_raw = unsafe { c_str_or_empty(raw.ipaddr) };
             let ip_address = ip_raw
                 .split('/')
                 .next()
                 .unwrap_or(&ip_raw)
                 .to_string();
             out.push(Ipv4Lease {
-                mac_address: c_str_or_empty(raw.mac),
+                mac_address: unsafe { c_str_or_empty(raw.mac) },
                 ip_address,
-                hostname: c_str_or_empty(raw.hostname),
+                hostname: unsafe { c_str_or_empty(raw.hostname) },
                 network: network_name.to_string(),
             });
         }
@@ -107,13 +115,14 @@ pub(crate) struct Ipv4Lease {
 
 /// Convert a potentially-null C string pointer to an owned `String`.
 ///
-/// # Safety contract (internal)
-/// Callers must ensure `p` is either null or a valid NUL-terminated C string.
-fn c_str_or_empty(p: *mut libc::c_char) -> String {
+/// # Safety
+/// `p` must be either null or a valid NUL-terminated C string that remains
+/// valid for the duration of this call.
+unsafe fn c_str_or_empty(p: *mut libc::c_char) -> String {
     if p.is_null() {
         return String::new();
     }
-    // SAFETY: pointer comes from libvirt's lease struct, guaranteed NUL-terminated.
+    // SAFETY: caller guarantees `p` is a valid NUL-terminated C string.
     unsafe { CStr::from_ptr(p).to_string_lossy().into_owned() }
 }
 

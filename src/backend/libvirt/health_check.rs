@@ -32,7 +32,7 @@
 //! ```
 
 use super::dhcp_leases::LeaseList;
-use std::ptr;
+
 use std::time::SystemTime;
 use tracing::{debug, info, warn};
 use virt::connect::Connect;
@@ -247,7 +247,7 @@ impl LibvirtHealthCheck {
         match Connect::open(Some(&super::libvirt_uri())) {
             Ok(conn) => match Network::lookup_by_name(&conn, crate::constants::libvirt_defaults::DEFAULT_NETWORK_NAME) {
                 Ok(network) => {
-                    match LeaseList::fetch(&network, ptr::null(), 0) {
+                    match LeaseList::fetch(&network, None, 0) {
                         Err(_) => {
                             issues.push("DHCP lease query failed".to_string());
                             return false;

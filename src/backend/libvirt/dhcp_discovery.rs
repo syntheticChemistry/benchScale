@@ -21,7 +21,7 @@
 
 use super::dhcp_leases::LeaseList;
 use anyhow::{anyhow, Result};
-use std::ptr;
+
 use std::time::Duration;
 use virt::connect::Connect;
 use virt::network::Network;
@@ -175,7 +175,7 @@ pub(crate) fn query_dhcp_leases_with_connect(
     let net = Network::lookup_by_name(conn, network_name)
         .map_err(|e| anyhow!("Failed to lookup network: {}", e))?;
 
-    let list = LeaseList::fetch(&net, ptr::null(), 0).map_err(|_| {
+    let list = LeaseList::fetch(&net, None, 0).map_err(|_| {
         anyhow!(
             "virNetworkGetDHCPLeases failed: {}",
             virt::error::Error::last_error()
