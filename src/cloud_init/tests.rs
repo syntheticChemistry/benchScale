@@ -114,7 +114,7 @@ fn test_derived_user() {
     assert_eq!(cloud_init.users[0].name, "web01");
     assert!(cloud_init.users[0].groups.contains(&"sudo".to_string()));
     assert!(
-        cloud_init.runcmd.len() > 0,
+        !cloud_init.runcmd.is_empty(),
         "Should have password set command"
     );
 }

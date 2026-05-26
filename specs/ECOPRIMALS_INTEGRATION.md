@@ -97,7 +97,7 @@ mesh/peer discovery validation. 21 topologies available covering all scenarios.
 
 `plasmidBin/primals/` now contains all 13 NUCLEUS primal binaries (plus
 skunkBat). `build_ecosystem_genomeBin.sh --harvest` builds musl-static and
-populates via `harvest.sh`. Dynamic-linked release binaries also available
+populates via `plasmidbin harvest` (Rust CLI). Dynamic-linked release binaries also available
 as fallback for local Docker testing.
 
 ## Validation Matrix

@@ -66,15 +66,15 @@ impl crate::backend::Backend for MockBackend {
     ) -> Result<crate::backend::ExecResult> {
         Ok(crate::backend::ExecResult {
             exit_code: 0,
-            stdout: "".to_string(),
-            stderr: "".to_string(),
+            stdout: String::new(),
+            stderr: String::new(),
         })
     }
     async fn copy_to_node(&self, _node_id: &str, _src: &str, _dest: &str) -> Result<()> {
         Ok(())
     }
     async fn get_logs(&self, _node_id: &str) -> Result<String> {
-        Ok("".to_string())
+        Ok(String::new())
     }
     async fn apply_network_conditions(
         &self,

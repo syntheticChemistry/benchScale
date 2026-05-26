@@ -357,7 +357,7 @@ fn test_empty_node_name() {
             conditions: None,
         },
         nodes: vec![NodeConfig {
-            name: "".to_string(),
+            name: String::new(),
             image: "alpine".to_string(),
             env: HashMap::new(),
             ports: vec![],
@@ -387,7 +387,7 @@ fn test_empty_image_name() {
         },
         nodes: vec![NodeConfig {
             name: "node-1".to_string(),
-            image: "".to_string(),
+            image: String::new(),
             env: HashMap::new(),
             ports: vec![],
             volumes: vec![],

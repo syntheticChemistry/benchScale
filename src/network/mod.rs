@@ -284,7 +284,7 @@ mod tests {
     #[test]
     fn test_simulator_creation() {
         let _simulator = NetworkSimulator::new();
-        let _default = NetworkSimulator::default();
+        _ = NetworkSimulator {};
     }
 
     #[tokio::test]

@@ -372,6 +372,8 @@ mod tests {
 
     #[test]
     fn test_should_discover_dhcp() {
+        use std::str::FromStr;
+
         let config = NetworkConfig::default();
         assert!(config.should_discover_dhcp()); // No range specified
 
@@ -381,7 +383,6 @@ mod tests {
         };
         assert!(!config.should_discover_dhcp()); // Disabled
 
-        use std::str::FromStr;
         let config = NetworkConfig {
             dhcp_range: Some(DhcpRange {
                 start: IpAddr::from_str("192.168.122.10").unwrap(),

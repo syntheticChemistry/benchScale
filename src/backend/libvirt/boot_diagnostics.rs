@@ -62,7 +62,7 @@ pub fn capture_serial_console(vm_name: &str) -> Result<String> {
 
     if let Ok(conn) = Connect::open(Some(&libvirt_uri())) {
         if let Ok(domain) = Domain::lookup_by_name(&conn, vm_name) {
-            if let Ok(mut stream) = Stream::new(&conn, VIR_STREAM_NONBLOCK) {
+            if let Ok(stream) = Stream::new(&conn, VIR_STREAM_NONBLOCK) {
                 if domain.open_console(None, &stream, 0).is_ok() {
                     let mut buf = vec![0u8; 8192];
                     let mut out = Vec::new();
@@ -221,10 +221,15 @@ pub fn analyze_vm_state(vm_name: &str) -> Result<String> {
 
 /// Comprehensive boot failure diagnostics
 pub struct BootDiagnosticsReport {
+    /// Name of the VM being diagnosed
     pub vm_name: String,
+    /// Serial console output captured via libvirt stream
     pub serial_console: String,
+    /// Journal logs extracted via SSH
     pub journal_logs: String,
+    /// Boot parameters (kernel cmdline)
     pub boot_parameters: String,
+    /// Current VM state (running, shutoff, etc.)
     pub vm_state: String,
 }
 

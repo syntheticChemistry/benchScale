@@ -158,7 +158,7 @@ mod tests {
     #[test]
     fn test_result_type() {
         let success: Result<i32> = Ok(42);
-        assert_eq!(success.unwrap(), 42);
+        assert_eq!(success.expect("test value"), 42);
 
         let failure: Result<i32> = Err(Error::Other("failed".to_string()));
         assert!(failure.is_err());

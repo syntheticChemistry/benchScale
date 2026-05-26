@@ -190,7 +190,7 @@ impl StorageConfig {
     pub fn vm_images_dir_or_default(&self) -> PathBuf {
         self.vm_images_dir
             .clone()
-            .unwrap_or_else(|| crate::constants::paths::default_system_vm_images_dir())
+            .unwrap_or_else(crate::constants::paths::default_system_vm_images_dir)
     }
 
     /// Resolved VM images directory (explicit config or system default).
@@ -206,7 +206,7 @@ impl StorageConfig {
         self.base_images_dir
             .clone()
             .or_else(|| self.vm_images_dir.clone())
-            .unwrap_or_else(|| crate::constants::paths::default_system_vm_images_dir())
+            .unwrap_or_else(crate::constants::paths::default_system_vm_images_dir)
     }
 
     /// Get intermediate_dir or fallback

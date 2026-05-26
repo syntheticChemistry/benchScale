@@ -374,11 +374,10 @@ impl SenescenceMonitor {
         metrics.ping_ok = ping_ok;
 
         // Check 1b: QGA liveness — available before SSH when virtio loads
-        if let Some(ref qga) = self.qga {
-            if qga.ping().await {
+        if let Some(ref qga) = self.qga
+            && qga.ping().await {
                 debug!("QGA guest-ping OK for {}", metrics.vm_name);
             }
-        }
 
         // Check 2: SSH connectivity
         let ssh_ok = if ping_ok {
@@ -463,7 +462,7 @@ impl SenescenceMonitor {
             tokio::net::TcpStream::connect(addr),
         )
         .await
-        .map_or(false, |r| r.is_ok())
+        .is_ok_and(|r| r.is_ok())
     }
 
     /// Build the common SSH argument list, inserting `-i <identity>` when configured.

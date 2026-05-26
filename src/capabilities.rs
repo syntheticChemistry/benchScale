@@ -471,7 +471,7 @@ mod tests {
     #[tokio::test]
     async fn test_storage_discovery() {
         let caps = StorageCapabilities::discover().await.unwrap();
-        assert!(caps.images_dir.to_string_lossy().len() > 0);
+        assert!(!caps.images_dir.to_string_lossy().is_empty());
         assert!(caps.temp_dir.exists() || caps.temp_dir.to_string_lossy().contains("tmp"));
     }
 }

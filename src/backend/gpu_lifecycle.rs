@@ -138,17 +138,16 @@ impl GpuLifecycle for SysfsGpuLifecycle {
 
         // Unbind from current driver first
         if let Some(ref drv) = device.driver {
-            if drv != "vfio-pci" {
-                let unbind_path = PathBuf::from(format!(
-                    "/sys/bus/pci/drivers/{}/unbind", drv
-                ));
-                if unbind_path.exists() {
-                    Self::write_sysfs(&unbind_path, &device.bdf)?;
-                    debug!("Unbound {} from {}", device.bdf, drv);
-                }
-            } else {
+            if drv == "vfio-pci" {
                 info!("{} already bound to vfio-pci", device.bdf);
                 return Ok(());
+            }
+            let unbind_path = PathBuf::from(format!(
+                "/sys/bus/pci/drivers/{}/unbind", drv
+            ));
+            if unbind_path.exists() {
+                Self::write_sysfs(&unbind_path, &device.bdf)?;
+                debug!("Unbound {} from {}", device.bdf, drv);
             }
         }
 
@@ -283,10 +282,12 @@ impl GpuLifecycle for SysfsGpuLifecycle {
 /// How a PCI device should be attached to the VM.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum AttachMode {
     /// Include `<hostdev>` in domain XML before boot. Required when hot-attach
     /// fails (e.g. BARs not assigned) or when the device must be available
     /// from first boot.
+    #[default]
     Cold,
     /// Hot-attach with `managed='yes'` — libvirt handles driver binding.
     HotManaged,
@@ -329,11 +330,6 @@ fn default_rom_bar() -> bool {
     true
 }
 
-impl Default for AttachMode {
-    fn default() -> Self {
-        Self::Cold
-    }
-}
 
 impl VfioPassthrough {
     /// Generate libvirt `<hostdev>` XML for this passthrough configuration.
@@ -341,10 +337,10 @@ impl VfioPassthrough {
         let (domain, bus, slot, function) = self.device.parse_bdf()?;
         let managed = if self.managed { "yes" } else { "no" };
 
-        let rom_xml = if !self.rom_bar {
-            "\n      <rom bar='off'/>"
-        } else {
+        let rom_xml = if self.rom_bar {
             ""
+        } else {
+            "\n      <rom bar='off'/>"
         };
 
         Some(format!(

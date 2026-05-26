@@ -166,7 +166,7 @@ fn test_evolution_22_ip_rediscovery_integration() {
 
 #[cfg(test)]
 mod evolution_validation {
-    use benchscale::backend::senescence::{SenescenceMetrics, SenescenceMonitor};
+    
     #[cfg(feature = "libvirt")]
     use benchscale::backend::{HealthCheck, HealthStatus};
 
