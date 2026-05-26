@@ -233,7 +233,7 @@ impl Lab {
             .ok_or_else(|| Error::Lab(format!("Node not found: {}", node_name)))?;
 
         self.backend
-            .copy_to_node(&node_info.container_id, binary_path, "/usr/local/bin/")
+            .copy_to_node(&node_info.container_id, binary_path, "/opt/biomeos/bin/")
             .await?;
 
         Ok(())
