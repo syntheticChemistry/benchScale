@@ -62,7 +62,7 @@ pub mod deploy {
     }
 
     /// Compile-time default for [`deploy_dir`].
-    pub const DEFAULT_DEPLOY_DIR: &str = "/opt/biomeos/bin";
+    pub const DEFAULT_DEPLOY_DIR: &str = "/opt/plasmidBin";
 }
 
 /// Default libvirt network name used across backends.

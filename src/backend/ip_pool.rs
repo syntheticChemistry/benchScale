@@ -153,12 +153,14 @@ impl IpPool {
     /// let pool = IpPool::default_libvirt();
     /// ```
     pub fn default_libvirt() -> Self {
+        // Infallible: these compile-time constants are always valid.
+        // If this ever fails, it's a code-change bug caught by debug builds.
         Self::new(
             "192.168.122.0/24".to_string(),
             Ipv4Addr::new(192, 168, 122, 10),
             Ipv4Addr::new(192, 168, 122, 250),
         )
-        .expect("Default libvirt pool should always be valid")
+        .unwrap_or_else(|e| unreachable!("default_libvirt constants invalid: {e}"))
     }
 
     /// Allocate the next available IP address

@@ -11,123 +11,25 @@
 //!
 //! Solution: Continuous senescence monitoring that tracks VM health, SSH connectivity,
 //! cloud-init progress, and provides real-time status without blocking.
+//!
+//! ## Module structure
+//!
+//! - `types` — domain types (`HealthStatus`, `CloudInitStatus`, `SenescenceMetrics`)
+//! - `mod` — `SenescenceMonitor` implementation (checks, wait helpers, monitoring loop)
+
+mod types;
+
+pub use types::{CloudInitProgress, CloudInitStatus, HealthStatus, SenescenceMetrics};
 
 use crate::{Error, Result};
-use serde::{Deserialize, Serialize};
-use std::fmt;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 use tokio::time::interval;
 use tracing::{debug, info, warn};
 
-// Evolution #22: DHCP lease re-discovery
 #[cfg(feature = "libvirt")]
 use crate::backend::libvirt::dhcp_discovery::{DiscoveryConfig, discover_dhcp_ip};
-
-/// VM health status
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum HealthStatus {
-    /// VM is healthy and responding
-    Healthy,
-    /// VM is running but not responding to checks
-    Degraded,
-    /// VM appears to be hung or unresponsive
-    Stalled,
-    /// VM has failed or crashed
-    Failed,
-    /// Health status unknown (initial state)
-    Unknown,
-}
-
-/// Cloud-init status values from `cloud-init status --format=json`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CloudInitStatus {
-    /// Cloud-init is still running modules.
-    Running,
-    /// All modules finished successfully.
-    Done,
-    /// Cloud-init reported an error state.
-    Error,
-    /// Cloud-init was disabled on this instance.
-    Disabled,
-    /// Unrecognized status string from the guest.
-    Unknown(String),
-}
-
-impl CloudInitStatus {
-    fn from_status_str(s: &str) -> Self {
-        match s {
-            "running" => Self::Running,
-            "done" => Self::Done,
-            "error" => Self::Error,
-            "disabled" => Self::Disabled,
-            other => Self::Unknown(other.to_string()),
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for CloudInitStatus {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let s = String::deserialize(deserializer)?;
-        Ok(Self::from_status_str(&s))
-    }
-}
-
-impl fmt::Display for CloudInitStatus {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Running => write!(f, "running"),
-            Self::Done => write!(f, "done"),
-            Self::Error => write!(f, "error"),
-            Self::Disabled => write!(f, "disabled"),
-            Self::Unknown(s) => write!(f, "{s}"),
-        }
-    }
-}
-
-/// Cloud-init progress information
-#[derive(Debug, Clone)]
-pub struct CloudInitProgress {
-    /// Current status (running, done, error)
-    pub status: CloudInitStatus,
-    /// Detailed stage information
-    pub detail: Option<String>,
-    /// Any errors encountered
-    pub errors: Vec<String>,
-    /// Last successful check timestamp (set each poll; reserved for diagnostics)
-    _last_check: Instant,
-}
-
-/// Comprehensive VM senescence metrics
-#[derive(Debug, Clone)]
-pub struct SenescenceMetrics {
-    /// VM IP address being monitored
-    pub ip_address: String,
-    /// VM name
-    pub vm_name: String,
-    /// MAC address (for DHCP lease tracking, Evolution #22)
-    pub mac_address: Option<String>,
-    /// Overall health status
-    pub health: HealthStatus,
-    /// Whether VM responds to ping
-    pub ping_ok: bool,
-    /// Whether SSH is accessible
-    pub ssh_ok: bool,
-    /// Cloud-init progress (if available)
-    pub cloud_init: Option<CloudInitProgress>,
-    /// Time since monitoring started
-    pub uptime: Duration,
-    /// Time since last successful health check
-    pub time_since_healthy: Duration,
-    /// Number of consecutive failed checks
-    pub consecutive_failures: u32,
-    /// Number of health checks performed (for periodic tasks)
-    pub check_count: u32,
-}
 
 /// VM Senescence Monitor
 ///
@@ -154,57 +56,18 @@ pub struct SenescenceMonitor {
     start_time: Instant,
     check_interval: Duration,
     stall_threshold: Duration,
-    /// Maximum consecutive failures before declaring VM failed
-    /// Default: 10 (100s at 10s intervals)
-    /// Cloud-init: 180 (30 min tolerance)
     max_failures: u32,
-    /// Interval for IP re-discovery (in number of checks).
-    /// Default: 10 checks = 100 seconds.
-    /// Only read when the `libvirt` feature is enabled.
     #[cfg_attr(not(feature = "libvirt"), allow(dead_code))]
     ip_rediscovery_interval: u32,
-    /// Explicit SSH private key path for identity-based auth.
-    /// Required when the builder runs under sudo (root's ~/.ssh differs from the
-    /// invoking user's key store).
     ssh_identity: Option<std::path::PathBuf>,
-    /// Optional QGA client for guest-agent health checks.
-    /// When set, the monitor uses `guest-ping` for liveness instead of
-    /// (or in addition to) SSH probes.
     qga: Option<crate::backend::qga::QgaClient>,
 }
 
 impl SenescenceMonitor {
     /// Create a new senescence monitor with configuration
     ///
-    /// **Phase 2B: Configuration-Driven**
-    ///
     /// This is the recommended constructor that accepts a `MonitoringConfig`
     /// for full control over monitoring behavior.
-    ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// use benchscale::config::MonitoringConfig;
-    /// use benchscale::backend::senescence::SenescenceMonitor;
-    ///
-    /// // Use default config
-    /// let config = MonitoringConfig::default();
-    /// let monitor = SenescenceMonitor::from_config(
-    ///     "my-vm".to_string(),
-    ///     "192.168.122.10".to_string(),
-    ///     Some("52:54:00:12:34:56".to_string()),
-    ///     &config,
-    /// );
-    ///
-    /// // Or use workload-specific preset
-    /// let config = MonitoringConfig::for_cloud_init_packages();
-    /// let monitor = SenescenceMonitor::from_config(
-    ///     "my-vm".to_string(),
-    ///     "192.168.122.10".to_string(),
-    ///     Some("52:54:00:12:34:56".to_string()),
-    ///     &config,
-    /// );
-    /// ```
     pub fn from_config(
         vm_name: String,
         ip_address: String,
@@ -239,26 +102,12 @@ impl SenescenceMonitor {
 
     /// Create a new senescence monitor for a VM (legacy)
     ///
-    /// **Default settings:**
-    /// - `check_interval`: 10 seconds
-    /// - `stall_threshold`: 120 seconds (2 minutes without progress)
-    /// - `max_failures`: 10 (suitable for quick VMs, 100s tolerance)
-    /// - `ip_rediscovery_interval`: 10 checks (100 seconds)
-    ///
     /// **Deprecated:** Use `from_config()` with `MonitoringConfig` for better control.
-    ///
-    /// For cloud-init with package installations, use `with_max_failures(180)` for 30-minute tolerance.
-    ///
-    /// **Evolution #22:** If `mac_address` is provided, the monitor will periodically
-    /// re-discover the VM's IP via DHCP to handle lease renewals during long builds.
     pub fn new(vm_name: String, ip_address: String) -> Self {
         Self::with_mac_address(vm_name, ip_address, None)
     }
 
     /// Create a senescence monitor with MAC address for DHCP lease tracking
-    ///
-    /// **Evolution #22:** This enables automatic IP re-discovery during long builds.
-    /// The monitor will check for DHCP lease changes every 10 health checks (100s).
     pub fn with_mac_address(
         vm_name: String,
         ip_address: String,
@@ -282,42 +131,27 @@ impl SenescenceMonitor {
             metrics: Arc::new(RwLock::new(metrics)),
             start_time: Instant::now(),
             check_interval: Duration::from_secs(10),
-            stall_threshold: Duration::from_mins(2), // 2 minutes without progress
-            max_failures: 10,                          // Default: quick VMs (100s tolerance)
-            ip_rediscovery_interval: 10,               // Re-discover IP every 10 checks = 100s
+            stall_threshold: Duration::from_mins(2),
+            max_failures: 10,
+            ip_rediscovery_interval: 10,
             ssh_identity: None,
             qga: None,
         }
     }
 
     /// Configure maximum consecutive failures before declaring VM failed
-    ///
-    /// **Evolution #21: Configurable failure threshold**
-    ///
-    /// Examples:
-    /// - Quick VMs: `with_max_failures(10)` → 100s tolerance (default)
-    /// - Desktop builds: `with_max_failures(60)` → 10min tolerance  
-    /// - Cloud-init with packages: `with_max_failures(180)` → 30min tolerance
     pub fn with_max_failures(mut self, max_failures: u32) -> Self {
         self.max_failures = max_failures;
         self
     }
 
     /// Set an explicit SSH private key for identity-based auth.
-    ///
-    /// When the builder runs under `sudo`, the `ssh` CLI looks in `/root/.ssh/`
-    /// instead of the invoking user's key store. This passes `-i <path>` to
-    /// every SSH probe so the correct key is used regardless of effective UID.
     pub fn with_ssh_identity(mut self, path: std::path::PathBuf) -> Self {
         self.ssh_identity = Some(path);
         self
     }
 
     /// Enable QGA (QEMU Guest Agent) health checks via virtio-serial.
-    ///
-    /// When set, `guest-ping` is used for liveness in addition to SSH.
-    /// QGA works the instant the guest kernel loads the virtio module —
-    /// well before SSH is available — giving earlier health visibility.
     pub fn with_qga(mut self, client: crate::backend::qga::QgaClient) -> Self {
         self.qga = Some(client);
         self
@@ -359,10 +193,9 @@ impl SenescenceMonitor {
         })
     }
 
-    /// Perform a single health check
+    // ── Health check implementation ─────────────────────────────────────
+
     async fn perform_health_check(&self, username: &str) -> Result<()> {
-        // Evolution #22: Periodic IP re-discovery for DHCP lease tracking
-        // Do this BEFORE acquiring the write lock for health checks
         {
             let mut metrics = self.metrics.write().await;
             metrics.check_count += 1;
@@ -371,65 +204,57 @@ impl SenescenceMonitor {
             if metrics.check_count % self.ip_rediscovery_interval == 0 {
                 if let Some(ref mac_address) = metrics.mac_address {
                     debug!(
-                        "Evolution #22: Re-discovering IP for MAC {} (check #{})",
+                        "IP re-discovery for MAC {} (check #{})",
                         mac_address, metrics.check_count
                     );
 
-                    // Quick discovery with short timeout since VM is already running
                     let config = DiscoveryConfig {
                         max_wait_secs: 10,
                         retry_interval_secs: 2,
                         network_name: crate::constants::libvirt_defaults::DEFAULT_NETWORK_NAME,
                     };
 
-                    // Drop the write lock before async operation
                     let old_ip = metrics.ip_address.clone();
                     let mac_for_discovery = mac_address.clone();
                     drop(metrics);
 
-                    // Re-discover IP
                     match discover_dhcp_ip(&mac_for_discovery, config).await {
                         Ok(new_ip) => {
                             let mut metrics = self.metrics.write().await;
                             if new_ip != old_ip {
                                 info!(
-                                    "🔄 Evolution #22: IP changed for VM {} (MAC {}): {} → {}",
+                                    "IP changed for VM {} (MAC {}): {} -> {}",
                                     metrics.vm_name, mac_for_discovery, old_ip, new_ip
                                 );
                                 metrics.ip_address = new_ip;
-                                // Reset failure counter since we have a fresh IP
                                 metrics.consecutive_failures = 0;
                             } else {
-                                debug!("Evolution #22: IP unchanged: {}", new_ip);
+                                debug!("IP unchanged: {}", new_ip);
                             }
                         }
                         Err(e) => {
                             warn!(
-                                "Evolution #22: Failed to re-discover IP for MAC {}: {}. Continuing with cached IP {}",
+                                "Failed to re-discover IP for MAC {}: {}. Continuing with cached IP {}",
                                 mac_for_discovery, e, old_ip
                             );
-                            // Continue with old IP, don't fail the health check
                         }
                     }
                 }
             }
         }
 
-        // Now perform health checks with a fresh write lock
         let mut metrics = self.metrics.write().await;
         metrics.uptime = self.start_time.elapsed();
 
-        // Check 1: Ping
         let ping_ok = self.check_ping(&metrics.ip_address).await;
         metrics.ping_ok = ping_ok;
 
-        // Check 1b: QGA liveness — available before SSH when virtio loads
-        if let Some(ref qga) = self.qga
-            && qga.ping().await {
+        if let Some(ref qga) = self.qga {
+            if qga.ping().await {
                 debug!("QGA guest-ping OK for {}", metrics.vm_name);
             }
+        }
 
-        // Check 2: SSH connectivity
         let ssh_ok = if ping_ok {
             self.check_ssh(&metrics.ip_address, username).await
         } else {
@@ -437,13 +262,42 @@ impl SenescenceMonitor {
         };
         metrics.ssh_ok = ssh_ok;
 
-        // Check 3: Cloud-init status (if SSH available)
-        if ssh_ok && let Ok(progress) = self.check_cloud_init(&metrics.ip_address, username).await {
-            metrics.cloud_init = Some(progress);
+        if ssh_ok {
+            if let Ok(progress) = self.check_cloud_init(&metrics.ip_address, username).await {
+                metrics.cloud_init = Some(progress);
+            }
         }
 
-        // Update health status
-        let new_health = if ssh_ok && ping_ok {
+        let new_health = Self::derive_health(
+            &mut metrics,
+            ping_ok,
+            ssh_ok,
+            self.check_interval,
+            self.stall_threshold,
+            self.max_failures,
+        );
+
+        if new_health != metrics.health {
+            info!(
+                "VM {} health changed: {:?} -> {:?}",
+                metrics.vm_name, metrics.health, new_health
+            );
+            metrics.health = new_health;
+        }
+
+        Ok(())
+    }
+
+    /// Derive health status from current metrics and check results.
+    fn derive_health(
+        metrics: &mut SenescenceMetrics,
+        ping_ok: bool,
+        ssh_ok: bool,
+        check_interval: Duration,
+        stall_threshold: Duration,
+        max_failures: u32,
+    ) -> HealthStatus {
+        if ssh_ok && ping_ok {
             if let Some(ref cloud_init) = metrics.cloud_init {
                 if cloud_init.status == CloudInitStatus::Done {
                     metrics.consecutive_failures = 0;
@@ -453,20 +307,17 @@ impl SenescenceMonitor {
                     metrics.consecutive_failures += 1;
                     HealthStatus::Failed
                 } else {
-                    // Cloud-init running, check for stalls
-                    metrics.time_since_healthy += self.check_interval;
-                    if metrics.time_since_healthy > self.stall_threshold {
+                    metrics.time_since_healthy += check_interval;
+                    if metrics.time_since_healthy > stall_threshold {
                         HealthStatus::Stalled
                     } else {
                         HealthStatus::Healthy
                     }
                 }
             } else {
-                // SSH ok but no cloud-init status yet
                 HealthStatus::Degraded
             }
         } else if ping_ok {
-            // Ping ok but SSH not ready
             metrics.consecutive_failures += 1;
             if metrics.consecutive_failures > 5 {
                 HealthStatus::Degraded
@@ -474,33 +325,18 @@ impl SenescenceMonitor {
                 HealthStatus::Unknown
             }
         } else {
-            // Not even pinging
             metrics.consecutive_failures += 1;
-            // Evolution #21: Use configurable threshold instead of hardcoded 10
-            if metrics.consecutive_failures > self.max_failures {
+            if metrics.consecutive_failures > max_failures {
                 HealthStatus::Failed
             } else {
                 HealthStatus::Degraded
             }
-        };
-
-        if new_health != metrics.health {
-            info!(
-                "VM {} health changed: {:?} → {:?}",
-                metrics.vm_name, metrics.health, new_health
-            );
-            metrics.health = new_health;
         }
-
-        Ok(())
     }
 
+    // ── Probe methods ───────────────────────────────────────────────────
+
     /// Check VM reachability via TCP connect to SSH port.
-    ///
-    /// Replaced the `ping` shell-out with a pure-Rust TCP probe. This is
-    /// more useful than ICMP ping because it confirms the VM's network
-    /// stack and SSH listener are both up, and doesn't require raw socket
-    /// privileges that ICMP ping needs under some environments.
     async fn check_ping(&self, ip: &str) -> bool {
         use std::net::SocketAddr;
         let addr: SocketAddr = match format!("{ip}:22").parse() {
@@ -515,7 +351,6 @@ impl SenescenceMonitor {
         .is_ok_and(|r| r.is_ok())
     }
 
-    /// Build the common SSH argument list, inserting `-i <identity>` when configured.
     fn ssh_args(&self, ip: &str, username: &str) -> Vec<String> {
         let mut args = vec![
             "-o".to_string(),
@@ -535,7 +370,6 @@ impl SenescenceMonitor {
         args
     }
 
-    /// Check SSH connectivity
     async fn check_ssh(&self, ip: &str, username: &str) -> bool {
         let mut args = self.ssh_args(ip, username);
         args.push("echo ok".to_string());
@@ -551,7 +385,6 @@ impl SenescenceMonitor {
         }
     }
 
-    /// Check cloud-init status
     async fn check_cloud_init(&self, ip: &str, username: &str) -> Result<CloudInitProgress> {
         let mut args = self.ssh_args(ip, username);
         args.push("cloud-init status --format=json".to_string());
@@ -588,6 +421,8 @@ impl SenescenceMonitor {
             _last_check: Instant::now(),
         })
     }
+
+    // ── Wait helpers ────────────────────────────────────────────────────
 
     /// Wait for VM to become healthy (with timeout)
     pub async fn wait_for_healthy(&self, timeout: Duration) -> Result<()> {
@@ -691,7 +526,7 @@ impl SenescenceMonitor {
                     "Cloud-init timeout on VM {} after {:?}, but VM is still running",
                     metrics.vm_name, timeout
                 );
-                return Ok(()); // Don't fail, just warn
+                return Ok(());
             }
         }
     }
@@ -734,7 +569,6 @@ mod tests {
     async fn test_health_status_transitions() {
         let monitor = SenescenceMonitor::new("test-vm".to_string(), "192.168.1.100".to_string());
 
-        // Initially unknown
         assert!(monitor.is_healthy().await);
         assert!(!monitor.is_stalled().await);
     }
@@ -769,7 +603,6 @@ mod tests {
     async fn test_with_max_failures_overrides_default() {
         let monitor = SenescenceMonitor::new("v".to_string(), "192.168.1.1".to_string())
             .with_max_failures(42);
-        // Field is private; behavior is exercised indirectly by documenting the chain compiles.
         let m = monitor.metrics().await;
         assert_eq!(m.consecutive_failures, 0);
     }

@@ -131,7 +131,7 @@ async fn create_lab(lab_name: &str, topology_file: &str, backend_name: &str) -> 
                 anyhow::bail!("Libvirt is not available. Ensure libvirtd is running.");
             }
             let lab = Lab::create(lab_name, topology.clone(), backend).await?;
-            register_and_report(lab_name, &lab, &config, topology, "libvirt").await
+            register_and_report(lab_name, &lab, &config, topology, benchscale::BackendType::Libvirt).await
         }
         #[cfg(not(feature = "libvirt"))]
         "libvirt" | "kvm" => {
@@ -143,7 +143,7 @@ async fn create_lab(lab_name: &str, topology_file: &str, backend_name: &str) -> 
                 anyhow::bail!("Docker is not available. Ensure Docker is installed and running.");
             }
             let lab = Lab::create(lab_name, topology.clone(), backend).await?;
-            register_and_report(lab_name, &lab, &config, topology, "docker").await
+            register_and_report(lab_name, &lab, &config, topology, benchscale::BackendType::Docker).await
         }
         other => anyhow::bail!("Unknown backend '{other}'. Available: docker, libvirt"),
     }
@@ -154,7 +154,7 @@ async fn register_and_report(
     lab: &Lab,
     config: &Config,
     topology: Topology,
-    backend_type: &str,
+    backend_type: benchscale::BackendType,
 ) -> anyhow::Result<()> {
     let registry = LabRegistry::from_config(config);
     registry
@@ -162,7 +162,7 @@ async fn register_and_report(
             lab.id().to_string(),
             lab_name.to_string(),
             topology,
-            backend_type.to_string(),
+            backend_type,
         )
         .await?;
 
@@ -201,9 +201,9 @@ async fn destroy_lab(lab_name: &str) -> anyhow::Result<()> {
         Ok(())
     }
 
-    match metadata.backend_type.as_str() {
+    match metadata.backend_type {
         #[cfg(feature = "libvirt")]
-        "libvirt" | "kvm" => {
+        benchscale::BackendType::Libvirt => {
             let backend = LibvirtBackend::new()?;
             teardown_nodes(&backend, &metadata).await?;
         }

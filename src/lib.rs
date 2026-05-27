@@ -106,7 +106,7 @@ pub use backend::gpu_lifecycle::{
 pub use backend::ssh::SshClient;
 pub use error::{Error, Result};
 pub use image_builder::{BuildResult, BuildStep, ImageBuilder};
-pub use lab::{Lab, LabHandle, LabMetadata, LabRegistry, LabStatus};
+pub use lab::{BackendType, Lab, LabHandle, LabMetadata, LabRegistry, LabStatus};
 pub use network::{NetworkConditions, NetworkSimulator};
 pub use scenarios::{TestResult, TestRunner, TestScenario};
 pub use topology::{NodeConfig, Topology, TopologyConfig};

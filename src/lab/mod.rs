@@ -2,7 +2,7 @@
 //! Lab management and high-level API
 
 pub mod registry;
-pub use registry::{LabMetadata, LabRegistry};
+pub use registry::{BackendType, LabMetadata, LabRegistry};
 
 use std::collections::HashMap;
 use std::sync::Arc;

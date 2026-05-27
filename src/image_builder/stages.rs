@@ -559,14 +559,18 @@ impl ImageBuilder {
         };
 
         info!(vnc = %vnc_display, "USER VERIFICATION REQUIRED: {message}");
-        eprintln!("\n  VNC: vncviewer {vnc_display}\n  Press ENTER when ready to continue...");
 
-        let mut input = String::new();
-        std::io::stdin()
-            .read_line(&mut input)
-            .map_err(|e| Error::Backend(format!("Failed to read input: {}", e)))?;
+        if std::io::IsTerminal::is_terminal(&std::io::stdin()) {
+            eprintln!("\n  VNC: vncviewer {vnc_display}\n  Press ENTER when ready to continue...");
+            let mut input = String::new();
+            std::io::stdin()
+                .read_line(&mut input)
+                .map_err(|e| Error::Backend(format!("Failed to read input: {e}")))?;
+            info!("User verification complete, continuing build...");
+        } else {
+            warn!("Non-interactive mode: skipping VNC verification pause (connect to {vnc_display} manually)");
+        }
 
-        info!("User verification complete, continuing build...");
         Ok(())
     }
 

@@ -10,6 +10,36 @@ use tracing::{debug, info, warn};
 
 use crate::{Error, LabStatus, Result, topology::Topology};
 
+/// Backend type for lab deployments.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BackendType {
+    /// KVM/QEMU via libvirt.
+    Libvirt,
+    /// Docker containers.
+    Docker,
+}
+
+impl std::fmt::Display for BackendType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Libvirt => write!(f, "libvirt"),
+            Self::Docker => write!(f, "docker"),
+        }
+    }
+}
+
+impl std::str::FromStr for BackendType {
+    type Err = String;
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "libvirt" | "kvm" => Ok(Self::Libvirt),
+            "docker" => Ok(Self::Docker),
+            other => Err(format!("unknown backend type: {other}")),
+        }
+    }
+}
+
 /// Lab metadata stored in registry
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LabMetadata {
@@ -22,7 +52,7 @@ pub struct LabMetadata {
     /// Lab topology
     pub topology: Topology,
     /// Backend type used
-    pub backend_type: String,
+    pub backend_type: BackendType,
     /// Node IDs in this lab
     pub node_ids: Vec<String>,
     /// Network ID
@@ -72,7 +102,7 @@ impl LabRegistry {
         id: String,
         name: String,
         topology: Topology,
-        backend_type: String,
+        backend_type: BackendType,
     ) -> Result<LabMetadata> {
         self.ensure_dir().await?;
 
@@ -252,7 +282,7 @@ mod tests {
                 "test-id".to_string(),
                 "test-lab".to_string(),
                 topology,
-                "docker".to_string(),
+                BackendType::Docker,
             )
             .await
             .unwrap();
@@ -274,7 +304,7 @@ mod tests {
                 "lab1".to_string(),
                 "Lab 1".to_string(),
                 topology.clone(),
-                "docker".to_string(),
+                BackendType::Docker,
             )
             .await
             .unwrap();
@@ -284,7 +314,7 @@ mod tests {
                 "lab2".to_string(),
                 "Lab 2".to_string(),
                 topology,
-                "docker".to_string(),
+                BackendType::Docker,
             )
             .await
             .unwrap();
@@ -303,7 +333,7 @@ mod tests {
                 "test-id".to_string(),
                 "test-lab".to_string(),
                 topology,
-                "docker".to_string(),
+                BackendType::Docker,
             )
             .await
             .unwrap();
@@ -323,7 +353,7 @@ mod tests {
                 "test-id".to_string(),
                 "test-lab".to_string(),
                 topology,
-                "docker".to_string(),
+                BackendType::Docker,
             )
             .await
             .unwrap();
@@ -358,7 +388,7 @@ mod tests {
                 "test-id".to_string(),
                 "unique-lab-name".to_string(),
                 topology,
-                "docker".to_string(),
+                BackendType::Docker,
             )
             .await
             .unwrap();
@@ -386,7 +416,7 @@ mod tests {
                 "lab1".to_string(),
                 "Lab 1".to_string(),
                 topology.clone(),
-                "docker".to_string(),
+                BackendType::Docker,
             )
             .await
             .unwrap();
@@ -398,7 +428,7 @@ mod tests {
                 "lab2".to_string(),
                 "Lab 2".to_string(),
                 topology,
-                "docker".to_string(),
+                BackendType::Docker,
             )
             .await
             .unwrap();
@@ -417,7 +447,7 @@ mod tests {
                 "failed-lab".to_string(),
                 "Failed Lab".to_string(),
                 topology.clone(),
-                "docker".to_string(),
+                BackendType::Docker,
             )
             .await
             .unwrap();
@@ -434,7 +464,7 @@ mod tests {
                 "running-lab".to_string(),
                 "Running Lab".to_string(),
                 topology,
-                "docker".to_string(),
+                BackendType::Docker,
             )
             .await
             .unwrap();
@@ -459,7 +489,7 @@ mod tests {
                 "destroyed-lab".to_string(),
                 "Destroyed Lab".to_string(),
                 topology,
-                "docker".to_string(),
+                BackendType::Docker,
             )
             .await
             .unwrap();
@@ -484,7 +514,7 @@ mod tests {
                 "lab1".to_string(),
                 "Lab 1".to_string(),
                 topology.clone(),
-                "docker".to_string(),
+                BackendType::Docker,
             )
             .await
             .unwrap();
@@ -494,7 +524,7 @@ mod tests {
                 "lab2".to_string(),
                 "Lab 2".to_string(),
                 topology,
-                "docker".to_string(),
+                BackendType::Docker,
             )
             .await
             .unwrap();
@@ -514,7 +544,7 @@ mod tests {
                 "lab1".to_string(),
                 "First Lab".to_string(),
                 topology.clone(),
-                "docker".to_string(),
+                BackendType::Docker,
             )
             .await
             .unwrap();
@@ -526,7 +556,7 @@ mod tests {
                 "lab2".to_string(),
                 "Second Lab".to_string(),
                 topology.clone(),
-                "docker".to_string(),
+                BackendType::Docker,
             )
             .await
             .unwrap();
@@ -538,7 +568,7 @@ mod tests {
                 "lab3".to_string(),
                 "Third Lab".to_string(),
                 topology,
-                "docker".to_string(),
+                BackendType::Docker,
             )
             .await
             .unwrap();
@@ -577,7 +607,7 @@ mod tests {
                 "test-id".to_string(),
                 "test-lab".to_string(),
                 topology,
-                "libvirt".to_string(),
+                BackendType::Libvirt,
             )
             .await
             .unwrap();
@@ -585,7 +615,7 @@ mod tests {
         let loaded = registry.load_lab("test-id").await.unwrap();
         assert_eq!(loaded.id, "test-id");
         assert_eq!(loaded.name, "test-lab");
-        assert_eq!(loaded.backend_type, "libvirt");
+        assert_eq!(loaded.backend_type, BackendType::Libvirt);
         assert_eq!(loaded.status, LabStatus::Creating);
         assert!(loaded.node_ids.is_empty());
         assert!(loaded.network_id.is_none());
@@ -603,7 +633,7 @@ mod tests {
                 "test-id".to_string(),
                 "test-lab".to_string(),
                 topology,
-                "docker".to_string(),
+                BackendType::Docker,
             )
             .await
             .unwrap();
@@ -668,7 +698,7 @@ mod tests {
                 "complex-id".to_string(),
                 "complex-lab".to_string(),
                 topology,
-                "docker".to_string(),
+                BackendType::Docker,
             )
             .await
             .unwrap();

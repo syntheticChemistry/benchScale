@@ -153,7 +153,7 @@ async fn lab_create(params: Value, state: &ServerState) -> MethodResult {
 
     state
         .registry
-        .register_lab(lab_id.clone(), name.clone(), topology, "docker".into())
+        .register_lab(lab_id.clone(), name.clone(), topology, crate::BackendType::Docker)
         .await
         .map_err(|e| MethodError::Internal(format!("registry: {e}")))?;
 
@@ -287,7 +287,7 @@ fn lab_metadata_to_json(m: &LabMetadata) -> Value {
         "id": m.id,
         "name": m.name,
         "status": format!("{:?}", m.status),
-        "backend": m.backend_type,
+        "backend": m.backend_type.to_string(),
         "nodes": m.node_ids.len(),
         "topology": m.topology.metadata.name,
         "created_at": m.created_at.to_rfc3339(),
@@ -402,7 +402,7 @@ mod tests {
                 },
                 nodes: vec![],
             },
-            backend_type: "docker".into(),
+            backend_type: crate::BackendType::Docker,
             node_ids: vec!["n1".into(), "n2".into()],
             network_id: None,
             created_at: chrono::Utc::now(),
