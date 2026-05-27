@@ -232,7 +232,7 @@ impl SenescenceMonitor {
             metrics: Arc::new(RwLock::new(metrics)),
             start_time: Instant::now(),
             check_interval: Duration::from_secs(10),
-            stall_threshold: Duration::from_secs(120), // 2 minutes without progress
+            stall_threshold: Duration::from_mins(2), // 2 minutes without progress
             max_failures: 10,                          // Default: quick VMs (100s tolerance)
             ip_rediscovery_interval: 10,               // Re-discover IP every 10 checks = 100s
             ssh_identity: None,

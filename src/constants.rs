@@ -185,16 +185,16 @@ pub mod timeouts {
     use std::time::Duration;
 
     /// Default timeout for VM boot
-    pub const VM_BOOT: Duration = Duration::from_secs(120);
+    pub const VM_BOOT: Duration = Duration::from_mins(2);
 
     /// Default timeout for cloud-init completion
-    pub const CLOUD_INIT: Duration = Duration::from_secs(600);
+    pub const CLOUD_INIT: Duration = Duration::from_mins(10);
 
     /// Default timeout for SSH connection
     pub const SSH_CONNECT: Duration = Duration::from_secs(30);
 
     /// Default timeout for command execution
-    pub const COMMAND_EXEC: Duration = Duration::from_secs(300);
+    pub const COMMAND_EXEC: Duration = Duration::from_mins(5);
 }
 
 #[cfg(test)]
