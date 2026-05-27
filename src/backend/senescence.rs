@@ -14,6 +14,7 @@
 
 use crate::{Error, Result};
 use serde::{Deserialize, Serialize};
+use std::fmt;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
@@ -39,11 +40,60 @@ pub enum HealthStatus {
     Unknown,
 }
 
+/// Cloud-init status values from `cloud-init status --format=json`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CloudInitStatus {
+    /// Cloud-init is still running modules.
+    Running,
+    /// All modules finished successfully.
+    Done,
+    /// Cloud-init reported an error state.
+    Error,
+    /// Cloud-init was disabled on this instance.
+    Disabled,
+    /// Unrecognized status string from the guest.
+    Unknown(String),
+}
+
+impl CloudInitStatus {
+    fn from_status_str(s: &str) -> Self {
+        match s {
+            "running" => Self::Running,
+            "done" => Self::Done,
+            "error" => Self::Error,
+            "disabled" => Self::Disabled,
+            other => Self::Unknown(other.to_string()),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for CloudInitStatus {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        Ok(Self::from_status_str(&s))
+    }
+}
+
+impl fmt::Display for CloudInitStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Running => write!(f, "running"),
+            Self::Done => write!(f, "done"),
+            Self::Error => write!(f, "error"),
+            Self::Disabled => write!(f, "disabled"),
+            Self::Unknown(s) => write!(f, "{s}"),
+        }
+    }
+}
+
 /// Cloud-init progress information
 #[derive(Debug, Clone)]
 pub struct CloudInitProgress {
     /// Current status (running, done, error)
-    pub status: String,
+    pub status: CloudInitStatus,
     /// Detailed stage information
     pub detail: Option<String>,
     /// Any errors encountered
@@ -395,7 +445,7 @@ impl SenescenceMonitor {
         // Update health status
         let new_health = if ssh_ok && ping_ok {
             if let Some(ref cloud_init) = metrics.cloud_init {
-                if cloud_init.status == "done" {
+                if cloud_init.status == CloudInitStatus::Done {
                     metrics.consecutive_failures = 0;
                     metrics.time_since_healthy = Duration::ZERO;
                     HealthStatus::Healthy
@@ -523,8 +573,9 @@ impl SenescenceMonitor {
             Error::Monitoring(format!("Failed to parse cloud-init status JSON: {e}"))
         })?;
 
+        let status_str = status["status"].as_str().unwrap_or("unknown");
         Ok(CloudInitProgress {
-            status: status["status"].as_str().unwrap_or("unknown").to_string(),
+            status: CloudInitStatus::from_status_str(status_str),
             detail: status["detail"].as_str().map(String::from),
             errors: status["errors"]
                 .as_array()
@@ -602,7 +653,7 @@ impl SenescenceMonitor {
             progress_callback(&metrics);
 
             if let Some(ref cloud_init) = metrics.cloud_init {
-                if cloud_init.status == "done" {
+                if cloud_init.status == CloudInitStatus::Done {
                     info!(
                         "Cloud-init completed on VM {} after {:?}",
                         metrics.vm_name,
@@ -744,7 +795,7 @@ mod tests {
         {
             let mut g = monitor.metrics.write().await;
             g.cloud_init = Some(CloudInitProgress {
-                status: "done".to_string(),
+                status: CloudInitStatus::Done,
                 detail: None,
                 errors: vec![],
                 _last_check: std::time::Instant::now(),
@@ -762,7 +813,7 @@ mod tests {
         {
             let mut g = monitor.metrics.write().await;
             g.cloud_init = Some(CloudInitProgress {
-                status: "running".to_string(),
+                status: CloudInitStatus::Running,
                 detail: None,
                 errors: vec!["boom".to_string()],
                 _last_check: std::time::Instant::now(),

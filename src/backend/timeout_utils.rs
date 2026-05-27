@@ -93,7 +93,7 @@ pub async fn retry_with_backoff<F, Fut, T, E>(
 where
     F: FnMut() -> Fut,
     Fut: Future<Output = std::result::Result<T, E>>,
-    E: std::fmt::Display,
+    E: std::fmt::Display + From<&'static str>,
 {
     // Deep debt solution: Handle edge case instead of unreachable!()
     if config.max_attempts == 0 {
@@ -101,6 +101,7 @@ where
     }
 
     let mut delay = config.initial_delay;
+    let mut last_err: Option<E> = None;
 
     for attempt in 1..=config.max_attempts {
         debug!("Attempt {}/{}", attempt, config.max_attempts);
@@ -114,16 +115,15 @@ where
             }
             Err(e) => {
                 debug!("Attempt {} failed: {}", attempt, e);
+                last_err = Some(e);
 
-                // Return error on last attempt
                 if attempt == config.max_attempts {
-                    return Err(e);
+                    break;
                 }
 
                 debug!("Waiting {:?} before retry", delay);
                 tokio::time::sleep(delay).await;
 
-                // Exponential backoff with max cap
                 delay = std::cmp::min(
                     Duration::from_secs_f64(delay.as_secs_f64() * config.multiplier),
                     config.max_delay,
@@ -132,13 +132,12 @@ where
         }
     }
 
-    // Deep debt: This is truly unreachable now (loop always returns)
-    // But Rust can't prove it, so we satisfy the compiler with a panic
-    // that explains the logic error if it ever happens.
-    panic!(
-        "BUG: retry_with_backoff loop didn't return. Attempts: {}. This should never happen.",
-        config.max_attempts
-    )
+    match last_err {
+        Some(e) => Err(e),
+        None => Err(E::from(
+            "retry_with_backoff: exhausted attempts without recording an error",
+        )),
+    }
 }
 
 /// Wait for a condition to become true, with timeout
@@ -268,12 +267,10 @@ where
         );
     }
 
-    // Deep debt: This is truly unreachable now (loop always returns)
-    // But satisfy the compiler with a descriptive panic for any logic bugs
-    panic!(
-        "BUG: wait_for_condition_backoff loop didn't return. Attempts: {}. This should never happen.",
+    Err(Error::Backend(format!(
+        "wait_for_condition_backoff: exhausted {} attempts without return",
         config.max_attempts
-    )
+    )))
 }
 
 // ============================================================================

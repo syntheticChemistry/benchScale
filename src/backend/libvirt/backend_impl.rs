@@ -521,10 +521,11 @@ impl Backend for LibvirtBackend {
         bandwidth_kbps: Option<u32>,
     ) -> Result<()> {
         if latency_ms.is_some() || packet_loss_percent.is_some() || bandwidth_kbps.is_some() {
-            warn!(
-                "Network conditions not yet implemented for LibvirtBackend — \
-                 requires tc (iproute2) integration with VM tap interfaces"
-            );
+            return Err(crate::Error::Backend(
+                "Network conditions are not implemented for LibvirtBackend — \
+                 requires tc (iproute2) integration with VM tap interfaces (virsh domiflist + netem/tbf)"
+                    .to_string(),
+            ));
         }
         Ok(())
     }
