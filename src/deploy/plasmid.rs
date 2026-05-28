@@ -14,7 +14,7 @@ use crate::{Backend, Result};
 /// Deploy primals from a `plasmidBin` directory into a running lab node.
 ///
 /// Resolves binaries for the given architecture and copies them to
-/// `/opt/biomeos/bin/` inside the container.
+/// the deploy directory (default `/opt/plasmidBin/`) inside the container.
 pub async fn deploy_primals_to_node(
     backend: &dyn Backend,
     node_id: &str,
