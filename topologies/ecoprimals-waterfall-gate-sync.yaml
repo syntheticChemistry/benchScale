@@ -1,0 +1,105 @@
+metadata:
+  name: ecoprimals-waterfall-gate-sync
+  description: >-
+    WaterFall gate-sync validation: Forgejo periplasm + 4 gate containers
+    simulating eastGate, ironGate, strandGate, biomeGate. Tests cascade-pull
+    gate profiles, --gate auto hostname detection, forgejo source routing,
+    cross-gate sync parity, and manifest profile accuracy.
+  version: "1.0"
+  tags: ["ecoprimals", "waterfall", "forgejo", "gate-sync", "periplasm", "ci"]
+
+network:
+  name: waterfall-sync-net
+  subnet: "10.88.0.0/24"
+
+nodes:
+  # ── Forgejo periplasm: golgiBody (lightweight Forgejo container) ───────
+  # Acts as the sovereign git server. Seeds repos from a bare workspace,
+  # gates pull from it via cascade-pull --source forgejo.
+  - name: golgibody
+    image: forgejo
+    env:
+      ROLE: periplasm
+      NODE_ID: "0"
+      FORGEJO_PORT: "3000"
+      FORGEJO_SSH_PORT: "2222"
+      FAMILY_ID: "waterfall-gate-sync"
+    network_conditions:
+      preset: basement_lan
+      latency_ms: 0.5
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 10000000
+      jitter_ms: 0.1
+
+  # ── eastGate: coordination hub (full superset, primalSpring) ──────────
+  # Pulls all 38 repos. Hosts cascade-pull.sh + wateringHole.
+  # Hostname "eastgate" triggers --gate auto → eastGate profile.
+  - name: eastgate
+    image: ubuntu
+    env:
+      ROLE: coordination-hub
+      NODE_ID: "1"
+      GATE_NAME: eastGate
+      ECOPRIMALS_ROOT: /opt/ecoPrimals
+      CASCADE_SYNC_SOURCE: forgejo
+      FAMILY_ID: "waterfall-gate-sync"
+    network_conditions:
+      preset: basement_lan
+      latency_ms: 0.5
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 10000000
+      jitter_ms: 0.1
+
+  # ── ironGate: clinical/game (healthSpring + ludoSpring + core) ────────
+  # Smaller profile — validates gate-specific filtering.
+  - name: irongate
+    image: ubuntu
+    env:
+      ROLE: clinical-game
+      NODE_ID: "2"
+      GATE_NAME: ironGate
+      ECOPRIMALS_ROOT: /opt/ecoPrimals
+      CASCADE_SYNC_SOURCE: forgejo
+      FAMILY_ID: "waterfall-gate-sync"
+    network_conditions:
+      preset: home_lan
+      latency_ms: 2
+      packet_loss_percent: 0.01
+      bandwidth_kbps: 1000000
+      jitter_ms: 1
+
+  # ── strandGate: ABG science (hotSpring + gardens + lithoSpore) ────────
+  # New gate — validates recently added manifest profile.
+  - name: strandgate
+    image: ubuntu
+    env:
+      ROLE: abg-science
+      NODE_ID: "3"
+      GATE_NAME: strandGate
+      ECOPRIMALS_ROOT: /opt/ecoPrimals
+      CASCADE_SYNC_SOURCE: forgejo
+      FAMILY_ID: "waterfall-gate-sync"
+    network_conditions:
+      preset: home_lan
+      latency_ms: 2
+      packet_loss_percent: 0.01
+      bandwidth_kbps: 1000000
+      jitter_ms: 1
+
+  # ── biomeGate: GPU compute (hotSpring + core only) ────────────────────
+  # Minimal gate profile — validates smallest non-golgiBody profile.
+  - name: biomegate
+    image: ubuntu
+    env:
+      ROLE: gpu-compute
+      NODE_ID: "4"
+      GATE_NAME: biomeGate
+      ECOPRIMALS_ROOT: /opt/ecoPrimals
+      CASCADE_SYNC_SOURCE: forgejo
+      FAMILY_ID: "waterfall-gate-sync"
+    network_conditions:
+      preset: friend_wan
+      latency_ms: 50
+      packet_loss_percent: 0.5
+      bandwidth_kbps: 100000
+      jitter_ms: 10
