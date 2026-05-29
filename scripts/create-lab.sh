@@ -255,6 +255,7 @@ case $HYPERVISOR in
             case "$local_image" in
                 ubuntu) docker_image="ubuntu:24.04" ;;
                 alpine) docker_image="alpine:latest" ;;
+                nucleus-lab-node) docker_image="nucleus-lab-node:latest" ;;
                 *)      docker_image="$local_image" ;;
             esac
 

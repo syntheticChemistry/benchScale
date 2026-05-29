@@ -1,0 +1,228 @@
+metadata:
+  name: ecoprimals-vps-depot-deploy
+  description: >-
+    VPS depot deployment validation: golgiBody deploys NUCLEUS to 6 gates
+    representing real hardware classes — LAN cluster (eastGate, ironGate),
+    WAN household (flockGate), roaming mobile (swiftGate), cold NAS
+    (westGate/fieldMouse), and family friend tower (kinGate/tower-only).
+    Validates deploy_gate.sh --systemd, fieldMouse/tower/node/full compositions,
+    --uds-only, TURN relay for NAT'd WAN gates, federation mesh via :7700,
+    and cascade-pull self-sync. Models real HARDWARE.md topology.
+  version: "1.0"
+  tags: ["ecoprimals", "vps", "depot", "deploy", "federation", "turn", "fieldmouse", "systemd"]
+
+network:
+  name: vps-depot-net
+  subnet: "10.91.0.0/24"
+
+nodes:
+  # ── golgiBody (VPS depot): deployer + TURN relay + federation hub ──────
+  # The ecosystem's periplasmic sync point. Hosts Songbird TURN (:3478),
+  # federation hub (:7700), RustDesk hbbs/hbbr, and plasmidBin binaries.
+  # Deploys to all other nodes via deploy_gate.sh --systemd.
+  - name: golgibody
+    image: nucleus-lab-node
+    env:
+      ROLE: vps-depot
+      NODE_ID: golgiBody
+      GATE_NAME: golgiBody
+      FAMILY_ID: "e8b62b6e"
+      SONGBIRD_PORT: "9200"
+      SONGBIRD_FEDERATION_PORT: "7700"
+      TURN_PORT: "3478"
+      RUSTDESK_HBBS_PORT: "21116"
+      RUSTDESK_HBBR_PORT: "21117"
+      ECOPRIMALS_ROOT: /opt/ecoPrimals
+      PLASMID_BIN: "/opt/plasmidBin"
+      COMPOSITION: "full"
+      CASCADE_SYNC_SOURCE: forgejo
+    network_conditions:
+      preset: datacenter
+      latency_ms: 1
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 10000000
+      jitter_ms: 0.5
+
+  # ── eastGate (LAN): primary coordination, full NUCLEUS ────────────────
+  # Ryzen i9-12900, 32GB, RTX 4070 + Akida NPU. Full 13-primal deployment.
+  # LAN basement cluster — direct federation to VPS :7700.
+  - name: eastgate
+    image: nucleus-lab-node
+    env:
+      ROLE: coordination-hub
+      NODE_ID: eastGate
+      GATE_NAME: eastGate
+      FAMILY_ID: "e8b62b6e"
+      ECOPRIMALS_ROOT: /opt/ecoPrimals
+      COMPOSITION: "full"
+      BEHIND_NAT: "false"
+      SONGBIRD_PEERS: "golgiBody@golgibody:7700"
+    network_conditions:
+      preset: basement_lan
+      latency_ms: 2
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 1000000
+      jitter_ms: 0.5
+
+  # ── ironGate (LAN): agentic workstation, full NUCLEUS ─────────────────
+  # i9-14900K, 96GB DDR5, RTX 5070. Full 13-primal deployment.
+  # healthSpring + ludoSpring gate.
+  - name: irongate
+    image: nucleus-lab-node
+    env:
+      ROLE: agentic-workstation
+      NODE_ID: ironGate
+      GATE_NAME: ironGate
+      FAMILY_ID: "e8b62b6e"
+      ECOPRIMALS_ROOT: /opt/ecoPrimals
+      COMPOSITION: "full"
+      BEHIND_NAT: "false"
+      SONGBIRD_PEERS: "golgiBody@golgibody:7700"
+    network_conditions:
+      preset: basement_lan
+      latency_ms: 2
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 1000000
+      jitter_ms: 0.5
+
+  # ── flockGate (WAN): first external household, node_atomic ────────────
+  # i9-13900K, 64GB DDR5, RTX 3070 Ti. Node atomic compute (6 primals).
+  # Remote household via ISP — BEHIND_NAT, uses TURN relay for federation.
+  # First WAN covalent gate in the ecosystem.
+  - name: flockgate
+    image: nucleus-lab-node
+    env:
+      ROLE: wan-compute
+      NODE_ID: flockGate
+      GATE_NAME: flockGate
+      FAMILY_ID: "e8b62b6e"
+      ECOPRIMALS_ROOT: /opt/ecoPrimals
+      COMPOSITION: "node"
+      BEHIND_NAT: "true"
+      SONGBIRD_PEERS: "golgiBody@golgibody:7700"
+      SONGBIRD_TURN_SERVER: "golgibody:3478"
+      SONGBIRD_TURN_USERNAME: "nucleus-relay"
+    network_conditions:
+      preset: friend_wan
+      latency_ms: 30
+      packet_loss_percent: 0.5
+      bandwidth_kbps: 100000
+      jitter_ms: 10
+
+  # ── swiftGate (roaming): moves between LAN and WAN ────────────────────
+  # Ryzen 5800X, 64GB DDR4, RTX 3070 FE. Compact desktop that physically
+  # moves between basement LAN and the outside world. Full NUCLEUS.
+  # Starts with LAN conditions, test script degrades to WAN mid-run
+  # to validate federation survives the transition.
+  - name: swiftgate
+    image: nucleus-lab-node
+    env:
+      ROLE: roaming-compute
+      NODE_ID: swiftGate
+      GATE_NAME: swiftGate
+      FAMILY_ID: "e8b62b6e"
+      ECOPRIMALS_ROOT: /opt/ecoPrimals
+      COMPOSITION: "full"
+      BEHIND_NAT: "false"
+      ROAMING: "true"
+      SONGBIRD_PEERS: "golgiBody@golgibody:7700"
+      SONGBIRD_TURN_SERVER: "golgibody:3478"
+      SONGBIRD_TURN_USERNAME: "nucleus-relay"
+    network_conditions:
+      preset: basement_lan
+      latency_ms: 2
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 1000000
+      jitter_ms: 0.5
+
+  # ── westGate (NAS): cold storage archive, fieldMouse ──────────────────
+  # i7-4771, 32GB DDR3, 76TB ZFS. Heavy nest atomic — archive/braid storage.
+  # fieldMouse composition (7 primals: tower + nest, no compute/meta).
+  # UDS-only mode for hardened deployment.
+  - name: westgate
+    image: nucleus-lab-node
+    env:
+      ROLE: cold-storage
+      NODE_ID: westGate
+      GATE_NAME: westGate
+      FAMILY_ID: "e8b62b6e"
+      ECOPRIMALS_ROOT: /opt/ecoPrimals
+      COMPOSITION: "fieldMouse"
+      BEHIND_NAT: "false"
+      UDS_ONLY: "true"
+      SONGBIRD_PEERS: "golgiBody@golgibody:7700"
+    network_conditions:
+      preset: basement_lan
+      latency_ms: 2
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 1000000
+      jitter_ms: 0.5
+
+  # ── kinGate (friend tower): minimal trust boundary ────────────────────
+  # i7-6700K, 32GB DDR4, RTX 3070. Tower gifted to a family friend.
+  # Tower-only composition (3 primals: beardog + songbird + skunkbat).
+  # External household, BEHIND_NAT — uses TURN relay.
+  # Validates lightest possible deployment for external family.
+  - name: kingate
+    image: nucleus-lab-node
+    env:
+      ROLE: friend-tower
+      NODE_ID: kinGate
+      GATE_NAME: kinGate
+      FAMILY_ID: "e8b62b6e"
+      ECOPRIMALS_ROOT: /opt/ecoPrimals
+      COMPOSITION: "tower"
+      BEHIND_NAT: "true"
+      SONGBIRD_PEERS: "golgiBody@golgibody:7700"
+      SONGBIRD_TURN_SERVER: "golgibody:3478"
+      SONGBIRD_TURN_USERNAME: "nucleus-relay"
+    network_conditions:
+      preset: friend_wan
+      latency_ms: 40
+      packet_loss_percent: 1.0
+      bandwidth_kbps: 50000
+      jitter_ms: 15
+
+validation:
+  deployment:
+    - target: eastgate
+      expect: "13 systemd units active"
+      composition: full
+    - target: irongate
+      expect: "13 systemd units active"
+      composition: full
+    - target: flockgate
+      expect: "6 systemd units active"
+      composition: node
+    - target: swiftgate
+      expect: "13 systemd units active, survives LAN->WAN transition"
+      composition: full
+    - target: westgate
+      expect: "7 systemd units active, UDS-only"
+      composition: fieldMouse
+    - target: kingate
+      expect: "3 systemd units active"
+      composition: tower
+
+  federation:
+    - target: eastgate
+      method: discovery.peers
+      expect: "golgiBody in peer list"
+    - target: flockgate
+      method: discovery.peers
+      via: "TURN relay :3478"
+      expect: "golgiBody in peer list"
+    - target: kingate
+      method: discovery.peers
+      via: "TURN relay :3478"
+      expect: "golgiBody in peer list"
+
+  capability_routing:
+    - from: flockgate
+      method: ipc.resolve
+      params: { capability: "storage" }
+      expect: "routes to eastgate or westgate via VPS hub"
+    - from: kingate
+      method: ipc.resolve
+      params: { capability: "security" }
+      expect: "resolves beardog on kingate (local tower)"
