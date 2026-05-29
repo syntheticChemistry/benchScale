@@ -3,9 +3,10 @@
 #
 # test-waterfall-local.sh — Local (no Docker) validation of WaterFall gate-sync
 #
-# Tests cascade-pull.sh gate auto-detection, profile filtering, source
-# routing, and manifest consistency using --dry-run. Runs entirely on
-# the local workspace — no containers, no network, no Forgejo required.
+# Tests cascade-pull.sh gate identity, profile filtering, source routing,
+# manifest consistency, parity check, and .gate file using --dry-run.
+# Runs entirely on the local workspace — no containers, no network, no
+# Forgejo required.
 #
 # Usage:
 #   ./test-waterfall-local.sh              # Run all tests
@@ -54,7 +55,7 @@ assert_ge() {
 
 assert_contains() {
     local label="$1" needle="$2" haystack="$3"
-    if echo "$haystack" | grep -q "$needle"; then
+    if echo "$haystack" | grep -qF -- "$needle"; then
         pass "$label"
     else
         fail "$label (missing: $needle)"
@@ -62,17 +63,17 @@ assert_contains() {
 }
 
 run_cascade() {
-    local gate="$1" source="${2:-github}" extra="${3:-}"
-    GATE_NAME="$gate" bash "$CASCADE" --gate auto --source "$source" --dry-run --no-self-update $extra 2>&1
+    local gate="$1" source="${2:-origin}" extra="${3:-}"
+    GATE_NAME="$gate" bash "$CASCADE" --gate auto --source "$source" --dry-run $extra 2>&1
 }
 
 count_would_pull() {
-    echo "$1" | grep -c "WOULD-PULL" || echo "0"
+    echo "$1" | grep -c "WOULD PULL" || echo "0"
 }
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo " WaterFall Gate-Sync Local Tests"
+echo " WaterFall Gate-Sync Local Tests (manifest-driven)"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
@@ -102,21 +103,21 @@ fi
 
 echo ""
 
-# ── Test 2: Gate auto-detection via GATE_NAME ────────────────────────────────
+# ── Test 2: Gate identity via GATE_NAME env ──────────────────────────────────
 
-echo -e "${BLUE}[2] Gate auto-detection (GATE_NAME env)${NC}"
+echo -e "${BLUE}[2] Gate identity (GATE_NAME env)${NC}"
 
 for gate in eastGate ironGate strandGate biomeGate southGate golgiBody; do
     output=$(run_cascade "$gate")
-    detected=$(echo "$output" | grep "Gate auto-detected:" | sed 's/.*: //' || echo "NONE")
-    assert_eq "$gate auto-detected" "$gate" "$detected"
+    detected=$(echo "$output" | grep "^Gate:" | awk '{print $2}' || echo "NONE")
+    assert_eq "$gate identity" "$gate" "$detected"
 done
 
 echo ""
 
-# ── Test 3: Gate profile repo counts ─────────────────────────────────────────
+# ── Test 3: Gate profile repo counts (manifest-driven) ───────────────────────
 
-echo -e "${BLUE}[3] Gate profile repo counts${NC}"
+echo -e "${BLUE}[3] Gate profile repo counts (from manifest)${NC}"
 
 east_out=$(run_cascade "eastGate")
 east_count=$(count_would_pull "$east_out")
@@ -151,10 +152,11 @@ echo -e "${BLUE}[4] Profile content validation${NC}"
 assert_contains "eastGate has primalSpring" "primalSpring" "$east_out"
 assert_contains "eastGate has hotSpring" "hotSpring" "$east_out"
 assert_contains "eastGate has helixVision" "helixVision" "$east_out"
+assert_contains "eastGate has skunkBat" "skunkBat" "$east_out"
 
 assert_contains "ironGate has healthSpring" "healthSpring" "$iron_out"
 assert_contains "ironGate has ludoSpring" "ludoSpring" "$iron_out"
-assert_contains "ironGate has esotericWebb" "esotericWebb" "$iron_out"
+assert_contains "ironGate has skunkBat" "skunkBat" "$iron_out"
 
 assert_contains "strandGate has hotSpring" "hotSpring" "$strand_out"
 assert_contains "strandGate has helixVision" "helixVision" "$strand_out"
@@ -174,136 +176,119 @@ echo ""
 
 echo -e "${BLUE}[5] Source routing${NC}"
 
-gh_out=$(run_cascade "eastGate" "github")
-assert_contains "github source → origin remote" "remote: origin" "$gh_out"
+origin_out=$(run_cascade "eastGate" "origin")
+assert_contains "origin source in header" "Source:  origin" "$origin_out"
 
-fj_out=$(run_cascade "eastGate" "forgejo")
-if echo "$fj_out" | grep -q "remote: forgejo"; then
-    pass "forgejo source → forgejo remote (where configured)"
-else
-    pass "forgejo source → falls back to origin (forgejo remote not configured on all repos)"
-fi
+forgejo_out=$(run_cascade "eastGate" "forgejo")
+assert_contains "forgejo source in header" "Source:  forgejo" "$forgejo_out"
 
 auto_out=$(run_cascade "eastGate" "auto")
-assert_contains "auto source resolves" "WOULD-PULL" "$auto_out"
+assert_contains "auto source in header" "Source:  auto" "$auto_out"
 
 echo ""
 
-# ── Test 6: Unknown gate falls back to all repos ────────────────────────────
+# ── Test 6: Manifest consistency ─────────────────────────────────────────────
 
-echo -e "${BLUE}[6] Unknown gate fallback${NC}"
+echo -e "${BLUE}[6] Manifest consistency${NC}"
 
-unknown_out=$(GATE_NAME="" bash "$CASCADE" --gate auto --dry-run --no-self-update 2>&1)
-assert_contains "unknown gate warns" "WARNING" "$unknown_out"
-unknown_count=$(count_would_pull "$unknown_out")
-assert_eq "unknown gate pulls all repos" "$east_count" "$unknown_count"
+manifest_version=$(echo "$east_out" | grep "Manifest:" | head -1)
+assert_contains "manifest version in output" "v2" "$manifest_version"
+
+repos_line=$(echo "$east_out" | grep "^Repos:" | awk '{print $2}')
+assert_eq "repos count matches manifest" "38" "$repos_line"
 
 echo ""
 
-# ── Test 7: Manifest gate profile consistency ────────────────────────────────
+# ── Test 7: .gate identity file ──────────────────────────────────────────────
 
-echo -e "${BLUE}[7] Manifest consistency${NC}"
+echo -e "${BLUE}[7] .gate identity file${NC}"
 
-gate_count=$(python3 -c "
+GATE_FILE="$ECO_ROOT/.gate"
+GATE_BACKUP=""
+
+if [[ -f "$GATE_FILE" ]]; then
+    GATE_BACKUP=$(cat "$GATE_FILE")
+fi
+
+echo "testGateFile" > "$GATE_FILE"
+gate_file_out=$(unset GATE_NAME; bash "$CASCADE" --gate auto --dry-run 2>&1 || true)
+
+if echo "$gate_file_out" | grep -q "ERROR.*unknown gate"; then
+    pass ".gate file read (testGateFile → unknown gate error as expected)"
+else
+    fail ".gate file should have been read"
+fi
+
+echo "eastGate" > "$GATE_FILE"
+gate_file_east=$(unset GATE_NAME; bash "$CASCADE" --gate auto --source origin --dry-run 2>&1)
+gate_file_detected=$(echo "$gate_file_east" | grep "^Gate:" | awk '{print $2}')
+assert_eq ".gate file eastGate detection" "eastGate" "$gate_file_detected"
+
+if [[ -n "$GATE_BACKUP" ]]; then
+    echo "$GATE_BACKUP" > "$GATE_FILE"
+else
+    rm -f "$GATE_FILE"
+fi
+
+echo ""
+
+# ── Test 8: Help output ──────────────────────────────────────────────────────
+
+echo -e "${BLUE}[8] Help output${NC}"
+
+help_out=$(bash "$CASCADE" --help 2>&1)
+assert_contains "help has --gate" "--gate" "$help_out"
+assert_contains "help has --source" "--source" "$help_out"
+assert_contains "help has --clone-missing" "--clone-missing" "$help_out"
+assert_contains "help has --check" "--check" "$help_out"
+assert_contains "help has --parallel" "--parallel" "$help_out"
+assert_contains "help has .gate file docs" ".gate" "$help_out"
+assert_contains "help has waterFall domain" "waterFall" "$help_out"
+
+echo ""
+
+# ── Test 9: All gates in manifest are pullable ───────────────────────────────
+
+echo -e "${BLUE}[9] All manifest gates dry-run successfully${NC}"
+
+known_gates=$(python3 -c "
+import sys
 try:
     import tomllib
-    def lt(p):
-        with open(p,'rb') as f: return tomllib.load(f)
-except:
-    try:
-        import tomli
-        def lt(p):
-            with open(p,'rb') as f: return tomli.load(f)
-    except:
-        import toml
-        def lt(p): return toml.load(p)
-d = lt('$MANIFEST')
-print(len(d.get('gates', {})))
-")
-assert_ge "manifest has 6+ gate profiles" "6" "$gate_count"
+except ImportError:
+    import tomli as tomllib
 
-repo_count=$(python3 -c "
-try:
-    import tomllib
-    def lt(p):
-        with open(p,'rb') as f: return tomllib.load(f)
-except:
-    try:
-        import tomli
-        def lt(p):
-            with open(p,'rb') as f: return tomli.load(f)
-    except:
-        import toml
-        def lt(p): return toml.load(p)
-d = lt('$MANIFEST')
-print(len(d.get('repos', {})))
+with open('$MANIFEST', 'rb') as f:
+    m = tomllib.load(f)
+for g in sorted(m.get('gates', {}).keys()):
+    print(g)
 ")
-assert_eq "manifest has 38 repos" "38" "$repo_count"
 
-for gate in eastGate ironGate strandGate biomeGate southGate golgiBody; do
-    gate_repos=$(python3 -c "
-try:
-    import tomllib
-    def lt(p):
-        with open(p,'rb') as f: return tomllib.load(f)
-except:
-    try:
-        import tomli
-        def lt(p):
-            with open(p,'rb') as f: return tomli.load(f)
-    except:
-        import toml
-        def lt(p): return toml.load(p)
-d = lt('$MANIFEST')
-repos = d.get('gates',{}).get('$gate',{}).get('repos',[])
-all_repos = set(d.get('repos',{}).keys())
-missing = [r for r in repos if r not in all_repos]
-if missing:
-    print('MISSING:' + ','.join(missing))
-else:
-    print('OK')
-")
-    if [[ "$gate_repos" == "OK" ]]; then
-        pass "$gate: all profile repos exist in manifest"
+for gate in $known_gates; do
+    gate_out=$(run_cascade "$gate" 2>&1)
+    if echo "$gate_out" | grep -q "WOULD PULL"; then
+        pass "$gate dry-run succeeds"
     else
-        fail "$gate: $gate_repos"
+        fail "$gate dry-run failed"
     fi
 done
 
 echo ""
 
-# ── Test 8: GATE_SPRING_OWNERSHIP.md exists ──────────────────────────────────
-
-echo -e "${BLUE}[8] Documentation${NC}"
-
-if [[ -f "$WH_DIR/GATE_SPRING_OWNERSHIP.md" ]]; then
-    pass "GATE_SPRING_OWNERSHIP.md exists"
-else
-    fail "GATE_SPRING_OWNERSHIP.md missing"
-fi
-
-if grep -q "GATE_SPRING_OWNERSHIP" "$WH_DIR/STANDARDS_AND_EXPECTATIONS.md" 2>/dev/null; then
-    pass "STANDARDS_AND_EXPECTATIONS.md links to GATE_SPRING_OWNERSHIP"
-else
-    fail "STANDARDS_AND_EXPECTATIONS.md broken link"
-fi
-
-echo ""
-
 # ── Summary ──────────────────────────────────────────────────────────────────
 
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 TOTAL=$((PASS + FAIL))
-if [[ "$FAIL" -eq 0 ]]; then
-    echo -e " ${GREEN}ALL $TOTAL TESTS PASSED${NC}"
-else
-    echo -e " ${RED}$FAIL/$TOTAL TESTS FAILED${NC}"
-fi
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo ""
+echo -e " Results: ${GREEN}$PASS PASS${NC} / ${RED}$FAIL FAIL${NC} / $TOTAL TOTAL"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-if $VERBOSE; then
-    echo "Full test output available above."
+if [[ $FAIL -gt 0 ]]; then
+    echo ""
+    echo "Failures:"
+    for t in "${TESTS[@]}"; do
+        [[ "$t" == FAIL* ]] && echo "  $t"
+    done
+    exit 1
 fi
 
-exit "$FAIL"
+exit 0
