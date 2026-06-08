@@ -29,7 +29,7 @@ network:
 nodes:
   # Agentic gate: full coordination stack
   - name: node-agentic-gate
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: agentic-gate
       NODE_ID: "1"
@@ -45,7 +45,7 @@ nodes:
 
   # Analysis springs (biomeOS routes fieldMouse data here)
   - name: node-analysis
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: analysis-springs
       NODE_ID: "2"
@@ -61,7 +61,7 @@ nodes:
 
   # fieldMouse sensor (Alpine chimera, no biomeOS)
   - name: node-fieldmouse
-    image: alpine
+    image: alpine:3.20
     env:
       ROLE: fieldmouse-sensor
       NODE_ID: "3"

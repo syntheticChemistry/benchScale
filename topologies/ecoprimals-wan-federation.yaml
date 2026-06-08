@@ -11,7 +11,7 @@ network:
 nodes:
   # Primary NUCLEUS: sits on a good connection but with WAN-like base latency
   - name: node-primary
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: nucleus-primary
       NODE_ID: "1"
@@ -32,7 +32,7 @@ nodes:
 
   # Spring primals node — remote friend covalent link
   - name: node-springs
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: spring-primals
       NODE_ID: "2"
@@ -56,7 +56,7 @@ nodes:
 
   # Mobile node — cellular degradation with satellite-like conditions
   - name: node-mobile
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: mobile-degraded
       NODE_ID: "3"

@@ -15,7 +15,7 @@ nodes:
   # ── Primary NUCLEUS: Full Atom (Tower + Node + Nest + Meta) ─────────
   # All 13 core primals. This is the canonical NUCLEUS deployment target.
   - name: node-primary
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: nucleus-full
       NODE_ID: "1"
@@ -45,7 +45,7 @@ nodes:
   # the trust boundary; toadStool + barraCuda + coralReef provide the
   # compute substrate. Connects to primary for orchestration.
   - name: node-compute
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: node-atomic
       NODE_ID: "2"
@@ -68,7 +68,7 @@ nodes:
   # Simulates a Pixel/mobile behind NAT. Minimal Tower atomic —
   # songbird in TCP listen mode for cross-gate federation probing.
   - name: node-mobile
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: mobile-degraded
       NODE_ID: "3"

@@ -14,7 +14,7 @@ network:
 
 nodes:
   - name: nestgate
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: storage
       PRIMALS: "nestgate"
@@ -29,7 +29,7 @@ nodes:
       jitter_ms: 0.1
 
   - name: rhizocrypt
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: dag
       PRIMALS: "rhizocrypt"
@@ -44,7 +44,7 @@ nodes:
       jitter_ms: 0.1
 
   - name: loamspine
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: ledger
       PRIMALS: "loamspine"
@@ -59,7 +59,7 @@ nodes:
       jitter_ms: 0.1
 
   - name: sweetgrass
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: attribution
       PRIMALS: "sweetgrass"

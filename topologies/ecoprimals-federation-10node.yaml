@@ -23,7 +23,7 @@ network:
 nodes:
   # ── NUCLEUS Gate 1: primary (all core primals) ───────────────────────
   - name: node-gate1-primary
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: nucleus-primary
       NODE_ID: "1"
@@ -44,7 +44,7 @@ nodes:
 
   # ── NUCLEUS Gate 2: secondary ────────────────────────────────────────
   - name: node-gate2-secondary
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: nucleus-secondary
       NODE_ID: "2"
@@ -65,7 +65,7 @@ nodes:
 
   # ── NUCLEUS Gate 3: remote friend ────────────────────────────────────
   - name: node-gate3-remote
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: nucleus-remote
       NODE_ID: "3"
@@ -85,7 +85,7 @@ nodes:
 
   # ── Spring nodes (specialized) ───────────────────────────────────────
   - name: node-springs-science
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: science-springs
       NODE_ID: "4"
@@ -106,7 +106,7 @@ nodes:
       jitter_ms: 0.1
 
   - name: node-springs-health
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: health-springs
       NODE_ID: "5"
@@ -126,7 +126,7 @@ nodes:
       jitter_ms: 1
 
   - name: node-springs-compute
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: compute-springs
       NODE_ID: "6"
@@ -146,7 +146,7 @@ nodes:
       jitter_ms: 0.1
 
   - name: node-springs-provenance
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: provenance-trio
       NODE_ID: "7"
@@ -167,7 +167,7 @@ nodes:
       jitter_ms: 1
 
   - name: node-springs-remote
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: remote-springs
       NODE_ID: "8"
@@ -188,7 +188,7 @@ nodes:
 
   # ── Mobile-degraded endpoints ────────────────────────────────────────
   - name: node-mobile-1
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: mobile-degraded
       NODE_ID: "9"
@@ -206,7 +206,7 @@ nodes:
       jitter_ms: 30
 
   - name: node-mobile-2
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: mobile-degraded
       NODE_ID: "10"

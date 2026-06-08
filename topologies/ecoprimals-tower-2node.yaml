@@ -17,7 +17,7 @@ network:
 nodes:
   # Tower + biomeOS substrate: beardog (9100), songbird (9200), biomeos (9800)
   - name: node-tower
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: tower-substrate
       NODE_ID: "1"
@@ -29,7 +29,7 @@ nodes:
 
   # Spring primals: groundspring, healthspring, neuralspring, wetspring, ludospring
   - name: node-spring
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: spring-primals
       NODE_ID: "2"

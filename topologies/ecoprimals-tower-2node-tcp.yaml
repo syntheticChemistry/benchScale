@@ -20,7 +20,7 @@ nodes:
   # This catches: biomeOS --port ignored, BearDog UDS hard-exit,
   # Songbird --listen ergonomics, NestGate socket-only issues
   - name: node-tower
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: tower-substrate-tcp
       NODE_ID: "1"
@@ -37,7 +37,7 @@ nodes:
 
   # Spring primals: TCP-only
   - name: node-spring
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: spring-primals-tcp
       NODE_ID: "2"

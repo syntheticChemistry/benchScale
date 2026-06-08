@@ -44,7 +44,7 @@ network:
 nodes:
   # Tower + orchestration + AI
   - name: node-tower
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: storytelling-tower
       NODE_ID: "1"
@@ -58,7 +58,7 @@ nodes:
 
   # esotericWebb + ludoSpring + petalTongue (the game stack)
   - name: node-game
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: storytelling-game
       NODE_ID: "2"
@@ -78,7 +78,7 @@ nodes:
 
   # Storage + provenance (session integrity)
   - name: node-provenance
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: storytelling-provenance
       NODE_ID: "3"

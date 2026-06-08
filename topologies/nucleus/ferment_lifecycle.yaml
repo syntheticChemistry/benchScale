@@ -15,7 +15,7 @@ network:
 nodes:
   # rhizoCrypt holds the fermentation vessel (DAG with accumulating vertices)
   - name: rhizocrypt
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: fermentation-vessel
       PRIMALS: "rhizocrypt"
@@ -31,7 +31,7 @@ nodes:
 
   # loamSpine seals the dehydrated DAG into a permanent certificate
   - name: loamspine
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: bottling
       PRIMALS: "loamspine"
@@ -47,7 +47,7 @@ nodes:
 
   # sweetGrass creates the attribution braid for all contributors
   - name: sweetgrass
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: attribution
       PRIMALS: "sweetgrass"
@@ -63,7 +63,7 @@ nodes:
 
   # NestGate stores the raw content blobs referenced by DAG vertices
   - name: nestgate
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: blob-storage
       PRIMALS: "nestgate"

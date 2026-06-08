@@ -37,7 +37,7 @@ network:
 nodes:
   # Tower + biomeOS orchestrator
   - name: node-tower
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: gaming-tower
       NODE_ID: "1"
@@ -49,7 +49,7 @@ nodes:
 
   # Gaming chimera: ludoSpring + ToadStool (GPU)
   - name: node-gaming
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: gaming-chimera
       NODE_ID: "2"
@@ -65,7 +65,7 @@ nodes:
 
   # Visualization layer
   - name: node-viz
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: gaming-viz
       NODE_ID: "3"

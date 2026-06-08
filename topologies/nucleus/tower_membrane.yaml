@@ -15,7 +15,7 @@ network:
 nodes:
   # BearDog is the root of trust — all identity and auth flows through it
   - name: beardog
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: tower-authority
       PRIMALS: "beardog"
@@ -33,7 +33,7 @@ nodes:
 
   # skunkBat learns "self" from BearDog identity and detects anomalies
   - name: skunkbat
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: threat-detection
       PRIMALS: "skunkbat"
@@ -52,7 +52,7 @@ nodes:
 
   # Songbird provides NAT traversal and relay for cross-gate communication
   - name: songbird
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: relay
       PRIMALS: "songbird"
@@ -70,7 +70,7 @@ nodes:
 
   # External probe node simulates an untrusted entity attempting access
   - name: external-probe
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: adversary
       TARGET_HOST: "beardog"

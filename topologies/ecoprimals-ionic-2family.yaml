@@ -24,7 +24,7 @@ network:
 nodes:
   # Family A: research lab Tower
   - name: node-lab-tower
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: tower-substrate
       NODE_ID: "1"
@@ -37,7 +37,7 @@ nodes:
 
   # Family A: lab compute node
   - name: node-lab-compute
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: compute-node
       NODE_ID: "2"
@@ -52,7 +52,7 @@ nodes:
 
   # Family B: university HPC Tower (different seed)
   - name: node-uni-tower
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: tower-substrate
       NODE_ID: "3"
@@ -65,7 +65,7 @@ nodes:
 
   # Family B: university spring node
   - name: node-uni-springs
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: spring-primals
       NODE_ID: "4"

@@ -23,7 +23,7 @@ network:
 
 nodes:
   - name: node-tower
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: tower-constrained
       NODE_ID: "1"
@@ -38,7 +38,7 @@ nodes:
       cpu_limit: 0.5
 
   - name: node-spring
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: spring-constrained
       NODE_ID: "2"

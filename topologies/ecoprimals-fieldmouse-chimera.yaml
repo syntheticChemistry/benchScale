@@ -35,7 +35,7 @@ network:
 nodes:
   # Gate: full NUCLEUS that receives fieldMouse data
   - name: node-gate
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: gate-nucleus
       NODE_ID: "1"
@@ -50,7 +50,7 @@ nodes:
   # Single binary, single process, merged JSON-RPC namespace:
   #   crypto.sign → bearDog, mesh.beacon → songBird
   - name: node-fieldmouse-sensor
-    image: alpine
+    image: alpine:3.20
     env:
       ROLE: fieldmouse-sensor
       NODE_ID: "2"
@@ -71,7 +71,7 @@ nodes:
   # fieldMouse store: Tower + NestGate chimera
   # Adds content-addressed local cache + mesh sync
   - name: node-fieldmouse-store
-    image: alpine
+    image: alpine:3.20
     env:
       ROLE: fieldmouse-store
       NODE_ID: "3"

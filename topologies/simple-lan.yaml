@@ -14,12 +14,12 @@ network:
 
 nodes:
   - name: node-1
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: server
       NODE_ID: "1"
   - name: node-2
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: client
       NODE_ID: "2"

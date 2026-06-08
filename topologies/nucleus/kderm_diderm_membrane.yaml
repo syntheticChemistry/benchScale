@@ -29,7 +29,7 @@ network:
 nodes:
   # --- Cytoplasm: NUCLEUS primals, UDS IPC, shared family seed ---
   - name: cytoplasm
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: nucleus
       PRIMALS: "nestgate rhizocrypt"
@@ -48,7 +48,7 @@ nodes:
 
   # --- Plasma Membrane: gate firewall boundary (always present) ---
   - name: plasma-membrane
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: gate_firewall
       PRIMALS: "beardog"
@@ -67,7 +67,7 @@ nodes:
 
   # --- Periplasm: VPS relay/routing/telemetry compartment ---
   - name: periplasm
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: vps_relay
       PRIMALS: "songbird skunkbat"
@@ -86,7 +86,7 @@ nodes:
 
   # --- Outer Membrane: internet-facing boundary ---
   - name: outer-membrane
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: internet_boundary
       FAMILY_ID: "benchscale-kderm-diderm"
@@ -101,7 +101,7 @@ nodes:
 
   # --- Extracellular: adversary probe / external client ---
   - name: extracellular
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: adversary_probe
       FAMILY_ID: "benchscale-kderm-diderm"

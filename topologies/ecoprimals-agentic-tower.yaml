@@ -41,7 +41,7 @@ network:
 nodes:
   # Core identity + discovery
   - name: node-tower
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: agentic-tower
       NODE_ID: "1"
@@ -56,7 +56,7 @@ nodes:
 
   # Spring primals providing capabilities for the agentic loop
   - name: node-springs
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: agentic-springs
       NODE_ID: "2"
@@ -72,7 +72,7 @@ nodes:
 
   # Compute + storage for AI workflows
   - name: node-compute
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: agentic-compute
       NODE_ID: "3"

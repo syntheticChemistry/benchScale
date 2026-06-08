@@ -29,7 +29,7 @@ network:
 nodes:
   # Everything on one node — minimal deployment
   - name: node-storytelling
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: storytelling-minimal
       NODE_ID: "1"

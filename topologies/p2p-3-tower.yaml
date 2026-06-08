@@ -10,7 +10,7 @@ network:
 
 nodes:
   - name: tower-sf
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: tower
       REGION: san-francisco
@@ -21,7 +21,7 @@ nodes:
       bandwidth_kbps: 100000  # 100 Mbps
 
   - name: tower-ny
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: tower
       REGION: new-york
@@ -32,7 +32,7 @@ nodes:
       bandwidth_kbps: 100000  # 100 Mbps
 
   - name: tower-london
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: tower
       REGION: london

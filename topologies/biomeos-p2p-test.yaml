@@ -11,7 +11,7 @@ network:
 nodes:
   # Node 1: BearDog + Songbird (Security + Discovery)
   - name: node-1-beardog-songbird
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: security-discovery
       NODE_ID: "1"
@@ -24,7 +24,7 @@ nodes:
 
   # Node 2: BearDog + Songbird (Security + Discovery)
   - name: node-2-beardog-songbird
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: security-discovery
       NODE_ID: "2"
@@ -37,7 +37,7 @@ nodes:
 
   # Node 3: BearDog + Songbird (Behind NAT simulation)
   - name: node-3-behind-nat
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: security-discovery
       NODE_ID: "3"

@@ -34,7 +34,7 @@ network:
 nodes:
   # Defended Tower with skunkBat active
   - name: node-defended-tower
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: defended-tower
       NODE_ID: "1"
@@ -48,7 +48,7 @@ nodes:
 
   # Internal node: trusted member of the mesh
   - name: node-internal
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: internal-node
       NODE_ID: "2"
@@ -64,7 +64,7 @@ nodes:
   # External probe: untrusted node attempting to interact
   # Different family seed — should be detected by skunkBat
   - name: node-external-probe
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: external-probe
       NODE_ID: "3"

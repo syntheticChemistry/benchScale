@@ -35,7 +35,7 @@ network:
 nodes:
   # Gate: receives classified results from edge
   - name: node-gate
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: gate-nucleus
       NODE_ID: "1"
@@ -48,7 +48,7 @@ nodes:
 
   # Edge compute node: fieldMouse Edge class
   - name: node-edge-compute
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: fieldmouse-edge
       NODE_ID: "2"
@@ -69,7 +69,7 @@ nodes:
 
   # Neural analysis node: processes classification results
   - name: node-neural-analysis
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: neural-analysis
       NODE_ID: "3"

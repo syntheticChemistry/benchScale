@@ -23,7 +23,7 @@ network:
 
 nodes:
   - name: node-tower
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: tower-readonly
       NODE_ID: "1"
@@ -38,7 +38,7 @@ nodes:
       docker_args: "--read-only --tmpfs /tmp:size=10M --tmpfs /run:size=5M"
 
   - name: node-spring
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: spring-readonly
       NODE_ID: "2"

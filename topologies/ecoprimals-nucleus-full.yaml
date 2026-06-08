@@ -18,7 +18,7 @@ nodes:
   # Full NUCLEUS: Tower + Node + Nest + biomeOS on single node
   # Socket alignment: BIOMEOS_SOCKET_DIR=/tmp so biomeOS finds primal sockets
   - name: node-nucleus
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: full-nucleus
       NODE_ID: "1"

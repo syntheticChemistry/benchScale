@@ -23,7 +23,7 @@ network:
 
 nodes:
   - name: node-fleet-1
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: fleet-member
       NODE_ID: "1"
@@ -37,7 +37,7 @@ nodes:
       FLEET_ROLE: "coordinator"
 
   - name: node-fleet-2
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: fleet-member
       NODE_ID: "2"
@@ -51,7 +51,7 @@ nodes:
       BIOMEOS_PORT: "9800"
 
   - name: node-fleet-3
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: fleet-member
       NODE_ID: "3"
@@ -65,7 +65,7 @@ nodes:
       BIOMEOS_PORT: "9800"
 
   - name: node-fleet-4
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: fleet-member
       NODE_ID: "4"
@@ -80,7 +80,7 @@ nodes:
       BIOMEOS_PORT: "9800"
 
   - name: node-fleet-5
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: fleet-member
       NODE_ID: "5"

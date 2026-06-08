@@ -18,7 +18,7 @@ nodes:
   # Tower on Alpine — tests: do primals start without glibc?
   # BusyBox provides nc/wget but not full coreutils
   - name: node-tower
-    image: alpine
+    image: alpine:3.20
     env:
       ROLE: tower-substrate-alpine
       NODE_ID: "1"
@@ -30,7 +30,7 @@ nodes:
 
   # Spring node on Alpine
   - name: node-spring
-    image: alpine
+    image: alpine:3.20
     env:
       ROLE: spring-primals-alpine
       NODE_ID: "2"

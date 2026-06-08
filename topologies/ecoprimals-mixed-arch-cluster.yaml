@@ -24,7 +24,7 @@ network:
 nodes:
   # x86_64 Tower (native)
   - name: node-tower-x86
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: tower-substrate
       NODE_ID: "1"
@@ -39,7 +39,7 @@ nodes:
 
   # aarch64 Tower (qemu-emulated)
   - name: node-tower-arm64
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: tower-substrate
       NODE_ID: "2"
@@ -55,7 +55,7 @@ nodes:
 
   # x86_64 Spring node
   - name: node-springs-x86
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: spring-primals
       NODE_ID: "3"
@@ -74,7 +74,7 @@ nodes:
 
   # aarch64 Spring node (mobile simulation)
   - name: node-springs-arm64
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: spring-primals
       NODE_ID: "4"

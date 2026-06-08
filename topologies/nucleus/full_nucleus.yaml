@@ -15,7 +15,7 @@ network:
 nodes:
   # Tower layer (identity + security + relay)
   - name: beardog
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: tower-authority
       PRIMALS: "beardog"
@@ -32,7 +32,7 @@ nodes:
       jitter_ms: 0.1
 
   - name: songbird
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: relay
       PRIMALS: "songbird"
@@ -49,7 +49,7 @@ nodes:
       jitter_ms: 0.1
 
   - name: skunkbat
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: threat-detection
       PRIMALS: "skunkbat"
@@ -67,7 +67,7 @@ nodes:
 
   # Storage + content layer
   - name: nestgate
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: storage
       PRIMALS: "nestgate"
@@ -82,7 +82,7 @@ nodes:
       jitter_ms: 0.1
 
   - name: squirrel
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: cache
       PRIMALS: "squirrel"
@@ -97,7 +97,7 @@ nodes:
       jitter_ms: 0.1
 
   - name: petaltongue
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: presentation
       PRIMALS: "petaltongue"
@@ -113,7 +113,7 @@ nodes:
 
   # Provenance layer (DAG + ledger + attribution)
   - name: rhizocrypt
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: dag
       PRIMALS: "rhizocrypt"
@@ -128,7 +128,7 @@ nodes:
       jitter_ms: 0.1
 
   - name: loamspine
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: ledger
       PRIMALS: "loamspine"
@@ -143,7 +143,7 @@ nodes:
       jitter_ms: 0.1
 
   - name: sweetgrass
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: attribution
       PRIMALS: "sweetgrass"
@@ -159,7 +159,7 @@ nodes:
 
   # Compute layer (dispatch + compilation + math)
   - name: toadstool
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: compute-dispatch
       PRIMALS: "toadstool"
@@ -174,7 +174,7 @@ nodes:
       jitter_ms: 0.1
 
   - name: coralreef
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: shader-compilation
       PRIMALS: "coralreef"
@@ -189,7 +189,7 @@ nodes:
       jitter_ms: 0.1
 
   - name: barracuda
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: mathematics
       PRIMALS: "barracuda"
@@ -205,7 +205,7 @@ nodes:
 
   # Orchestration layer
   - name: biomeos
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: orchestration
       PRIMALS: "biomeos"

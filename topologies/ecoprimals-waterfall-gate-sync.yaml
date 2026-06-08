@@ -35,7 +35,7 @@ nodes:
   # Pulls all 38 repos. Hosts cascade-pull.sh + wateringHole.
   # Hostname "eastgate" triggers --gate auto → eastGate profile.
   - name: eastgate
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: coordination-hub
       NODE_ID: "1"
@@ -53,7 +53,7 @@ nodes:
   # ── ironGate: clinical/game (healthSpring + ludoSpring + core) ────────
   # Smaller profile — validates gate-specific filtering.
   - name: irongate
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: clinical-game
       NODE_ID: "2"
@@ -71,7 +71,7 @@ nodes:
   # ── strandGate: ABG science (hotSpring + gardens + lithoSpore) ────────
   # New gate — validates recently added manifest profile.
   - name: strandgate
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: abg-science
       NODE_ID: "3"
@@ -89,7 +89,7 @@ nodes:
   # ── biomeGate: GPU compute (hotSpring + core only) ────────────────────
   # Minimal gate profile — validates smallest non-golgiBody profile.
   - name: biomegate
-    image: ubuntu
+    image: ubuntu:24.04
     env:
       ROLE: gpu-compute
       NODE_ID: "4"
