@@ -1,0 +1,143 @@
+metadata:
+  name: irongate-nucleus-mesh
+  description: >-
+    3-node libvirt VM mesh simulating the target production topology:
+    ironGate (full NUCLEUS, 13/13), nuc-canary (canary-fieldmouse, previous-good),
+    golgi-relay (tower-only, VPS relay). Uses real systemd, real gate.bootstrap,
+    real networking — OS-fidelity simulation of NUC/VPS topology on ironGate
+    hardware as hypervisor. Validates federation mesh before production deploy.
+  version: "1.0"
+  hypervisor: libvirt
+  tags: ["nucleus", "mesh", "federation", "libvirt", "irongate", "nuc", "vps-minimization"]
+
+network:
+  name: nucleus-mesh-net
+  subnet: "10.92.0.0/24"
+
+network_presets:
+  basement_lan:
+    latency_ms: 0
+    bandwidth_kbps: 10000000
+    jitter_ms: 0
+    packet_loss_percent: 0.0
+  wan_bridge:
+    latency_ms: 15
+    bandwidth_kbps: 1000000
+    jitter_ms: 5
+    packet_loss_percent: 0.1
+
+nodes:
+  - name: irongate
+    image: gate-nucleus-full
+    cpus: 4
+    memory: 8192
+    composition: full
+    network: basement_lan
+    ip: "10.92.0.10"
+    env:
+      NODE_ID: ironGate
+      GATE_NAME: ironGate
+      FAMILY_ID: "e8b62b6e"
+      FAMILY_SEED: "{{ family_seed }}"
+      ECOPRIMALS_ROOT: /opt/ecoPrimals
+      COMPOSITION: "full"
+      SONGBIRD_PEERS: "golgi-relay@10.92.0.30:7700,nuc-canary@10.92.0.20:7700"
+      SONGBIRD_FEDERATION_ENABLED: "true"
+      PRIMAL_BIND_MODE: "auto"
+      SECURITY_SOCKET: /run/membrane/beardog.sock
+    network_conditions:
+      preset: basement_lan
+      latency_ms: 0
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 10000000
+      jitter_ms: 0
+
+  - name: nuc-canary
+    image: gate-nuc-canary
+    cpus: 1
+    memory: 2048
+    composition: full
+    network: basement_lan
+    ip: "10.92.0.20"
+    env:
+      NODE_ID: nuc-alpha
+      GATE_NAME: nuc-alpha
+      FAMILY_ID: "e8b62b6e"
+      FAMILY_SEED: "{{ family_seed }}"
+      ECOPRIMALS_ROOT: /opt/ecoPrimals
+      COMPOSITION: "full"
+      MEMBRANE_ROLE: "canary"
+      SONGBIRD_PEERS: "irongate@10.92.0.10:7700,golgi-relay@10.92.0.30:7700"
+      SONGBIRD_FEDERATION_ENABLED: "true"
+      PRIMAL_BIND_MODE: "auto"
+      SECURITY_SOCKET: /run/membrane/beardog.sock
+    network_conditions:
+      preset: basement_lan
+      latency_ms: 0
+      packet_loss_percent: 0.0
+      bandwidth_kbps: 10000000
+      jitter_ms: 0
+
+  - name: golgi-relay
+    image: gate-nucleus-full
+    cpus: 1
+    memory: 1024
+    composition: tower
+    network: wan_bridge
+    ip: "10.92.0.30"
+    env:
+      NODE_ID: golgiBody
+      GATE_NAME: golgiBody
+      FAMILY_ID: "e8b62b6e"
+      FAMILY_SEED: "{{ family_seed }}"
+      ECOPRIMALS_ROOT: /opt/ecoPrimals
+      COMPOSITION: "tower"
+      SONGBIRD_PEERS: "irongate@10.92.0.10:7700,nuc-canary@10.92.0.20:7700"
+      SONGBIRD_FEDERATION_ENABLED: "true"
+      PRIMAL_BIND_MODE: "auto"
+      SECURITY_SOCKET: /run/membrane/beardog.sock
+    network_conditions:
+      preset: wan_bridge
+      latency_ms: 15
+      packet_loss_percent: 0.1
+      bandwidth_kbps: 1000000
+      jitter_ms: 5
+
+validation:
+  deployment:
+    - target: irongate
+      expect: "13 systemd units active"
+      composition: full
+    - target: nuc-canary
+      expect: "13 systemd units active (canary, resource-constrained)"
+      composition: full
+    - target: golgi-relay
+      expect: "3 systemd units active (tower-only relay)"
+      composition: tower
+
+  federation:
+    - target: irongate
+      method: federation.status
+      expect: "enabled: true, active_connections >= 2"
+    - target: nuc-canary
+      method: federation.status
+      expect: "enabled: true, active_connections >= 2"
+    - target: golgi-relay
+      method: federation.status
+      expect: "enabled: true, active_connections >= 2"
+
+  mesh_coherence:
+    - from: irongate
+      method: discovery.peers
+      expect: "nuc-alpha and golgiBody in peer list"
+    - from: nuc-canary
+      method: discovery.peers
+      expect: "ironGate and golgiBody in peer list"
+    - from: golgi-relay
+      method: discovery.peers
+      expect: "ironGate and nuc-alpha in peer list"
+
+  cascade_validation:
+    - target: irongate
+      method: "membrane temporal.cascade --dry-run"
+      expect: "no version skew across mesh"
