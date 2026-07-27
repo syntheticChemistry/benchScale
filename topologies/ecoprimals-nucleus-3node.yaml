@@ -35,10 +35,10 @@ nodes:
       FAMILY_ID: "benchscale-nucleus-3node"
     network_conditions:
       preset: basement_lan
-      latency_ms: 0.5
-      packet_loss_percent: 0.0
+      latency_ms: 1
+      packet_loss_percent: 0
       bandwidth_kbps: 10000000
-      jitter_ms: 0.1
+      jitter_ms: 0
 
   # ── Compute Peer: Node Atomic (Tower + Compute) ─────────────────────
   # Node atomic validates cross-gate compute dispatch. Tower provides
@@ -60,7 +60,7 @@ nodes:
     network_conditions:
       preset: home_lan
       latency_ms: 2
-      packet_loss_percent: 0.01
+      packet_loss_percent: 0
       bandwidth_kbps: 1000000
       jitter_ms: 1
 
@@ -81,6 +81,6 @@ nodes:
     network_conditions:
       preset: mobile_cell
       latency_ms: 100
-      packet_loss_percent: 2.0
+      packet_loss_percent: 2
       bandwidth_kbps: 10000
       jitter_ms: 30
